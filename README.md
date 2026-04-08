@@ -58,8 +58,8 @@ provisional v1 baseline unless there is a clear functional reason to change it:
   - `Fixed current until unplug` switch
   - start/cancel session buttons
 - operational state entities:
-  - operating state
-  - effective mode
+  - charging behavior
+  - active mode
   - vehicle connected
   - charging enabled
   - active power
@@ -172,10 +172,10 @@ connected charger.
 The integration does not automatically change a user's Home Assistant dashboard.
 Instead, this repository now includes ready-to-use Lovelace examples in:
 
-- [`examples/lovelace_dashboard.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/lovelace_dashboard.yaml)
-- [`examples/lovelace_basic.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/lovelace_basic.yaml)
-- [`examples/lovelace_advanced.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/lovelace_advanced.yaml)
-- [`examples/lovelace_troubleshooting.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/lovelace_troubleshooting.yaml)
+- [`examples/lovelace_dashboard.yaml`](examples/lovelace_dashboard.yaml)
+- [`examples/lovelace_basic.yaml`](examples/lovelace_basic.yaml)
+- [`examples/lovelace_advanced.yaml`](examples/lovelace_advanced.yaml)
+- [`examples/lovelace_troubleshooting.yaml`](examples/lovelace_troubleshooting.yaml)
 
 The example is designed around the entity model above and explicitly includes:
 
@@ -215,10 +215,10 @@ Suggested use:
 
 The repository also includes simple service-call automation examples:
 
-- [`examples/automation_enable_pv_until_unplug.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/automation_enable_pv_until_unplug.yaml)
-- [`examples/automation_disable_pv_until_unplug.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/automation_disable_pv_until_unplug.yaml)
-- [`examples/automation_enable_fixed_current_until_unplug.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/automation_enable_fixed_current_until_unplug.yaml)
-- [`examples/automation_disable_fixed_current_until_unplug.yaml`](/Users/dannymesters/Downloads/webasto_unite_integration/examples/automation_disable_fixed_current_until_unplug.yaml)
+- [`examples/automation_enable_pv_until_unplug.yaml`](examples/automation_enable_pv_until_unplug.yaml)
+- [`examples/automation_disable_pv_until_unplug.yaml`](examples/automation_disable_pv_until_unplug.yaml)
+- [`examples/automation_enable_fixed_current_until_unplug.yaml`](examples/automation_enable_fixed_current_until_unplug.yaml)
+- [`examples/automation_disable_fixed_current_until_unplug.yaml`](examples/automation_disable_fixed_current_until_unplug.yaml)
 
 ## Which entities matter
 
@@ -299,7 +299,7 @@ Inside `managed_control`, the charge mode select controls the target behavior:
 The `charging_allowed` switch is a temporary override on top of the selected
 charge mode:
 
-- turning it `off` pauses charging by moving the effective mode to `off`
+- turning it `off` pauses charging by moving the active mode to `off`
 - turning it back `on` restores the last active non-`off` mode
 - so if the user was in `pv` or `fixed_current`, toggling the switch off/on
   returns to that mode
@@ -307,7 +307,7 @@ charge mode:
 The `PV until unplug` switch is a separate temporary override:
 
 - it does not change the selected base `charge_mode`
-- if base mode is `normal`, turning it on makes the effective mode `pv`
+- if base mode is `normal`, turning it on makes the active mode `pv`
 - it remains active while the vehicle stays connected
 - it resets automatically when the vehicle is unplugged
 - if base mode is `off`, `off` still remains dominant
@@ -323,7 +323,7 @@ automations or scripts without relying only on the dashboard switch.
 The integration also provides a separate `Fixed current until unplug` switch:
 
 - it does not change the selected base `charge_mode`
-- if base mode is `normal`, turning it on makes the effective mode `fixed_current`
+- if base mode is `normal`, turning it on makes the active mode `fixed_current`
 - it remains active while the vehicle stays connected
 - it resets automatically when the vehicle is unplugged
 - it is mutually exclusive with `PV until unplug`
@@ -850,9 +850,8 @@ Notable recent changes in this codebase:
 - Add fuller integration tests around coordinator behavior in a Home Assistant runtime
 - Add better diagnostics for firmware identification and register compatibility
 - Decide on migration strategy and defaults for new users
-- Fill in the final repository-specific metadata before publication:
-  - `manifest.json` documentation URL
-  - `manifest.json` issue tracker URL
+- Maintain repository metadata and release process:
+  - `manifest.json` version and repository links
   - repository license and release workflow
 
 ## Known limitations
