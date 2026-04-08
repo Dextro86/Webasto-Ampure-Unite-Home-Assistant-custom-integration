@@ -6,6 +6,8 @@
   ],
   "config_flow": true,
   "dependencies": [],
+  "documentation": "https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration",
+  "issue_tracker": "https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/issues",
   "integration_type": "device",
   "iot_class": "local_polling",
   "requirements": [
