@@ -35,6 +35,41 @@ The most important remaining real-world validation items are:
 - candidate phase-switch register `405`
 - behavior across multiple Unite / Ampure firmware versions
 
+## Installation
+
+The recommended installation method is through HACS as a custom repository.
+
+### HACS custom repository
+
+1. Make sure HACS is already installed in Home Assistant.
+2. In Home Assistant, open `HACS`.
+3. Open the menu in the top-right corner and choose `Custom repositories`.
+4. Add this repository URL:
+   - `https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration`
+5. Select category:
+   - `Integration`
+6. Click `Add`.
+7. Search for `Webasto Unite` in HACS.
+8. Open the integration and click `Download`.
+9. Restart Home Assistant.
+10. Go to `Settings` -> `Devices & Services`.
+11. Click `Add Integration`.
+12. Search for `Webasto Unite` and complete the config flow.
+
+### Manual installation
+
+If you do not use HACS, copy:
+
+- `custom_components/webasto_unite`
+
+into your Home Assistant configuration directory under:
+
+- `config/custom_components/webasto_unite`
+
+Then restart Home Assistant and add the integration through:
+
+- `Settings` -> `Devices & Services` -> `Add Integration`
+
 ## Current status
 
 The integration already contains:
