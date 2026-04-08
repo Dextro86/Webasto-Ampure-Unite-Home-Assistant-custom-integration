@@ -1,0 +1,8 @@
+alias: Webasto Unite - Enable PV until unplug
+mode: single
+trigger: []
+condition: []
+action:
+  - service: webasto_unite.enable_pv_until_unplug
+    data:
+      entry_id: YOUR_CONFIG_ENTRY_ID

@@ -1,0 +1,79 @@
+
+from __future__ import annotations
+
+DOMAIN = "webasto_unite"
+DEFAULT_NAME = "Webasto Unite"
+DEFAULT_PORT = 502
+DEFAULT_UNIT_ID = 255
+DEFAULT_POLL_INTERVAL_S = 2.0
+DEFAULT_TIMEOUT_S = 3.0
+DEFAULT_RETRIES = 3
+DEFAULT_KEEPALIVE_INTERVAL_S = 10.0
+DEFAULT_CONTROL_MODE = "keepalive_only"
+DEFAULT_SAFE_CURRENT_A = 6.0
+DEFAULT_MIN_CURRENT_A = 6.0
+DEFAULT_MAX_CURRENT_A = 16.0
+DEFAULT_USER_LIMIT_A = 16.0
+DEFAULT_FIXED_CURRENT_A = 6.0
+DEFAULT_PV_START_DELAY_S = 0.0
+DEFAULT_PV_STOP_DELAY_S = 0.0
+DEFAULT_PV_MIN_RUNTIME_S = 0.0
+DEFAULT_PV_MIN_PAUSE_S = 0.0
+DEFAULT_MAIN_FUSE_A = 25.0
+DEFAULT_SAFETY_MARGIN_A = 2.0
+DEFAULT_MIN_SECONDS_BETWEEN_WRITES = 5.0
+DEFAULT_MIN_CURRENT_CHANGE_A = 1.0
+DEFAULT_STABLE_CYCLES_BEFORE_WRITE = 2
+DEFAULT_COMMUNICATION_TIMEOUT_S = 30.0
+
+PLATFORMS = ["sensor", "number", "select", "switch", "binary_sensor", "button"]
+
+CONF_UNIT_ID = "unit_id"
+CONF_INSTALLED_PHASES = "installed_phases"
+PHASE_MODE_1P = "1p"
+PHASE_MODE_3P = "3p"
+CONF_POLLING_INTERVAL = "polling_interval"
+CONF_TIMEOUT = "timeout"
+CONF_RETRIES = "retries"
+CONF_KEEPALIVE_MODE = "keepalive_mode"
+CONF_CONTROL_MODE = "control_mode"
+CONF_KEEPALIVE_INTERVAL = "keepalive_interval"
+CONF_SAFE_CURRENT = "safe_current"
+CONF_MIN_CURRENT = "min_current"
+CONF_MAX_CURRENT = "max_current"
+CONF_USER_LIMIT = "user_limit"
+CONF_MAIN_FUSE = "main_fuse"
+CONF_SAFETY_MARGIN = "safety_margin"
+CONF_DLB_INPUT_MODEL = "dlb_input_model"
+CONF_DLB_L1_SENSOR = "dlb_l1_sensor"
+CONF_DLB_L2_SENSOR = "dlb_l2_sensor"
+CONF_DLB_L3_SENSOR = "dlb_l3_sensor"
+CONF_DLB_GRID_POWER_SENSOR = "dlb_grid_power_sensor"
+CONF_PV_INPUT_MODEL = "pv_input_model"
+CONF_PV_CONTROL_STRATEGY = "pv_control_strategy"
+CONF_PV_UNTIL_UNPLUG_STRATEGY = "pv_until_unplug_strategy"
+CONF_PV_SURPLUS_SENSOR = "pv_surplus_sensor"
+CONF_PV_START_THRESHOLD = "pv_start_threshold"
+CONF_PV_STOP_THRESHOLD = "pv_stop_threshold"
+CONF_PV_START_DELAY = "pv_start_delay"
+CONF_PV_STOP_DELAY = "pv_stop_delay"
+CONF_PV_MIN_RUNTIME = "pv_min_runtime"
+CONF_PV_MIN_PAUSE = "pv_min_pause"
+CONF_PV_MIN_CURRENT = "pv_min_current"
+CONF_FIXED_CURRENT = "fixed_current"
+CONF_COMM_TIMEOUT = "communication_timeout"
+CONF_CHARGE_MODE = "charge_mode"
+
+SERVICE_SET_MODE = "set_mode"
+SERVICE_SET_USER_LIMIT = "set_user_limit"
+SERVICE_TRIGGER_RECONNECT = "trigger_reconnect"
+SERVICE_START_SESSION = "start_session"
+SERVICE_CANCEL_SESSION = "cancel_session"
+SERVICE_ENABLE_PV_UNTIL_UNPLUG = "enable_pv_until_unplug"
+SERVICE_DISABLE_PV_UNTIL_UNPLUG = "disable_pv_until_unplug"
+SERVICE_ENABLE_FIXED_CURRENT_UNTIL_UNPLUG = "enable_fixed_current_until_unplug"
+SERVICE_DISABLE_FIXED_CURRENT_UNTIL_UNPLUG = "disable_fixed_current_until_unplug"
+
+RUNTIME_CLIENT = "client"
+RUNTIME_CONTROLLER = "controller"
+RUNTIME_COORDINATOR = "coordinator"

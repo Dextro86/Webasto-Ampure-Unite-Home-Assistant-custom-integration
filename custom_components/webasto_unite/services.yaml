@@ -1,0 +1,52 @@
+
+set_mode:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+    mode:
+      required: true
+      example: "pv"
+set_user_limit:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+    current_a:
+      required: true
+      example: 10
+trigger_reconnect:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+start_session:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+cancel_session:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+enable_pv_until_unplug:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+disable_pv_until_unplug:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+enable_fixed_current_until_unplug:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"
+disable_fixed_current_until_unplug:
+  fields:
+    entry_id:
+      required: true
+      example: "abc123"

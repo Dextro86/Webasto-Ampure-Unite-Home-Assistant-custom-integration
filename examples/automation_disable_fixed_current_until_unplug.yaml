@@ -1,0 +1,8 @@
+alias: Webasto Unite - Disable fixed current until unplug
+mode: single
+trigger: []
+condition: []
+action:
+  - service: webasto_unite.disable_fixed_current_until_unplug
+    data:
+      entry_id: YOUR_CONFIG_ENTRY_ID

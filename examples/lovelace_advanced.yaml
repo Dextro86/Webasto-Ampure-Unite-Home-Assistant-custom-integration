@@ -1,0 +1,69 @@
+type: vertical-stack
+cards:
+  - type: entities
+    title: Webasto Unite Control
+    show_header_toggle: false
+    entities:
+      - entity: select.webasto_unite_charge_mode
+        name: Charge mode
+      - entity: sensor.webasto_unite_operating_state
+        name: Charging behavior
+      - entity: sensor.webasto_unite_effective_mode
+        name: Active mode
+      - entity: switch.webasto_unite_charging_allowed
+        name: Charging allowed
+      - entity: switch.webasto_unite_pv_until_unplug
+        name: PV until unplug
+      - entity: switch.webasto_unite_fixed_current_until_unplug
+        name: Fixed current until unplug
+      - entity: number.webasto_unite_current_limit
+        name: Current limit
+      - entity: number.webasto_unite_fixed_current
+        name: Fixed current
+
+  - type: entities
+    title: Live Metrics
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_active_power
+        name: Active power
+      - entity: sensor.webasto_unite_actual_current
+        name: Actual current
+      - entity: sensor.webasto_unite_session_energy
+        name: Session energy
+      - entity: sensor.webasto_unite_energy_meter
+        name: Energy meter
+      - entity: sensor.webasto_unite_session_duration
+        name: Session duration
+
+  - type: entities
+    title: Control Logic
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_dlb_limit
+        name: DLB limit
+      - entity: sensor.webasto_unite_final_target
+        name: Final target
+      - entity: sensor.webasto_unite_control_reason
+        name: Control reason
+      - entity: sensor.webasto_unite_dominant_limit
+        name: Dominant limit
+      - entity: sensor.webasto_unite_fallback_active
+        name: Fallback active
+
+  - type: entities
+    title: Three-Phase Detail
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_active_power_l1
+        name: Active power L1
+      - entity: sensor.webasto_unite_active_power_l2
+        name: Active power L2
+      - entity: sensor.webasto_unite_active_power_l3
+        name: Active power L3
+      - entity: sensor.webasto_unite_voltage_l1
+        name: Voltage L1
+      - entity: sensor.webasto_unite_voltage_l2
+        name: Voltage L2
+      - entity: sensor.webasto_unite_voltage_l3
+        name: Voltage L3

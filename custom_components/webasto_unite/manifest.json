@@ -1,0 +1,15 @@
+{
+  "domain": "webasto_unite",
+  "name": "Webasto Unite",
+  "codeowners": [
+    "@openai"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": [
+    "pymodbus==3.8.6"
+  ],
+  "version": "0.6.0"
+}
