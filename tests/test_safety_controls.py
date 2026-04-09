@@ -10,6 +10,8 @@ from custom_components.webasto_unite.config_flow import (
 from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, HaSensorSnapshot, PhaseCurrents, WallboxState
+from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
+from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
 
 
@@ -189,8 +191,7 @@ def test_fixed_current_must_stay_within_amp_range():
 
 
 def test_sensor_values_are_normalized_from_common_units():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator.hass = SimpleNamespace(
+    hass = SimpleNamespace(
         states=SimpleNamespace(
             get=lambda entity_id: {
                 "sensor.current_ma": SimpleNamespace(state="6200", attributes={"unit_of_measurement": "mA"}),
@@ -199,11 +200,11 @@ def test_sensor_values_are_normalized_from_common_units():
             }.get(entity_id)
         )
     )
-    coordinator._unsupported_sensor_units = set()
+    adapter = HaSensorAdapter(hass)
 
-    assert coordinator._state_as_current_a("sensor.current_ma") == 6.2
-    assert coordinator._state_as_power_w("sensor.grid_kw") == 2500.0
-    assert coordinator._state_as_power_w("sensor.bad_unit") is None
+    assert adapter.state_as_current_a("sensor.current_ma") == 6.2
+    assert adapter.state_as_power_w("sensor.grid_kw") == 2500.0
+    assert adapter.state_as_power_w("sensor.bad_unit") is None
 
 
 def test_keepalive_only_mode_blocks_control_writes():
@@ -249,9 +250,9 @@ def test_keepalive_only_mode_disables_control_writes_and_static_sync():
 
 
 def test_clock_formatter_returns_human_readable_time():
-    assert WebastoUniteCoordinator._format_clock_hhmmss(123045) == "12:30:45"
-    assert WebastoUniteCoordinator._format_clock_hhmmss(0) is None
-    assert WebastoUniteCoordinator._format_clock_hhmmss(250001) == "250001"
+    assert WallboxReader.format_clock_hhmmss(123045) == "12:30:45"
+    assert WallboxReader.format_clock_hhmmss(0) is None
+    assert WallboxReader.format_clock_hhmmss(250001) == "250001"
 
 
 def test_resume_charging_restores_previous_non_off_mode():
