@@ -42,6 +42,8 @@ Before installing this integration, make sure:
 - the charger has network connectivity
 - the charger has a fixed IP address
 - `Modbus/TCP` is enabled in the charger's web interface
+- no other system keeps an active `Modbus/TCP` connection open to the charger
+- the charger accepts only one active `Modbus/TCP` client at a time
 
 If you want to use DLB or PV control, make sure the required Home Assistant sensors already exist.
 
