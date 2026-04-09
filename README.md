@@ -33,6 +33,18 @@ The integration currently supports:
   - `PV until unplug`
   - `Fixed current until unplug`
 
+## Requirements
+
+Before installing this integration, make sure:
+
+- Home Assistant is already running
+- HACS is already installed if you want to install through HACS
+- the charger has network connectivity
+- the charger has a fixed IP address
+- `Modbus/TCP` is enabled in the charger's web interface
+
+If you want to use DLB or PV control, make sure the required Home Assistant sensors already exist.
+
 ## Installation
 
 ### HACS custom repository
