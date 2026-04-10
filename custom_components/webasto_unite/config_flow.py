@@ -12,6 +12,10 @@ from .const import *
 from .models import ControlMode, DlbInputModel, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
+PHASE_SELECTOR_OPTIONS = [
+    {"value": PHASE_MODE_1P, "label": "1 phase"},
+    {"value": PHASE_MODE_3P, "label": "3 phases"},
+]
 CONTROL_MODE_OPTIONS = [mode.value for mode in ControlMode]
 CONTROL_MODE_SELECTOR_OPTIONS = [
     {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Read-only + Keepalive"},
@@ -231,7 +235,7 @@ class WebastoUniteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_HOST): str,
             vol.Optional(CONF_PORT, default=DEFAULT_PORT): _int_selector(1, 65535),
             vol.Optional(CONF_UNIT_ID, default=DEFAULT_UNIT_ID): _int_selector(1, 255),
-            vol.Required(CONF_INSTALLED_PHASES, default=PHASE_MODE_3P): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_OPTIONS)),
+            vol.Required(CONF_INSTALLED_PHASES, default=PHASE_MODE_3P): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
@@ -274,7 +278,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_HOST, default=self._config_entry.data.get(CONF_HOST, "")): str,
             vol.Optional(CONF_PORT, default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)): _int_selector(1, 65535),
             vol.Optional(CONF_UNIT_ID, default=self._config_entry.data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)): _int_selector(1, 255),
-            vol.Required(CONF_INSTALLED_PHASES, default=self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_OPTIONS)),
+            vol.Required(CONF_INSTALLED_PHASES, default=self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
             vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
