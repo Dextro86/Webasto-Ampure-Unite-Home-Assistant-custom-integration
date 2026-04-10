@@ -77,6 +77,12 @@ def _int_selector(min_value: int, max_value: int, step: int = 1) -> selector.Num
     )
 
 
+def _optional_field(key: str, field_type, value: Any | None = None):
+    if value is None:
+        return vol.Optional(key)
+    return vol.Optional(key, default=value)
+
+
 def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     min_current = float(options[CONF_MIN_CURRENT])
     max_current = float(options[CONF_MAX_CURRENT])
@@ -232,10 +238,10 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in DlbInputModel])),
             vol.Optional(CONF_MAIN_FUSE, default=self.options.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
             vol.Optional(CONF_SAFETY_MARGIN, default=self.options.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
-            vol.Optional(CONF_DLB_L1_SENSOR, default=self.options.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
-            vol.Optional(CONF_DLB_L2_SENSOR, default=self.options.get(CONF_DLB_L2_SENSOR)): _entity_selector(),
-            vol.Optional(CONF_DLB_L3_SENSOR, default=self.options.get(CONF_DLB_L3_SENSOR)): _entity_selector(),
-            vol.Optional(CONF_DLB_GRID_POWER_SENSOR, default=self.options.get(CONF_DLB_GRID_POWER_SENSOR)): _entity_selector(),
+            _optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), self.options.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
+            _optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), self.options.get(CONF_DLB_L2_SENSOR)): _entity_selector(),
+            _optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), self.options.get(CONF_DLB_L3_SENSOR)): _entity_selector(),
+            _optional_field(CONF_DLB_GRID_POWER_SENSOR, _entity_selector(), self.options.get(CONF_DLB_GRID_POWER_SENSOR)): _entity_selector(),
         })
         return self.async_show_form(step_id="dlb", data_schema=schema, errors=errors)
 
@@ -260,7 +266,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_PV_INPUT_MODEL, default=self.options.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in PvInputModel])),
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
-            vol.Optional(CONF_PV_SURPLUS_SENSOR, default=self.options.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
+            _optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), self.options.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
             vol.Optional(CONF_PV_START_THRESHOLD, default=self.options.get(CONF_PV_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
             vol.Optional(CONF_PV_STOP_THRESHOLD, default=self.options.get(CONF_PV_STOP_THRESHOLD, 1200.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
             vol.Optional(CONF_PV_START_DELAY, default=self.options.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
