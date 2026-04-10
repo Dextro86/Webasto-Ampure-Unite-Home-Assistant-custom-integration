@@ -26,12 +26,26 @@ The integration currently supports:
 
 - local Modbus-based charger monitoring
 - keepalive handling for Unite control sessions
-- dynamic load balancing (DLB)
+- Dynamic Load Balancing (DLB)
 - PV charging
-- fixed-current charging
+- Fixed Current charging
 - temporary per-session overrides:
-  - `PV until unplug`
-  - `Fixed current until unplug`
+  - `PV until Unplug`
+  - `Fixed Current until Unplug`
+
+## How it works
+
+The integration runs locally through `Modbus/TCP`.
+
+On every update cycle it:
+
+- reads charger state and measurements from the wallbox
+- reads optional Home Assistant sensors for DLB and PV control
+- calculates a target current from the selected charge mode
+- applies safety limits such as DLB, configured maximum current, cable limits and charger-reported limits when available
+- writes a new current target only when control is enabled and a change is needed
+
+The selected `Charge mode` describes what the user wants. `Active mode` shows what the integration is actually doing after temporary overrides, pauses and PV behavior are applied. `Charging behavior` is a short status summary for dashboards.
 
 ## Requirements
 
@@ -84,15 +98,15 @@ Then restart Home Assistant and add the integration through:
 
 The integration exposes these charge modes:
 
-- `off`
-- `normal`
-- `pv`
-- `fixed_current`
+- `Off`
+- `Normal`
+- `PV`
+- `Fixed Current`
 
 It also exposes two temporary session overrides:
 
-- `PV until unplug`
-- `Fixed current until unplug`
+- `PV until Unplug`
+- `Fixed Current until Unplug`
 
 Those overrides do not permanently change the selected base `Charge mode`. They stay active until the vehicle is unplugged.
 
@@ -100,26 +114,29 @@ Those overrides do not permanently change the selected base `Charge mode`. They 
 
 PV mode supports:
 
-- `surplus`
+- `Disabled`
+  - do not use PV charging
+- `Surplus only`
   - only charge when there is enough surplus
-- `min_plus_surplus`
+- `Minimum + surplus`
   - keep charging at minimum current and use extra surplus to scale up
 
 This means:
 
-- if you want strict surplus charging, use `surplus`
-- if you want more practical winter/cloud behavior, use `min_plus_surplus`
+- if you do not want to configure PV charging yet, use `Disabled`
+- if you want strict surplus charging, use `Surplus only`
+- if you want more practical winter/cloud behavior, use `Minimum + surplus`
 
 ## What the user sees in Home Assistant
 
 The most important entities for daily use are:
 
 - `Charge mode`
-- `Charging allowed`
-- `PV until unplug`
-- `Fixed current until unplug`
+- `Allow charging`
+- `PV until Unplug`
+- `Fixed Current until Unplug`
 - `Current limit`
-- `Fixed current`
+- `Fixed Current`
 - `Active mode`
 - `Charging behavior`
 - `Final target`
@@ -133,9 +150,9 @@ In general:
 
 Example:
 
-- base `Charge mode = normal`
-- `PV until unplug = on`
-- `Active mode = pv`
+- base `Charge mode = Normal`
+- `PV until Unplug = on`
+- `Active mode = PV`
 
 ## Configuration summary
 
@@ -148,15 +165,16 @@ During setup, the user mainly configures:
 - installation phases:
   - `1p` or `3p`
 - control mode:
-  - `keepalive_only`
-  - `managed_control`
+  - `Read-only + Keepalive`
+  - `Managed Control`
 - DLB source:
-  - phase currents
-  - or grid power
+  - `Disabled`
+  - `Phase current sensors (recommended)`
+  - `Grid power sensor`
 - PV source and strategy
 - current limits and safety values
 
-For Unite, `keepalive_only` is the safest first active mode.
+For Unite, `Read-only + Keepalive` is the safest first active mode.
 
 ## Dashboard examples
 
@@ -191,7 +209,7 @@ If you try it:
 
 - read the warnings above
 - start conservatively
-- prefer `keepalive_only` first
+- prefer `Read-only + Keepalive` first
 - verify behavior on your own hardware before relying on it
 
 ## Repository contents

@@ -83,6 +83,33 @@ def test_dlb_options_require_matching_sensor_for_selected_model():
         raise AssertionError("Expected DLB option validation to fail")
 
 
+def test_dlb_disabled_does_not_require_sensor_inputs():
+    result = _validate_dlb_options(
+        {
+            "dlb_input_model": "disabled",
+            "dlb_l1_sensor": None,
+            "dlb_l2_sensor": None,
+            "dlb_l3_sensor": None,
+            "dlb_grid_power_sensor": None,
+        },
+        "3p",
+    )
+
+    assert result["dlb_input_model"] == "disabled"
+
+
+def test_dlb_disabled_does_not_apply_current_limit():
+    controller = make_controller(dlb_input_model="disabled")
+    wallbox = WallboxState(installed_phases=3)
+    sensors = HaSensorSnapshot(valid=False, reason_invalid="No DLB sensors configured")
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.dlb_limit_a is None
+    assert decision.fallback_active is False
+    assert decision.final_target_a == 16.0
+
+
 def test_dlb_phase_current_options_require_l1_for_1p():
     try:
         _validate_dlb_options(

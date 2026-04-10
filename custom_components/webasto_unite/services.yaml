@@ -1,52 +1,92 @@
 
 set_mode:
+  name: Set charge mode
+  description: Set the active charge mode for a configured Webasto Unite integration entry.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
     mode:
+      name: Mode
+      description: Charge mode to apply.
       required: true
       example: "pv"
 set_user_limit:
+  name: Set current limit
+  description: Set the default current limit used by normal charging mode.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
     current_a:
+      name: Current
+      description: Current limit in amperes.
       required: true
       example: 10
 trigger_reconnect:
+  name: Reconnect charger
+  description: Reconnect the Modbus/TCP client and refresh charger state.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
 start_session:
+  name: Start session
+  description: Send the session start command if managed control is enabled.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
 cancel_session:
+  name: Cancel session
+  description: Send the session cancel command if managed control is enabled.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
 enable_pv_until_unplug:
+  name: Enable PV until unplug
+  description: Temporarily use PV charging until the vehicle is unplugged.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
 disable_pv_until_unplug:
+  name: Disable PV until unplug
+  description: Disable the temporary PV-until-unplug override.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
 enable_fixed_current_until_unplug:
+  name: Enable Fixed Current until Unplug
+  description: Temporarily use Fixed Current charging until the vehicle is unplugged.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
 disable_fixed_current_until_unplug:
+  name: Disable Fixed Current until Unplug
+  description: Disable the temporary Fixed Current until Unplug override.
   fields:
     entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"

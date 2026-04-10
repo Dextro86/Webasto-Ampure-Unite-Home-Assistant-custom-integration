@@ -10,6 +10,8 @@ class DlbEngine:
     config: ControlConfig
 
     def calculate_available_current(self, sensors: HaSensorSnapshot, installed_phases: int) -> DlbResult:
+        if self.config.dlb_input_model == DlbInputModel.DISABLED:
+            return DlbResult(None, True, ControlReason.NO_CHANGE)
         if not sensors.valid:
             return DlbResult(self.config.safe_current_a, False, ControlReason.SENSOR_UNAVAILABLE)
         if self.config.dlb_input_model == DlbInputModel.PHASE_CURRENTS:

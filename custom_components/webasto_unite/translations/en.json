@@ -17,7 +17,7 @@
     "step": {
       "init": {
         "title": "Core settings",
-        "description": "Configure polling, limits and control behavior.",
+        "description": "Configure polling, safety limits and whether the integration may actively control the charger.",
         "data": {
           "polling_interval": "Polling interval",
           "timeout": "Timeout",
@@ -33,7 +33,7 @@
       },
       "dlb": {
         "title": "Dynamic load balancing",
-        "description": "Choose the DLB input model and related sensors.",
+        "description": "Choose how the integration measures available grid capacity. Phase-current sensors are recommended when available.",
         "data": {
           "dlb_input_model": "DLB input model",
           "main_fuse": "Main fuse size",
@@ -45,21 +45,21 @@
         }
       },
       "pv": {
-        "title": "Charging strategies",
-        "description": "Configure PV charging thresholds and the fixed-current mode.",
+        "title": "PV and Fixed Current charging",
+        "description": "Configure optional PV charging behavior and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging.",
         "data": {
           "pv_input_model": "PV input model",
           "pv_control_strategy": "PV control strategy",
-          "pv_until_unplug_strategy": "PV until unplug strategy",
+          "pv_until_unplug_strategy": "PV until-unplug strategy",
           "pv_surplus_sensor": "PV surplus sensor",
-          "pv_start_threshold": "PV start threshold",
-          "pv_stop_threshold": "PV stop threshold",
+          "pv_start_threshold": "PV start threshold (W)",
+          "pv_stop_threshold": "PV stop threshold (W)",
           "pv_start_delay": "PV start delay",
           "pv_stop_delay": "PV stop delay",
           "pv_min_runtime": "PV minimum runtime",
           "pv_min_pause": "PV minimum pause",
           "pv_min_current": "PV minimum current",
-          "fixed_current": "Fixed current"
+          "fixed_current": "Fixed Current"
         }
       }
     },
@@ -73,7 +73,7 @@
       "pv_threshold_order": "The PV stop threshold must be less than or equal to the PV start threshold.",
       "pv_surplus_sensor_required": "Select a PV surplus sensor for the surplus-sensor PV model.",
       "pv_grid_sensor_required": "Select a grid power sensor when PV surplus is derived from grid power.",
-      "fixed_current_out_of_range": "The fixed current must stay within the supported current range."
+      "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range."
     }
   }
 }

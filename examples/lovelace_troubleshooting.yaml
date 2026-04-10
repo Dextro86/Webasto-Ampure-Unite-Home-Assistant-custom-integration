@@ -15,7 +15,7 @@ cards:
       - entity: switch.webasto_unite_pv_until_unplug
         name: PV until unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
-        name: Fixed current until unplug
+        name: Fixed Current until Unplug
       - entity: sensor.webasto_unite_dominant_limit
         name: Dominant limit
       - entity: sensor.webasto_unite_sensor_invalid_reason

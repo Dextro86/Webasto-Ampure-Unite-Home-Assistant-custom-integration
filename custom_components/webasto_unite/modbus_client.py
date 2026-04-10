@@ -130,7 +130,7 @@ class WebastoModbusClient:
                 value = self._decode_response(register, response.registers)
                 self._mark_ok()
                 return value
-            except (ModbusClientConnectionError, ModbusClientProtocolError, ModbusException, OSError) as err:
+            except (ModbusClientConnectionError, ModbusClientProtocolError, ModbusException, OSError, asyncio.TimeoutError) as err:
                 self._stats.read_failures += 1
                 self._stats.last_error = str(err)
                 if attempt >= self.config.retries:
@@ -151,7 +151,7 @@ class WebastoModbusClient:
                     raise ModbusClientProtocolError(f"Write failed for {register.name}: {response}")
                 self._mark_ok()
                 return
-            except (ModbusClientConnectionError, ModbusClientProtocolError, ModbusException, OSError) as err:
+            except (ModbusClientConnectionError, ModbusClientProtocolError, ModbusException, OSError, asyncio.TimeoutError) as err:
                 self._stats.write_failures += 1
                 self._stats.last_error = str(err)
                 if attempt >= self.config.retries:

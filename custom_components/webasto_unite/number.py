@@ -40,7 +40,7 @@ class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
 
 
 class WebastoFixedCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
-    _attr_name = "Fixed current"
+    _attr_name = "Fixed Current"
     _attr_native_min_value = 6
     _attr_native_max_value = 32
     _attr_native_step = 1

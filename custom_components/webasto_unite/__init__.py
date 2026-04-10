@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
@@ -21,6 +21,7 @@ from .const import (
 )
 from .models import ChargeMode
 from .coordinator import WebastoUniteCoordinator
+from .modbus_client import ModbusClientError
 
 _SERVICE_SCHEMA_MODE = vol.Schema({vol.Required("entry_id"): cv.string, vol.Required("mode"): vol.In([m.value for m in ChargeMode])})
 _SERVICE_SCHEMA_LIMIT = vol.Schema({vol.Required("entry_id"): cv.string, vol.Required("current_a"): vol.Coerce(float)})
@@ -113,7 +114,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     coordinator = WebastoUniteCoordinator(hass, entry)
-    await coordinator.async_setup()
+    try:
+        await coordinator.async_setup()
+    except ModbusClientError as err:
+        await coordinator.async_shutdown()
+        raise ConfigEntryNotReady(f"Unable to connect to Webasto Unite: {err}") from err
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -32,11 +32,11 @@ SENSORS = (
     WebastoSensorDescription(key="current_l1", name="Current L1", value_key="current_l1_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="current_l2", name="Current L2", value_key="current_l2_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="current_l3", name="Current L3", value_key="current_l3_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="actual_current", name="Actual current", value_key="actual_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
+    WebastoSensorDescription(key="actual_current", name="Max phase current", value_key="actual_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="voltage_l1", name="Voltage L1", value_key="voltage_l1_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT),
     WebastoSensorDescription(key="voltage_l2", name="Voltage L2", value_key="voltage_l2_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT),
     WebastoSensorDescription(key="voltage_l3", name="Voltage L3", value_key="voltage_l3_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT),
-    WebastoSensorDescription(key="configured_limit", name="Configured limit", value_key="current_limit_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
+    WebastoSensorDescription(key="configured_limit", name="Reported current limit", value_key="current_limit_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="safe_current", name="Safe current", value_key="safe_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="hardware_max_current", name="Hardware max current", value_key="hardware_max_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="session_energy", name="Session energy", value_key="session_energy_kwh", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR),
@@ -90,4 +90,33 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             }[value]
         if isinstance(value, Enum):
             return value.value
+        if isinstance(value, str):
+            return {
+                "paused": "Paused",
+                "off": "Off",
+                "fallback": "Fallback",
+                "fixed_current_until_unplug": "Fixed Current until Unplug",
+                "fixed_current": "Fixed Current",
+                "waiting_for_surplus": "Waiting for Surplus",
+                "pv_until_unplug": "PV until Unplug",
+                "min_plus_surplus": "Min + Surplus",
+                "dlb_limited": "DLB Limited",
+                "partially_validated": "Partially Validated",
+                "validated_with_optional_gaps": "Validated with Optional Gaps",
+                "validated": "Validated",
+                "off_mode": "Off Mode",
+                "normal_mode": "Normal Mode",
+                "fixed_current_mode": "Fixed Current Mode",
+                "pv_mode": "PV Mode",
+                "hardware_limited": "Hardware Limited",
+                "cable_limited": "Cable Limited",
+                "ev_limited": "EV Limited",
+                "safe_current_fallback": "Safe Current Fallback",
+                "sensor_unavailable": "Sensor Unavailable",
+                "communication_loss": "Communication Loss",
+                "below_min_current": "Below Minimum Current",
+                "no_change": "No Change",
+                "pv": "PV",
+                "normal": "Normal",
+            }.get(value, value)
         return value

@@ -19,7 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 
 class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
-    _attr_name = "Charging allowed"
+    _attr_name = "Allow charging"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
@@ -65,7 +65,7 @@ class WebastoPvUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
 
 
 class WebastoFixedCurrentUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
-    _attr_name = "Fixed current until unplug"
+    _attr_name = "Fixed Current until Unplug"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)

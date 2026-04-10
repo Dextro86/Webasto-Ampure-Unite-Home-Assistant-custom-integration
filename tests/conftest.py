@@ -32,6 +32,8 @@ sys.modules.setdefault("homeassistant", ha)
 
 config_entries = types.ModuleType("homeassistant.config_entries")
 config_entries.ConfigEntry = object
+class _ConfigEntryNotReady(Exception):
+    pass
 class _ConfigFlow:
     def __init_subclass__(cls, **kwargs):
         return super().__init_subclass__()
@@ -50,6 +52,7 @@ class _OptionsFlow:
         return {"type": "form", "step_id": step_id, "data_schema": data_schema, "errors": errors or {}}
 config_entries.ConfigFlow = _ConfigFlow
 config_entries.OptionsFlow = _OptionsFlow
+config_entries.ConfigEntryNotReady = _ConfigEntryNotReady
 sys.modules.setdefault("homeassistant.config_entries", config_entries)
 
 const = types.ModuleType("homeassistant.const")

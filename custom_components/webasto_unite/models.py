@@ -14,6 +14,7 @@ class ChargeMode(str, Enum):
 
 
 class DlbInputModel(str, Enum):
+    DISABLED = "disabled"
     PHASE_CURRENTS = "phase_currents"
     GRID_POWER = "grid_power"
 

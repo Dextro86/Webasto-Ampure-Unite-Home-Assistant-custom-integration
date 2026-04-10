@@ -13,8 +13,34 @@ from .models import ControlMode, DlbInputModel, KeepaliveMode, PvControlStrategy
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 CONTROL_MODE_OPTIONS = [mode.value for mode in ControlMode]
-PV_CONTROL_STRATEGY_OPTIONS = [strategy.value for strategy in PvControlStrategy]
-PV_OVERRIDE_STRATEGY_OPTIONS = [strategy.value for strategy in PvOverrideStrategy]
+CONTROL_MODE_SELECTOR_OPTIONS = [
+    {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Read-only + Keepalive"},
+    {"value": ControlMode.MANAGED_CONTROL.value, "label": "Managed Control"},
+]
+KEEPALIVE_MODE_SELECTOR_OPTIONS = [
+    {"value": KeepaliveMode.AUTO.value, "label": "Auto (recommended)"},
+    {"value": KeepaliveMode.FORCED.value, "label": "Always send keepalive"},
+    {"value": KeepaliveMode.DISABLED.value, "label": "Disable keepalive"},
+]
+DLB_INPUT_MODEL_SELECTOR_OPTIONS = [
+    {"value": DlbInputModel.DISABLED.value, "label": "Disabled"},
+    {"value": DlbInputModel.PHASE_CURRENTS.value, "label": "Phase current sensors (recommended)"},
+    {"value": DlbInputModel.GRID_POWER.value, "label": "Grid power sensor"},
+]
+PV_INPUT_MODEL_SELECTOR_OPTIONS = [
+    {"value": PvInputModel.SURPLUS_SENSOR.value, "label": "Use a surplus power sensor"},
+    {"value": PvInputModel.GRID_POWER_DERIVED.value, "label": "Derive surplus from grid power"},
+]
+PV_CONTROL_STRATEGY_OPTIONS = [
+    {"value": PvControlStrategy.DISABLED.value, "label": "Disabled"},
+    {"value": PvControlStrategy.SURPLUS.value, "label": "Surplus only"},
+    {"value": PvControlStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + surplus"},
+]
+PV_OVERRIDE_STRATEGY_OPTIONS = [
+    {"value": PvOverrideStrategy.INHERIT.value, "label": "Same as PV control strategy"},
+    {"value": PvOverrideStrategy.SURPLUS.value, "label": "Surplus only"},
+    {"value": PvOverrideStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + surplus"},
+]
 
 MIN_CURRENT_A = 6.0
 MAX_CURRENT_A = 32.0
@@ -100,6 +126,8 @@ def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
 
 def _validate_dlb_options(options: dict[str, Any], installed_phases: str) -> dict[str, Any]:
     model = options[CONF_DLB_INPUT_MODEL]
+    if model == DlbInputModel.DISABLED.value:
+        return options
     if model == DlbInputModel.PHASE_CURRENTS.value:
         if installed_phases == PHASE_MODE_1P:
             if not options.get(CONF_DLB_L1_SENSOR):
@@ -213,8 +241,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
             vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
-            vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_OPTIONS)),
-            vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in KeepaliveMode])),
+            vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
             vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
             vol.Optional(CONF_MIN_CURRENT, default=self.options.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
@@ -235,7 +263,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
-            vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in DlbInputModel])),
+            vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
             vol.Optional(CONF_MAIN_FUSE, default=self.options.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
             vol.Optional(CONF_SAFETY_MARGIN, default=self.options.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
             _optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), self.options.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
@@ -263,7 +291,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
-            vol.Optional(CONF_PV_INPUT_MODEL, default=self.options.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in PvInputModel])),
+            vol.Optional(CONF_PV_INPUT_MODEL, default=self.options.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS)),
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
             _optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), self.options.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
