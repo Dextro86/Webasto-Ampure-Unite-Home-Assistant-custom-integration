@@ -1,0 +1,87 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Webasto/Ampure Unite",
+        "description": "Configure the basic Modbus TCP connection to the wallbox.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "unit_id": "Unit ID",
+          "installed_phases": "Installed phases"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Core settings",
+        "description": "Configure polling, safety limits and whether the integration may actively control the charger.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "unit_id": "Unit ID",
+          "installed_phases": "Installed phases",
+          "polling_interval": "Polling interval",
+          "timeout": "Timeout",
+          "retries": "Retries",
+          "control_mode": "Control mode",
+          "keepalive_mode": "Keepalive mode",
+          "keepalive_interval": "Keepalive interval",
+          "safe_current": "Safe current on failure",
+          "min_current": "Minimum current",
+          "max_current": "Maximum current",
+          "user_limit": "Default current limit"
+        }
+      },
+      "dlb": {
+        "title": "Dynamic load balancing",
+        "description": "Choose how the integration measures available grid capacity. Phase-current sensors are recommended when available.",
+        "data": {
+          "dlb_input_model": "DLB input model",
+          "main_fuse": "Main fuse size",
+          "safety_margin": "Safety margin",
+          "dlb_l1_sensor": "Phase L1 current sensor",
+          "dlb_l2_sensor": "Phase L2 current sensor",
+          "dlb_l3_sensor": "Phase L3 current sensor",
+          "dlb_grid_power_sensor": "Grid power sensor"
+        }
+      },
+      "pv": {
+        "title": "PV and Fixed Current charging",
+        "description": "Configure optional PV charging behavior and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging.",
+        "data": {
+          "pv_input_model": "PV input model",
+          "pv_control_strategy": "PV control strategy",
+          "pv_until_unplug_strategy": "PV until-unplug strategy",
+          "pv_surplus_sensor": "PV surplus sensor",
+          "pv_start_threshold": "PV start threshold (W)",
+          "pv_stop_threshold": "PV stop threshold (W)",
+          "pv_start_delay": "PV start delay",
+          "pv_stop_delay": "PV stop delay",
+          "pv_min_runtime": "PV minimum runtime",
+          "pv_min_pause": "PV minimum pause",
+          "pv_min_current": "PV minimum current",
+          "fixed_current": "Fixed Current"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "The provided configuration is invalid.",
+      "min_exceeds_max": "Minimum current must be less than or equal to maximum current.",
+      "user_limit_out_of_range": "The default current limit must be between the configured minimum and maximum current.",
+      "safe_current_out_of_range": "The safe current must be between the configured minimum and maximum current.",
+      "host_required": "Host is required.",
+      "port_out_of_range": "Port must be between 1 and 65535.",
+      "unit_id_out_of_range": "Unit ID must be between 1 and 255.",
+      "installed_phases_invalid": "Installed phases must be 1p or 3p.",
+      "dlb_phase_sensor_required": "Select the required DLB phase current sensors for the configured 1p or 3p installation.",
+      "dlb_grid_sensor_required": "Select a grid power sensor for the grid-power DLB model.",
+      "pv_threshold_order": "The PV stop threshold must be less than or equal to the PV start threshold.",
+      "pv_surplus_sensor_required": "Select a PV surplus sensor for the surplus-sensor PV model.",
+      "pv_grid_sensor_required": "Select a grid power sensor when PV surplus is derived from grid power.",
+      "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range."
+    }
+  }
+}
