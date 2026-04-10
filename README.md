@@ -162,7 +162,7 @@ During setup, the user mainly configures:
   - host
   - port
   - unit id
-- installation phases:
+- installed phases:
   - `1p` or `3p`
 - control mode:
   - `Read-only + Keepalive`
@@ -175,6 +175,8 @@ During setup, the user mainly configures:
 - current limits and safety values
 
 For Unite, `Read-only + Keepalive` is the safest first active mode.
+
+The charger connection fields and installed phases can also be changed later from the integration settings. Restart or reload the integration after changing these connection-related values.
 
 ## Dashboard examples
 

@@ -124,6 +124,23 @@ def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     return options
 
 
+def _validate_connection_data(data: dict[str, Any]) -> dict[str, Any]:
+    host = str(data[CONF_HOST]).strip()
+    if not host:
+        raise vol.Invalid(f"{CONF_HOST} is required")
+    port = _bounded_int(1, 65535, CONF_PORT)(data[CONF_PORT])
+    unit_id = _bounded_int(1, 255, CONF_UNIT_ID)(data[CONF_UNIT_ID])
+    installed_phases = data[CONF_INSTALLED_PHASES]
+    if installed_phases not in PHASE_OPTIONS:
+        raise vol.Invalid(f"{CONF_INSTALLED_PHASES} must be 1p or 3p")
+    return {
+        CONF_HOST: host,
+        CONF_PORT: port,
+        CONF_UNIT_ID: unit_id,
+        CONF_INSTALLED_PHASES: installed_phases,
+    }
+
+
 def _validate_dlb_options(options: dict[str, Any], installed_phases: str) -> dict[str, Any]:
     model = options[CONF_DLB_INPUT_MODEL]
     if model == DlbInputModel.DISABLED.value:
@@ -174,6 +191,14 @@ def _validation_error_key(err: Exception) -> str:
         return "user_limit_out_of_range"
     if CONF_SAFE_CURRENT in message:
         return "safe_current_out_of_range"
+    if CONF_HOST in message:
+        return "host_required"
+    if CONF_PORT in message:
+        return "port_out_of_range"
+    if CONF_UNIT_ID in message:
+        return "unit_id_out_of_range"
+    if CONF_INSTALLED_PHASES in message:
+        return "installed_phases_invalid"
     if "phase current sensor" in message:
         return "dlb_phase_sensor_required"
     if "DLB L1, L2 and L3 phase current sensors are required" in message:
@@ -220,11 +245,19 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
         self.options = dict(config_entry.options)
+        self.entry_data = dict(config_entry.data)
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
+                connection_input = {
+                    CONF_HOST: user_input.pop(CONF_HOST),
+                    CONF_PORT: user_input.pop(CONF_PORT),
+                    CONF_UNIT_ID: user_input.pop(CONF_UNIT_ID),
+                    CONF_INSTALLED_PHASES: user_input.pop(CONF_INSTALLED_PHASES),
+                }
+                self.entry_data = _validate_connection_data(connection_input)
                 user_input[CONF_POLLING_INTERVAL] = _bounded_float(MIN_SECONDS, MAX_SECONDS, CONF_POLLING_INTERVAL)(user_input[CONF_POLLING_INTERVAL])
                 user_input[CONF_TIMEOUT] = _bounded_float(MIN_SECONDS, 60.0, CONF_TIMEOUT)(user_input[CONF_TIMEOUT])
                 user_input[CONF_RETRIES] = _bounded_int(1, MAX_RETRIES, CONF_RETRIES)(user_input[CONF_RETRIES])
@@ -238,6 +271,10 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
+            vol.Required(CONF_HOST, default=self._config_entry.data.get(CONF_HOST, "")): str,
+            vol.Optional(CONF_PORT, default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)): _int_selector(1, 65535),
+            vol.Optional(CONF_UNIT_ID, default=self._config_entry.data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)): _int_selector(1, 255),
+            vol.Required(CONF_INSTALLED_PHASES, default=self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_OPTIONS)),
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
             vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
@@ -257,7 +294,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             try:
                 user_input[CONF_MAIN_FUSE] = _bounded_float(MIN_CURRENT_A, 200.0, CONF_MAIN_FUSE)(user_input[CONF_MAIN_FUSE])
                 user_input[CONF_SAFETY_MARGIN] = _bounded_float(0.0, 50.0, CONF_SAFETY_MARGIN)(user_input[CONF_SAFETY_MARGIN])
-                installed_phases = self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
+                installed_phases = self.entry_data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
                 self.options.update(_validate_dlb_options(user_input, installed_phases))
                 return await self.async_step_pv()
             except vol.Invalid as err:
@@ -287,6 +324,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 user_input[CONF_FIXED_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_FIXED_CURRENT)(user_input[CONF_FIXED_CURRENT])
                 combined = {**self.options, **user_input}
                 self.options.update(_validate_pv_options(combined))
+                self.hass.config_entries.async_update_entry(self._config_entry, data=self.entry_data)
                 return self.async_create_entry(title="", data=self.options)
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)

@@ -8,7 +8,7 @@
           "host": "Host",
           "port": "Port",
           "unit_id": "Unit ID",
-          "installed_phases": "Installed charging phases"
+          "installed_phases": "Installed phases"
         }
       }
     }
@@ -19,6 +19,10 @@
         "title": "Core settings",
         "description": "Configure polling, safety limits and whether the integration may actively control the charger.",
         "data": {
+          "host": "Host",
+          "port": "Port",
+          "unit_id": "Unit ID",
+          "installed_phases": "Installed phases",
           "polling_interval": "Polling interval",
           "timeout": "Timeout",
           "retries": "Retries",
@@ -68,6 +72,10 @@
       "min_exceeds_max": "Minimum current must be less than or equal to maximum current.",
       "user_limit_out_of_range": "The default current limit must be between the configured minimum and maximum current.",
       "safe_current_out_of_range": "The safe current must be between the configured minimum and maximum current.",
+      "host_required": "Host is required.",
+      "port_out_of_range": "Port must be between 1 and 65535.",
+      "unit_id_out_of_range": "Unit ID must be between 1 and 255.",
+      "installed_phases_invalid": "Installed phases must be 1p or 3p.",
       "dlb_phase_sensor_required": "Select the required DLB phase current sensors for the configured 1p or 3p installation.",
       "dlb_grid_sensor_required": "Select a grid power sensor for the grid-power DLB model.",
       "pv_threshold_order": "The PV stop threshold must be less than or equal to the PV start threshold.",
