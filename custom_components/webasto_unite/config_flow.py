@@ -184,7 +184,7 @@ class WebastoUniteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+        self._config_entry = config_entry
         self.options = dict(config_entry.options)
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
@@ -223,7 +223,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             try:
                 user_input[CONF_MAIN_FUSE] = _bounded_float(MIN_CURRENT_A, 200.0, CONF_MAIN_FUSE)(user_input[CONF_MAIN_FUSE])
                 user_input[CONF_SAFETY_MARGIN] = _bounded_float(0.0, 50.0, CONF_SAFETY_MARGIN)(user_input[CONF_SAFETY_MARGIN])
-                installed_phases = self.config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
+                installed_phases = self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
                 self.options.update(_validate_dlb_options(user_input, installed_phases))
                 return await self.async_step_pv()
             except vol.Invalid as err:
