@@ -1,4 +1,4 @@
-# Webasto Unite Home Assistant custom integration
+# Webasto/Ampure Unite Home Assistant custom integration
 
 Experimental Home Assistant custom integration for `Webasto Unite` / `Ampure Unite` chargers over local `Modbus/TCP`.
 
@@ -73,12 +73,12 @@ If you want to use DLB or PV control, make sure the required Home Assistant sens
 5. Select category:
    - `Integration`
 6. Click `Add`.
-7. Search for `Webasto Unite` in HACS.
+7. Search for `Webasto/Ampure Unite` in HACS.
 8. Open the integration and click `Download`.
 9. Restart Home Assistant.
 10. Go to `Settings` -> `Devices & Services`.
 11. Click `Add Integration`.
-12. Search for `Webasto Unite` and complete the config flow.
+12. Search for `Webasto/Ampure Unite` and complete the config flow.
 
 ### Manual installation
 
