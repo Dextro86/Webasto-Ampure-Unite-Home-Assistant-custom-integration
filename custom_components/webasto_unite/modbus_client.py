@@ -161,16 +161,16 @@ class WebastoModbusClient:
     async def _read_raw(self, register: RegisterDef):
         assert self._client is not None
         if register.register_type == RegisterType.INPUT:
-            response = await self._client.read_input_registers(
+            response = await self._call_with_unit_fallback(
+                self._client.read_input_registers,
                 address=register.address,
                 count=register.count,
-                slave=self.config.unit_id,
             )
         else:
-            response = await self._client.read_holding_registers(
+            response = await self._call_with_unit_fallback(
+                self._client.read_holding_registers,
                 address=register.address,
                 count=register.count,
-                slave=self.config.unit_id,
             )
         if isinstance(response, ExceptionResponse) or response.isError():
             raise ModbusClientProtocolError(f"Read failed for {register.name}: {response}")
@@ -179,16 +179,31 @@ class WebastoModbusClient:
     async def _write_raw(self, register: RegisterDef, payload: list[int]):
         assert self._client is not None
         if len(payload) == 1:
-            return await self._client.write_register(
+            return await self._call_with_unit_fallback(
+                self._client.write_register,
                 address=register.address,
                 value=payload[0],
-                slave=self.config.unit_id,
             )
-        return await self._client.write_registers(
+        return await self._call_with_unit_fallback(
+            self._client.write_registers,
             address=register.address,
             values=payload,
-            slave=self.config.unit_id,
         )
+
+    async def _call_with_unit_fallback(self, method, **kwargs):
+        unit_keys = ("slave", "device_id", "unit")
+        last_type_error: TypeError | None = None
+        for unit_key in unit_keys:
+            try:
+                return await method(**kwargs, **{unit_key: self.config.unit_id})
+            except TypeError as err:
+                message = str(err)
+                if "unexpected keyword argument" not in message or unit_key not in message:
+                    raise
+                last_type_error = err
+        raise ModbusClientProtocolError(
+            f"No supported Modbus unit parameter name found for client method {getattr(method, '__name__', method)}"
+        ) from last_type_error
 
     def _decode_response(self, register: RegisterDef, registers: list[int]) -> Any:
         if register.value_type == ValueType.BOOL:
