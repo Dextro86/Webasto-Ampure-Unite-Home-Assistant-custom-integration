@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy, UnitOfPower, UnitOfTime, UnitOfElectricPotential
@@ -10,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
+from .models import ChargeMode
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -72,7 +74,20 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
         if data is None:
             return None
         if hasattr(data, self.entity_description.value_key):
-            return getattr(data, self.entity_description.value_key)
+            return self._present_value(getattr(data, self.entity_description.value_key))
         if hasattr(data.wallbox, self.entity_description.value_key):
-            return getattr(data.wallbox, self.entity_description.value_key)
+            return self._present_value(getattr(data.wallbox, self.entity_description.value_key))
         return None
+
+    @staticmethod
+    def _present_value(value):
+        if isinstance(value, ChargeMode):
+            return {
+                ChargeMode.OFF: "Off",
+                ChargeMode.NORMAL: "Normal",
+                ChargeMode.PV: "PV",
+                ChargeMode.FIXED_CURRENT: "Fixed Current",
+            }[value]
+        if isinstance(value, Enum):
+            return value.value
+        return value
