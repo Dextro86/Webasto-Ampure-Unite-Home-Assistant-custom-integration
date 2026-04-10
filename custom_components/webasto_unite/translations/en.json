@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect Webasto Unite",
+        "title": "Connect Webasto/Ampure Unite",
         "description": "Configure the basic Modbus TCP connection to the wallbox.",
         "data": {
           "host": "Host",
