@@ -152,6 +152,18 @@ class WallboxState:
     life_bit_seen: Optional[int] = None
     last_update_success: bool = False
 
+    @property
+    def current_l1_a(self) -> Optional[float]:
+        return self.phase_currents.l1
+
+    @property
+    def current_l2_a(self) -> Optional[float]:
+        return self.phase_currents.l2
+
+    @property
+    def current_l3_a(self) -> Optional[float]:
+        return self.phase_currents.l3
+
 
 @dataclass(slots=True)
 class IntegrationConfig:
