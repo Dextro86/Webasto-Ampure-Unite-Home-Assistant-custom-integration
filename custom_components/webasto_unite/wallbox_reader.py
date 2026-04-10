@@ -91,11 +91,17 @@ class WallboxReader:
             wallbox.actual_current_a = wallbox.phase_currents.max_present()
             wallbox.phases_in_use = wallbox.phase_currents.active_phase_count()
             wallbox.charge_point_phase_count = 1 if number_of_phases == 0 else 3
-            wallbox.hardware_max_current_a = await self.client.read(MAX_CURRENT_HW_A)
+            wallbox.hardware_max_current_a = self._normalize_optional_current_limit_a(
+                await self.client.read(MAX_CURRENT_HW_A)
+            )
             wallbox.hardware_min_current_a = await self.client.read(MIN_CURRENT_HW_A)
-            wallbox.cable_max_current_a = await self.client.read(MAX_CURRENT_CABLE_A)
+            wallbox.cable_max_current_a = self._normalize_optional_current_limit_a(
+                await self.client.read(MAX_CURRENT_CABLE_A)
+            )
             try:
-                wallbox.ev_max_current_a = await self.client.read(MAX_CURRENT_EV_A)
+                wallbox.ev_max_current_a = self._normalize_optional_current_limit_a(
+                    await self.client.read(MAX_CURRENT_EV_A)
+                )
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Optional EV max current register 1108 unavailable: %s", err)
                 wallbox.ev_max_current_a = None
@@ -151,3 +157,12 @@ class WallboxReader:
             8: ChargingState.RESERVED,
         }
         return mapping.get(int(raw_state), ChargingState.UNKNOWN)
+
+    @staticmethod
+    def _normalize_optional_current_limit_a(value: float | int | None) -> float | None:
+        if value is None:
+            return None
+        numeric = float(value)
+        if numeric <= 0:
+            return None
+        return numeric

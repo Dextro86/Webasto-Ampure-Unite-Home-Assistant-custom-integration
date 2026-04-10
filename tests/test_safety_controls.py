@@ -255,6 +255,13 @@ def test_clock_formatter_returns_human_readable_time():
     assert WallboxReader.format_clock_hhmmss(250001) == "250001"
 
 
+def test_wallbox_reader_treats_non_positive_optional_current_limits_as_unknown():
+    assert WallboxReader._normalize_optional_current_limit_a(None) is None
+    assert WallboxReader._normalize_optional_current_limit_a(0) is None
+    assert WallboxReader._normalize_optional_current_limit_a(-1) is None
+    assert WallboxReader._normalize_optional_current_limit_a(16) == 16.0
+
+
 def test_resume_charging_restores_previous_non_off_mode():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator._mode = ChargeMode.PV
