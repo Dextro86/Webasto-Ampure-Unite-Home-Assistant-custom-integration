@@ -8,6 +8,14 @@ from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
 from .models import ChargeMode
 
+CHARGE_MODE_LABELS = {
+    ChargeMode.OFF: "Off",
+    ChargeMode.NORMAL: "Normal",
+    ChargeMode.PV: "PV",
+    ChargeMode.FIXED_CURRENT: "Fixed Current",
+}
+CHARGE_MODE_BY_LABEL = {label: mode for mode, label in CHARGE_MODE_LABELS.items()}
+
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
@@ -16,7 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
     _attr_name = "Charge mode"
-    _attr_options = [mode.value for mode in ChargeMode]
+    _attr_options = list(CHARGE_MODE_BY_LABEL)
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
@@ -25,9 +33,9 @@ class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         if self.coordinator.data is None:
-            return ChargeMode.NORMAL.value
-        return self.coordinator.data.mode.value
+            return CHARGE_MODE_LABELS[ChargeMode.NORMAL]
+        return CHARGE_MODE_LABELS[self.coordinator.data.mode]
 
     async def async_select_option(self, option: str) -> None:
-        self.coordinator.set_mode(ChargeMode(option))
+        self.coordinator.set_mode(CHARGE_MODE_BY_LABEL[option])
         await self.coordinator.async_request_refresh()

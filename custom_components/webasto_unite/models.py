@@ -24,6 +24,7 @@ class PvInputModel(str, Enum):
 
 
 class PvControlStrategy(str, Enum):
+    DISABLED = "disabled"
     SURPLUS = "surplus"
     MIN_PLUS_SURPLUS = "min_plus_surplus"
 

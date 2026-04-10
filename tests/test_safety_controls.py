@@ -170,6 +170,24 @@ def test_pv_min_plus_surplus_strategy_requires_surplus_model_inputs():
     assert result["pv_control_strategy"] == "min_plus_surplus"
 
 
+def test_disabled_pv_strategy_allows_empty_pv_sensor_configuration():
+    result = _validate_pv_options(
+        {
+            "pv_input_model": "surplus_sensor",
+            "pv_control_strategy": "disabled",
+            "pv_until_unplug_strategy": "inherit",
+            "pv_surplus_sensor": None,
+            "pv_start_threshold": 1800.0,
+            "pv_stop_threshold": 1200.0,
+            "pv_min_current": 6.0,
+            "fixed_current": 8.0,
+            "dlb_grid_power_sensor": None,
+        }
+    )
+
+    assert result["pv_control_strategy"] == "disabled"
+
+
 def test_fixed_current_must_stay_within_amp_range():
     try:
         _validate_pv_options(

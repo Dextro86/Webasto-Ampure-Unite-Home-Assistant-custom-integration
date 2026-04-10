@@ -172,6 +172,13 @@ class WallboxController:
         installed_phases: int,
         pv_strategy: PvControlStrategy,
     ) -> PvResult:
+        if pv_strategy == PvControlStrategy.DISABLED:
+            return PvResult(
+                target_current_a=None,
+                valid=True,
+                reason=ControlReason.BELOW_MIN_CURRENT,
+            )
+
         surplus_w = self._resolve_surplus_power(sensors)
 
         if pv_strategy == PvControlStrategy.MIN_PLUS_SURPLUS:
