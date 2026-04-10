@@ -55,6 +55,28 @@ def _entity_selector() -> selector.EntitySelector:
     return selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor"], multiple=False))
 
 
+def _float_selector(min_value: float, max_value: float, step: float) -> selector.NumberSelector:
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=min_value,
+            max=max_value,
+            step=step,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
+def _int_selector(min_value: int, max_value: int, step: int = 1) -> selector.NumberSelector:
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=min_value,
+            max=max_value,
+            step=step,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
 def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     min_current = float(options[CONF_MIN_CURRENT])
     max_current = float(options[CONF_MAX_CURRENT])
@@ -148,8 +170,8 @@ class WebastoUniteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title=f"Webasto Unite ({user_input[CONF_HOST]})", data=user_input)
         schema = vol.Schema({
             vol.Required(CONF_HOST): str,
-            vol.Optional(CONF_PORT, default=DEFAULT_PORT): _bounded_int(1, 65535, CONF_PORT),
-            vol.Optional(CONF_UNIT_ID, default=DEFAULT_UNIT_ID): _bounded_int(1, 255, CONF_UNIT_ID),
+            vol.Optional(CONF_PORT, default=DEFAULT_PORT): _int_selector(1, 65535),
+            vol.Optional(CONF_UNIT_ID, default=DEFAULT_UNIT_ID): _int_selector(1, 255),
             vol.Required(CONF_INSTALLED_PHASES, default=PHASE_MODE_3P): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_OPTIONS)),
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -169,21 +191,29 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
+                user_input[CONF_POLLING_INTERVAL] = _bounded_float(MIN_SECONDS, MAX_SECONDS, CONF_POLLING_INTERVAL)(user_input[CONF_POLLING_INTERVAL])
+                user_input[CONF_TIMEOUT] = _bounded_float(MIN_SECONDS, 60.0, CONF_TIMEOUT)(user_input[CONF_TIMEOUT])
+                user_input[CONF_RETRIES] = _bounded_int(1, MAX_RETRIES, CONF_RETRIES)(user_input[CONF_RETRIES])
+                user_input[CONF_KEEPALIVE_INTERVAL] = _bounded_float(1.0, MAX_SECONDS, CONF_KEEPALIVE_INTERVAL)(user_input[CONF_KEEPALIVE_INTERVAL])
+                user_input[CONF_SAFE_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_SAFE_CURRENT)(user_input[CONF_SAFE_CURRENT])
+                user_input[CONF_MIN_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_MIN_CURRENT)(user_input[CONF_MIN_CURRENT])
+                user_input[CONF_MAX_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_MAX_CURRENT)(user_input[CONF_MAX_CURRENT])
+                user_input[CONF_USER_LIMIT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_USER_LIMIT)(user_input[CONF_USER_LIMIT])
                 self.options.update(_validate_init_options(user_input))
                 return await self.async_step_dlb()
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
-            vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _bounded_float(MIN_SECONDS, MAX_SECONDS, CONF_POLLING_INTERVAL),
-            vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _bounded_float(MIN_SECONDS, 60.0, CONF_TIMEOUT),
-            vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _bounded_int(1, MAX_RETRIES, CONF_RETRIES),
+            vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
+            vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
+            vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
             vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in KeepaliveMode])),
-            vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _bounded_float(1.0, MAX_SECONDS, CONF_KEEPALIVE_INTERVAL),
-            vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_SAFE_CURRENT),
-            vol.Optional(CONF_MIN_CURRENT, default=self.options.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_MIN_CURRENT),
-            vol.Optional(CONF_MAX_CURRENT, default=self.options.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_MAX_CURRENT),
-            vol.Optional(CONF_USER_LIMIT, default=self.options.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_USER_LIMIT),
+            vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
+            vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_MIN_CURRENT, default=self.options.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_MAX_CURRENT, default=self.options.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_USER_LIMIT, default=self.options.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
 
@@ -191,6 +221,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
+                user_input[CONF_MAIN_FUSE] = _bounded_float(MIN_CURRENT_A, 200.0, CONF_MAIN_FUSE)(user_input[CONF_MAIN_FUSE])
+                user_input[CONF_SAFETY_MARGIN] = _bounded_float(0.0, 50.0, CONF_SAFETY_MARGIN)(user_input[CONF_SAFETY_MARGIN])
                 installed_phases = self.config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
                 self.options.update(_validate_dlb_options(user_input, installed_phases))
                 return await self.async_step_pv()
@@ -198,8 +230,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
             vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=[m.value for m in DlbInputModel])),
-            vol.Optional(CONF_MAIN_FUSE, default=self.options.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _bounded_float(MIN_CURRENT_A, 200.0, CONF_MAIN_FUSE),
-            vol.Optional(CONF_SAFETY_MARGIN, default=self.options.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _bounded_float(0.0, 50.0, CONF_SAFETY_MARGIN),
+            vol.Optional(CONF_MAIN_FUSE, default=self.options.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
+            vol.Optional(CONF_SAFETY_MARGIN, default=self.options.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
             vol.Optional(CONF_DLB_L1_SENSOR, default=self.options.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
             vol.Optional(CONF_DLB_L2_SENSOR, default=self.options.get(CONF_DLB_L2_SENSOR)): _entity_selector(),
             vol.Optional(CONF_DLB_L3_SENSOR, default=self.options.get(CONF_DLB_L3_SENSOR)): _entity_selector(),
@@ -211,6 +243,14 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
+                user_input[CONF_PV_START_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_PV_START_THRESHOLD)(user_input[CONF_PV_START_THRESHOLD])
+                user_input[CONF_PV_STOP_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_PV_STOP_THRESHOLD)(user_input[CONF_PV_STOP_THRESHOLD])
+                user_input[CONF_PV_START_DELAY] = _bounded_float(0.0, 3600.0, CONF_PV_START_DELAY)(user_input[CONF_PV_START_DELAY])
+                user_input[CONF_PV_STOP_DELAY] = _bounded_float(0.0, 3600.0, CONF_PV_STOP_DELAY)(user_input[CONF_PV_STOP_DELAY])
+                user_input[CONF_PV_MIN_RUNTIME] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_RUNTIME)(user_input[CONF_PV_MIN_RUNTIME])
+                user_input[CONF_PV_MIN_PAUSE] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_PAUSE)(user_input[CONF_PV_MIN_PAUSE])
+                user_input[CONF_PV_MIN_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_PV_MIN_CURRENT)(user_input[CONF_PV_MIN_CURRENT])
+                user_input[CONF_FIXED_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_FIXED_CURRENT)(user_input[CONF_FIXED_CURRENT])
                 combined = {**self.options, **user_input}
                 self.options.update(_validate_pv_options(combined))
                 return self.async_create_entry(title="", data=self.options)
@@ -221,13 +261,13 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_SURPLUS_SENSOR, default=self.options.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
-            vol.Optional(CONF_PV_START_THRESHOLD, default=self.options.get(CONF_PV_START_THRESHOLD, 1800.0)): _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_PV_START_THRESHOLD),
-            vol.Optional(CONF_PV_STOP_THRESHOLD, default=self.options.get(CONF_PV_STOP_THRESHOLD, 1200.0)): _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_PV_STOP_THRESHOLD),
-            vol.Optional(CONF_PV_START_DELAY, default=self.options.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)): _bounded_float(0.0, 3600.0, CONF_PV_START_DELAY),
-            vol.Optional(CONF_PV_STOP_DELAY, default=self.options.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)): _bounded_float(0.0, 3600.0, CONF_PV_STOP_DELAY),
-            vol.Optional(CONF_PV_MIN_RUNTIME, default=self.options.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _bounded_float(0.0, 3600.0, CONF_PV_MIN_RUNTIME),
-            vol.Optional(CONF_PV_MIN_PAUSE, default=self.options.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _bounded_float(0.0, 3600.0, CONF_PV_MIN_PAUSE),
-            vol.Optional(CONF_PV_MIN_CURRENT, default=self.options.get(CONF_PV_MIN_CURRENT, 6.0)): _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_PV_MIN_CURRENT),
-            vol.Optional(CONF_FIXED_CURRENT, default=self.options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_FIXED_CURRENT),
+            vol.Optional(CONF_PV_START_THRESHOLD, default=self.options.get(CONF_PV_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
+            vol.Optional(CONF_PV_STOP_THRESHOLD, default=self.options.get(CONF_PV_STOP_THRESHOLD, 1200.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
+            vol.Optional(CONF_PV_START_DELAY, default=self.options.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_PV_STOP_DELAY, default=self.options.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_PV_MIN_RUNTIME, default=self.options.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_PV_MIN_PAUSE, default=self.options.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_PV_MIN_CURRENT, default=self.options.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_FIXED_CURRENT, default=self.options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="pv", data_schema=schema, errors=errors)
