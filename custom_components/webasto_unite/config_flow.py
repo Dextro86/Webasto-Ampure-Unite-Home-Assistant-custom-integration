@@ -9,7 +9,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ControlMode, DlbInputModel, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy
+from .models import ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
@@ -30,6 +30,10 @@ DLB_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": DlbInputModel.DISABLED.value, "label": "Disabled"},
     {"value": DlbInputModel.PHASE_CURRENTS.value, "label": "Phase current sensors (recommended)"},
     {"value": DlbInputModel.GRID_POWER.value, "label": "Grid power sensor"},
+]
+DLB_SENSOR_SCOPE_SELECTOR_OPTIONS = [
+    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Load excluding charger (legacy/default)"},
+    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Total load including charger"},
 ]
 PV_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": PvInputModel.SURPLUS_SENSOR.value, "label": "Use a surplus power sensor"},
@@ -305,6 +309,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
             vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_DLB_SENSOR_SCOPE, default=self.options.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_MAIN_FUSE, default=self.options.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
             vol.Optional(CONF_SAFETY_MARGIN, default=self.options.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
             _optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), self.options.get(CONF_DLB_L1_SENSOR)): _entity_selector(),

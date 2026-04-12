@@ -75,7 +75,12 @@ class WallboxController:
             self.reset_pv_state()
 
         installed_phases = self._resolve_installed_phases(wallbox)
-        dlb_result = self.dlb.calculate_available_current(sensors, installed_phases)
+        dlb_result = self.dlb.calculate_available_current(
+            sensors,
+            installed_phases,
+            wallbox.phase_currents,
+            wallbox.active_power_w,
+        )
 
         mode_target, reason = self._mode_target(
             mode,
@@ -337,8 +342,6 @@ class WallboxController:
 
         if dlb_limit_a is not None:
             limits.append((dlb_limit_a, ControlReason.DLB_LIMITED))
-        if wallbox.hardware_max_current_a is not None:
-            limits.append((wallbox.hardware_max_current_a, ControlReason.HARDWARE_LIMITED))
         if wallbox.cable_max_current_a is not None:
             limits.append((wallbox.cable_max_current_a, ControlReason.CABLE_LIMITED))
         if wallbox.ev_max_current_a is not None:

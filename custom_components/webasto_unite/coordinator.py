@@ -15,6 +15,7 @@ from .const import (
     CONF_DLB_GRID_POWER_SENSOR,
     CONF_COMM_TIMEOUT,
     CONF_DLB_INPUT_MODEL,
+    CONF_DLB_SENSOR_SCOPE,
     CONF_DLB_L1_SENSOR,
     CONF_DLB_L2_SENSOR,
     CONF_DLB_L3_SENSOR,
@@ -73,6 +74,7 @@ from .models import (
     ControlMode,
     ControlReason,
     DlbInputModel,
+    DlbSensorScope,
     HaSensorSnapshot,
     KeepaliveMode,
     PhaseCurrents,
@@ -130,6 +132,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             main_fuse_a=float(merged.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)),
             safety_margin_a=float(merged.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)),
             dlb_input_model=DlbInputModel(merged.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)),
+            dlb_sensor_scope=DlbSensorScope(
+                merged.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)
+            ),
             pv_input_model=PvInputModel(merged.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)),
             pv_control_strategy=PvControlStrategy(merged.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)),
             pv_until_unplug_strategy=PvOverrideStrategy(

@@ -42,7 +42,7 @@ On every update cycle it:
 - reads charger state and measurements from the wallbox
 - reads optional Home Assistant sensors for DLB and PV control
 - calculates a target current from the selected charge mode
-- applies safety limits such as DLB, configured maximum current, cable limits and charger-reported limits when available
+- applies safety limits such as DLB, configured maximum current and charger-reported cable/EV limits when available
 - writes a new current target only when control is enabled and a change is needed
 
 The selected `Charge mode` describes what the user wants. `Active mode` shows what the integration is actually doing after temporary overrides, pauses and PV behavior are applied. `Charging behavior` is a short status summary for dashboards.
@@ -171,6 +171,9 @@ During setup, the user mainly configures:
   - `Disabled`
   - `Phase current sensors (recommended)`
   - `Grid power sensor`
+- DLB sensor scope:
+  - `Load excluding charger (legacy/default)` for sensors that measure only non-charger house load
+  - `Total load including charger` for main/grid sensors that include the charger load
 - PV source and strategy
 - current limits and safety values
 

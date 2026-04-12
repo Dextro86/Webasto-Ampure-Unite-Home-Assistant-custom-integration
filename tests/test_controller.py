@@ -18,7 +18,7 @@ def make_controller(**kwargs):
 
 
 def test_normal_mode_is_bounded_by_dlb():
-    controller = make_controller()
+    controller = make_controller(dlb_sensor_scope="load_excluding_charger")
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
     sensors = HaSensorSnapshot(
         phase_currents=PhaseCurrents(l1=14.0, l2=10.0, l3=9.0),
@@ -31,6 +31,25 @@ def test_normal_mode_is_bounded_by_dlb():
     assert decision.final_target_a == 9.0
     assert decision.reason == ControlReason.DLB_LIMITED
     assert decision.dominant_limit_reason == ControlReason.DLB_LIMITED
+
+
+def test_dlb_total_load_including_charger_adds_back_charger_current():
+    controller = make_controller(dlb_sensor_scope="total_including_charger")
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        phase_currents=PhaseCurrents(l1=15.6, l2=15.6, l3=15.6),
+    )
+    sensors = HaSensorSnapshot(
+        phase_currents=PhaseCurrents(l1=18.0, l2=18.0, l3=18.0),
+        valid=True,
+    )
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.dlb_limit_a == 20.6
+    assert decision.final_target_a == 16.0
+    assert decision.dominant_limit_reason is None
 
 
 def test_pv_mode_without_grid_assist_can_disable_when_below_minimum():
@@ -192,16 +211,16 @@ def test_invalid_sensors_fall_back_to_safe_current():
     assert decision.sensor_invalid_reason == "missing sensors"
 
 
-def test_hardware_limit_caps_target_current():
+def test_unvalidated_hardware_limit_does_not_cap_target_current():
     controller = make_controller()
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True, hardware_max_current_a=10.0)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
 
     decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
 
-    assert decision.final_target_a == 10.0
-    assert decision.reason == ControlReason.HARDWARE_LIMITED
-    assert decision.dominant_limit_reason == ControlReason.HARDWARE_LIMITED
+    assert decision.final_target_a == 16.0
+    assert decision.reason == ControlReason.NORMAL_MODE
+    assert decision.dominant_limit_reason is None
 
 
 def test_transition_from_off_issues_start_session_when_vehicle_connected():
@@ -227,7 +246,7 @@ def test_transition_to_off_issues_cancel_session_when_vehicle_connected():
 
 
 def test_normal_mode_loads_to_user_limit_but_is_still_limited_by_dlb():
-    controller = make_controller(max_current_a=20.0, user_limit_a=16.0)
+    controller = make_controller(max_current_a=20.0, user_limit_a=16.0, dlb_sensor_scope="load_excluding_charger")
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=17.0), valid=True)
 

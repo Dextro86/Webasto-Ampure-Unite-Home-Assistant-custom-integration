@@ -40,6 +40,7 @@
         "description": "Choose how the integration measures available grid capacity. Phase-current sensors are recommended when available.",
         "data": {
           "dlb_input_model": "DLB input model",
+          "dlb_sensor_scope": "DLB sensor scope",
           "main_fuse": "Main fuse size",
           "safety_margin": "Safety margin",
           "dlb_l1_sensor": "Phase L1 current sensor",

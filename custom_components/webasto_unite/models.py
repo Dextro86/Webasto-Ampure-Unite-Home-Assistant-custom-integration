@@ -19,6 +19,11 @@ class DlbInputModel(str, Enum):
     GRID_POWER = "grid_power"
 
 
+class DlbSensorScope(str, Enum):
+    TOTAL_INCLUDING_CHARGER = "total_including_charger"
+    LOAD_EXCLUDING_CHARGER = "load_excluding_charger"
+
+
 class PvInputModel(str, Enum):
     SURPLUS_SENSOR = "surplus_sensor"
     GRID_POWER_DERIVED = "grid_power_derived"
@@ -190,6 +195,7 @@ class ControlConfig:
     main_fuse_a: float = 25.0
     safety_margin_a: float = 2.0
     dlb_input_model: DlbInputModel = DlbInputModel.PHASE_CURRENTS
+    dlb_sensor_scope: DlbSensorScope = DlbSensorScope.LOAD_EXCLUDING_CHARGER
     pv_input_model: PvInputModel = PvInputModel.GRID_POWER_DERIVED
     pv_control_strategy: PvControlStrategy = PvControlStrategy.SURPLUS
     pv_until_unplug_strategy: PvOverrideStrategy = PvOverrideStrategy.INHERIT
