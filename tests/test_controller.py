@@ -223,26 +223,17 @@ def test_unvalidated_hardware_limit_does_not_cap_target_current():
     assert decision.dominant_limit_reason is None
 
 
-def test_transition_from_off_issues_start_session_when_vehicle_connected():
+def test_transition_to_off_writes_zero_current_when_vehicle_connected():
     controller = make_controller()
-    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
-    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
-
-    controller.evaluate(ChargeMode.OFF, wallbox, sensors)
-    on_decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
-
-    assert on_decision.issue_start_command is True
-
-
-def test_transition_to_off_issues_cancel_session_when_vehicle_connected():
-    controller = make_controller()
-    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, charging_active=True)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
 
     controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
     off_decision = controller.evaluate(ChargeMode.OFF, wallbox, sensors)
 
-    assert off_decision.issue_cancel_command is True
+    assert off_decision.target_current_a == 0.0
+    assert off_decision.final_target_a == 0.0
+    assert off_decision.should_write is True
 
 
 def test_normal_mode_loads_to_user_limit_but_is_still_limited_by_dlb():

@@ -86,13 +86,8 @@ COMM_TIMEOUT_S = RegisterDef("comm_timeout_s", 2002, value_type=ValueType.UINT16
 
 SET_CHARGE_POWER_W = RegisterDef("set_charge_power_w", 5000, count=2, value_type=ValueType.UINT32, writable=True)
 SET_CHARGE_CURRENT_A = RegisterDef("set_charge_current_a", 5004, value_type=ValueType.UINT16, writable=True, readable=True)
-SESSION_COMMAND = RegisterDef("session_command", 5006, value_type=ValueType.UINT16, writable=True, readable=False)
 
 LIFE_BIT = RegisterDef("life_bit", 6000, value_type=ValueType.UINT16, writable=True)
-
-SESSION_COMMAND_NONE = 0
-SESSION_COMMAND_START = 1
-SESSION_COMMAND_CANCEL = 2
 
 PHASE_REGISTERS = (CURRENT_L1_A, CURRENT_L2_A, CURRENT_L3_A)
 
@@ -141,6 +136,5 @@ WRITE_REGISTERS = (
     COMM_TIMEOUT_S,
     SET_CHARGE_POWER_W,
     SET_CHARGE_CURRENT_A,
-    SESSION_COMMAND,
     LIFE_BIT,
 )

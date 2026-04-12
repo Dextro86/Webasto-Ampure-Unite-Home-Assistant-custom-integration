@@ -87,10 +87,6 @@ from .registers import (
     COMM_TIMEOUT_S,
     LIFE_BIT,
     SAFE_CURRENT_A,
-    SESSION_COMMAND,
-    SESSION_COMMAND_CANCEL,
-    SESSION_COMMAND_NONE,
-    SESSION_COMMAND_START,
     SET_CHARGE_CURRENT_A,
 )
 from .sensor_adapter import HaSensorAdapter
@@ -250,20 +246,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     def set_fixed_current(self, current_a: float) -> None:
         self.control_config.fixed_current_a = current_a
 
-    async def async_start_session(self) -> None:
-        if not self._allows_control_writes():
-            _LOGGER.info("Ignoring start_session because control mode is %s", self.control_config.control_mode.value)
-            return
-        await self._enqueue_session_command(SESSION_COMMAND_START)
-        await self._flush_write_queue()
-
-    async def async_cancel_session(self) -> None:
-        if not self._allows_control_writes():
-            _LOGGER.info("Ignoring cancel_session because control mode is %s", self.control_config.control_mode.value)
-            return
-        await self._enqueue_session_command(SESSION_COMMAND_CANCEL)
-        await self._flush_write_queue()
-
     async def async_trigger_reconnect(self) -> None:
         await self.client.reconnect()
         await self._sync_static_registers()
@@ -332,7 +314,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             "failsafe_2000_2002": CapabilityState.CONFIRMED.value,
             "current_control_5004": CapabilityState.CONFIRMED.value,
             "keepalive_6000": CapabilityState.CONFIRMED.value,
-            "session_command_5006": CapabilityState.UNCONFIRMED.value,
             "ev_max_current_1108": ev_max_state.value,
         }
 
@@ -451,24 +432,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if not self._allows_control_writes():
             return
 
-        if decision.issue_cancel_command:
-            await self._enqueue_session_command(SESSION_COMMAND_CANCEL)
-
-        if decision.issue_start_command:
-            await self._enqueue_session_command(SESSION_COMMAND_START)
-
         if decision.should_write and decision.target_current_a is not None:
             await self.write_queue.enqueue(
                 QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, int(round(decision.target_current_a)), WritePriority.CURRENT)
             )
-
-    async def _enqueue_session_command(self, command: int) -> None:
-        await self.write_queue.enqueue(
-            QueuedWrite("session_command_active", SESSION_COMMAND, command, WritePriority.CONTROL)
-        )
-        await self.write_queue.enqueue(
-            QueuedWrite("session_command_reset", SESSION_COMMAND, SESSION_COMMAND_NONE, WritePriority.CONTROL)
-        )
 
     async def _sync_static_registers(self) -> None:
         if not self._allows_static_sync():

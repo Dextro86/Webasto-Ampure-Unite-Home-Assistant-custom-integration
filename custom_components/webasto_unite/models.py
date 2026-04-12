@@ -256,8 +256,6 @@ class ControlDecision:
     fallback_active: bool = False
     sensor_invalid_reason: Optional[str] = None
     should_write: bool = False
-    issue_start_command: bool = False
-    issue_cancel_command: bool = False
 
 
 @dataclass(slots=True)

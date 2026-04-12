@@ -16,7 +16,6 @@ Use it at your own risk.
 
 The most important open validation points are:
 
-- session command register `5006`
 - candidate phase-switch register `405`
 - behavior across multiple Unite / Ampure firmware versions
 
@@ -44,6 +43,7 @@ On every update cycle it:
 - calculates a target current from the selected charge mode
 - applies safety limits such as DLB, configured maximum current and charger-reported cable/EV limits when available
 - writes a new current target only when control is enabled and a change is needed
+- pauses charging by writing `0 A` to the current-control register `5004`
 
 The selected `Charge mode` describes what the user wants. `Active mode` shows what the integration is actually doing after temporary overrides, pauses and PV behavior are applied. `Charging behavior` is a short status summary for dashboards.
 
@@ -214,8 +214,8 @@ It also includes simple automation examples for the temporary per-session overri
 
 At the current stage, assume the following:
 
-- register `5006` is still not fully confirmed on real Unite hardware
 - register `405` is exposed as the diagnostic `Phase switch mode raw` sensor for discovery, but manual `1p/3p` switching is not implemented yet
+- session command register `5006` is not used for start/stop control; `5004` current control is used instead
 - the integration has not yet been broadly validated across multiple chargers and firmware versions
 - power-based DLB and PV calculations use a practical nominal `230 V` conversion
 

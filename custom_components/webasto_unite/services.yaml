@@ -36,24 +36,6 @@ trigger_reconnect:
       description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
-start_session:
-  name: Start session
-  description: Send the session start command if managed control is enabled.
-  fields:
-    entry_id:
-      name: Entry ID
-      description: Config entry ID of the Webasto Unite integration instance.
-      required: true
-      example: "abc123"
-cancel_session:
-  name: Cancel session
-  description: Send the session cancel command if managed control is enabled.
-  fields:
-    entry_id:
-      name: Entry ID
-      description: Config entry ID of the Webasto Unite integration instance.
-      required: true
-      example: "abc123"
 enable_pv_until_unplug:
   name: Enable PV until unplug
   description: Temporarily use PV charging until the vehicle is unplugged.

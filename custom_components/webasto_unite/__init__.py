@@ -13,10 +13,8 @@ from .const import (
     SERVICE_ENABLE_PV_UNTIL_UNPLUG,
     DOMAIN,
     PLATFORMS,
-    SERVICE_CANCEL_SESSION,
     SERVICE_SET_MODE,
     SERVICE_SET_USER_LIMIT,
-    SERVICE_START_SESSION,
     SERVICE_TRIGGER_RECONNECT,
 )
 from .models import ChargeMode
@@ -49,16 +47,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         coordinator = _get_coordinator(call.data["entry_id"])
         await coordinator.async_trigger_reconnect()
 
-    async def handle_start_session(call: ServiceCall) -> None:
-        coordinator = _get_coordinator(call.data["entry_id"])
-        await coordinator.async_start_session()
-        await coordinator.async_request_refresh()
-
-    async def handle_cancel_session(call: ServiceCall) -> None:
-        coordinator = _get_coordinator(call.data["entry_id"])
-        await coordinator.async_cancel_session()
-        await coordinator.async_request_refresh()
-
     async def handle_enable_pv_until_unplug(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
         coordinator.set_pv_until_unplug(True)
@@ -82,8 +70,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, SERVICE_SET_MODE, handle_set_mode, schema=_SERVICE_SCHEMA_MODE)
     hass.services.async_register(DOMAIN, SERVICE_SET_USER_LIMIT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_TRIGGER_RECONNECT, handle_reconnect, schema=_SERVICE_SCHEMA_RECONNECT)
-    hass.services.async_register(DOMAIN, SERVICE_START_SESSION, handle_start_session, schema=_SERVICE_SCHEMA_SESSION)
-    hass.services.async_register(DOMAIN, SERVICE_CANCEL_SESSION, handle_cancel_session, schema=_SERVICE_SCHEMA_SESSION)
     hass.services.async_register(
         DOMAIN,
         SERVICE_ENABLE_PV_UNTIL_UNPLUG,

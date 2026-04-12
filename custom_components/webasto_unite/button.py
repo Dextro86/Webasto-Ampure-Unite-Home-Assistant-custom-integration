@@ -16,8 +16,6 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
         [
             WebastoRefreshButton(coordinator),
             WebastoReconnectButton(coordinator),
-            WebastoStartSessionButton(coordinator),
-            WebastoCancelSessionButton(coordinator),
         ]
     )
 
@@ -44,27 +42,3 @@ class WebastoReconnectButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_trigger_reconnect()
-
-
-class WebastoStartSessionButton(WebastoUniteCoordinatorEntity, ButtonEntity):
-    _attr_name = "Start session"
-
-    def __init__(self, coordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_start_session"
-
-    async def async_press(self) -> None:
-        await self.coordinator.async_start_session()
-        await self.coordinator.async_request_refresh()
-
-
-class WebastoCancelSessionButton(WebastoUniteCoordinatorEntity, ButtonEntity):
-    _attr_name = "Cancel session"
-
-    def __init__(self, coordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_cancel_session"
-
-    async def async_press(self) -> None:
-        await self.coordinator.async_cancel_session()
-        await self.coordinator.async_request_refresh()

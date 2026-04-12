@@ -27,17 +27,19 @@ def make_controller(**kwargs):
     return WallboxController(ControlConfig(**defaults))
 
 
-def test_off_mode_always_requests_cancel_when_vehicle_is_connected():
+def test_off_mode_writes_zero_current_when_vehicle_is_connected():
     controller = make_controller()
-    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, charging_active=True)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
 
     controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
     decision = controller.evaluate(ChargeMode.OFF, wallbox, sensors)
     follow_up = controller.evaluate(ChargeMode.OFF, wallbox, sensors)
 
-    assert decision.issue_cancel_command is True
-    assert follow_up.issue_cancel_command is False
+    assert decision.target_current_a == 0.0
+    assert follow_up.target_current_a == 0.0
+    assert decision.should_write is True
+    assert follow_up.should_write is True
 
 
 def test_current_validator_rejects_out_of_range_values():
@@ -264,8 +266,6 @@ def test_keepalive_only_mode_blocks_control_writes():
             dominant_limit_reason=None,
             fallback_active=False,
             sensor_invalid_reason=None,
-            issue_cancel_command=True,
-            issue_start_command=True,
             should_write=True,
             target_current_a=10.0,
         )
@@ -474,7 +474,6 @@ def test_capability_builder_marks_unconfirmed_and_optional_features():
     assert capabilities["phase_switch_405"] == "unconfirmed"
     assert capabilities["current_control_5004"] == "confirmed"
     assert capabilities["keepalive_6000"] == "confirmed"
-    assert capabilities["session_command_5006"] == "unconfirmed"
     assert capabilities["ev_max_current_1108"] == "optional_absent"
 
 

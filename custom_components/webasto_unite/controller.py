@@ -40,7 +40,6 @@ class WallboxController:
     dlb: DlbEngine = field(init=False)
     write_state: WriteState = field(default_factory=WriteState)
     pv_state: PvRuntimeState = field(default_factory=PvRuntimeState)
-    _last_mode: ChargeMode = field(default=ChargeMode.NORMAL, init=False)
 
     def __post_init__(self) -> None:
         self.dlb = DlbEngine(self.config)
@@ -53,22 +52,20 @@ class WallboxController:
         pv_strategy: PvControlStrategy | None = None,
     ) -> ControlDecision:
         effective_pv_strategy = pv_strategy or self.config.pv_control_strategy
-        transitioned_to_off = self._last_mode != ChargeMode.OFF and mode == ChargeMode.OFF
-        transitioned_from_off = self._last_mode == ChargeMode.OFF and mode != ChargeMode.OFF
-        self._last_mode = mode
 
         if mode == ChargeMode.OFF:
             self.reset_pv_state()
             self.reset_pending_write_state()
+            should_write_stop = wallbox.charging_active or wallbox.vehicle_connected
             return ControlDecision(
                 charging_enabled=False,
-                target_current_a=None,
+                target_current_a=0.0,
                 reason=ControlReason.OFF_MODE,
                 dominant_limit_reason=None,
+                final_target_a=0.0,
                 fallback_active=False,
                 sensor_invalid_reason=sensors.reason_invalid,
-                should_write=False,
-                issue_cancel_command=transitioned_to_off and wallbox.vehicle_connected,
+                should_write=should_write_stop,
             )
 
         if mode != ChargeMode.PV:
@@ -115,7 +112,6 @@ class WallboxController:
                 fallback_active=fallback_active,
                 sensor_invalid_reason=sensors.reason_invalid,
                 should_write=False,
-                issue_cancel_command=False,
             )
 
         should_write = self._should_write_current(final_target)
@@ -131,7 +127,6 @@ class WallboxController:
             fallback_active=fallback_active,
             sensor_invalid_reason=sensors.reason_invalid,
             should_write=should_write,
-            issue_start_command=transitioned_from_off and wallbox.vehicle_connected,
         )
 
     def mark_current_written(self, current_a: float) -> None:
