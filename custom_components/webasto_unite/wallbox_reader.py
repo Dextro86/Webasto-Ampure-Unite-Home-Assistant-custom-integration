@@ -97,6 +97,10 @@ class WallboxReader:
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Optional phase switch register 405 unavailable: %s", err)
                 wallbox.phase_switch_mode_raw = None
+            if wallbox.phase_switch_mode_raw in (0, 1):
+                wallbox.installed_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
+            else:
+                wallbox.installed_phases = 1 if configured_installed_phases == "1p" else 3
             wallbox.session_max_current_a = self._normalize_optional_current_limit_a(
                 await self.client.read(SESSION_MAX_CURRENT_A)
             )
@@ -126,7 +130,6 @@ class WallboxReader:
             wallbox.update_charging_active()
             wallbox.available = True
             wallbox.connection_state = ConnectionState.CONNECTED
-            wallbox.installed_phases = 1 if configured_installed_phases == "1p" else 3
             wallbox.last_update_success = True
             return wallbox
         except Exception:

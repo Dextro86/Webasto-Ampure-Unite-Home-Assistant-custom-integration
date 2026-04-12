@@ -41,6 +41,12 @@ class PvOverrideStrategy(str, Enum):
     MIN_PLUS_SURPLUS = "min_plus_surplus"
 
 
+class PvPhaseSwitchingMode(str, Enum):
+    DISABLED = "disabled"
+    MANUAL_ONLY = "manual_only"
+    AUTOMATIC_1P3P = "automatic_1p3p"
+
+
 class KeepaliveMode(str, Enum):
     AUTO = "auto"
     FORCED = "forced"
@@ -212,6 +218,7 @@ class ControlConfig:
     pv_min_runtime_s: float = 0.0
     pv_min_pause_s: float = 0.0
     pv_min_current_a: float = 6.0
+    pv_phase_switching_mode: PvPhaseSwitchingMode = PvPhaseSwitchingMode.MANUAL_ONLY
     fixed_current_a: float = 6.0
     min_seconds_between_writes: float = 5.0
     min_current_change_a: float = 1.0

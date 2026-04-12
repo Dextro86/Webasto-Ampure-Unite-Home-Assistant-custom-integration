@@ -16,7 +16,7 @@ Use it at your own risk.
 
 The most important open validation points are:
 
-- experimental manual phase-switch register `405`
+- experimental phase-switch register `405`
 - behavior across multiple Unite / Ampure firmware versions
 
 ## What it does
@@ -27,6 +27,7 @@ The integration currently supports:
 - keepalive handling for Unite control sessions
 - Dynamic Load Balancing (DLB)
 - PV charging
+- manual and optional automatic PV 1P/3P phase switching
 - Fixed Current charging
 - temporary per-session overrides:
   - `PV until Unplug`
@@ -44,6 +45,7 @@ On every update cycle it:
 - applies safety limits such as DLB, configured maximum current and charger-reported cable/EV limits when available
 - writes a new current target only when control is enabled and a change is needed
 - pauses charging by writing `0 A` to the current-control register `5004`
+- optionally switches between 1-phase and 3-phase PV charging by pausing charging, writing register `405`, and resuming after the charger reports the new phase mode
 
 The selected `Charge mode` describes what the user wants. `Active mode` shows what the integration is actually doing after temporary overrides, pauses and PV behavior are applied. `Charging behavior` is a short status summary for dashboards.
 
@@ -140,6 +142,17 @@ surplus = PV production - total consumption + charger power
 
 This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
 
+PV phase switching supports:
+
+- `Disabled`
+  - do not expose or use phase switching through the integration
+- `Manual only`
+  - allow manual `Phase switch` control, but do not switch automatically
+- `Automatic 1P/3P`
+  - in PV mode, switch to 1-phase when surplus is useful for 1-phase charging but too low for stable 3-phase charging, and switch back to 3-phase when surplus is clearly high enough
+
+Automatic phase switching is only active in PV mode or `PV until Unplug`. It is not used in `Normal`, `Fixed Current` or `Off`. A phase switch is performed conservatively: the integration first writes `0 A` to pause charging, waits for a later refresh cycle, writes register `405`, and only resumes charging after the charger reports the new phase mode.
+
 ## What the user sees in Home Assistant
 
 The most important entities for daily use are:
@@ -188,6 +201,10 @@ During setup, the user mainly configures:
   - `Total house current charger excluded` for sensors that measure only non-charger house load
   - `Total house current charger included` for main/grid sensors that include the charger load
 - PV measurement source and strategy
+- PV phase switching:
+  - `Disabled`
+  - `Manual only`
+  - `Automatic 1P/3P`
 - current limits and safety values
 
 For Unite, `Read-only + Keepalive` is the safest first active mode.
@@ -214,7 +231,8 @@ It also includes simple automation examples for the temporary per-session overri
 
 At the current stage, assume the following:
 
-- register `405` is exposed as the diagnostic `Phase switch mode raw` sensor and as an experimental manual `Phase switch` control; only change it while charging is inactive
+- register `405` is exposed as the diagnostic `Phase switch mode raw` sensor and as experimental phase-switch control; manual switching is blocked while charging is active
+- automatic PV phase switching is newly added and should be treated as experimental until validated on more vehicles and firmware versions
 - session command register `5006` is not used for start/stop control; `5004` current control is used instead
 - the integration has not yet been broadly validated across multiple chargers and firmware versions
 - power-based DLB and PV calculations use a practical nominal `230 V` conversion

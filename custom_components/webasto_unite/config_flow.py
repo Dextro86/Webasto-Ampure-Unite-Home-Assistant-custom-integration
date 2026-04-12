@@ -9,7 +9,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy
+from .models import ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy, PvPhaseSwitchingMode
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
@@ -48,6 +48,11 @@ PV_OVERRIDE_STRATEGY_OPTIONS = [
     {"value": PvOverrideStrategy.INHERIT.value, "label": "Same as PV control strategy"},
     {"value": PvOverrideStrategy.SURPLUS.value, "label": "Surplus only"},
     {"value": PvOverrideStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + surplus"},
+]
+PV_PHASE_SWITCHING_MODE_OPTIONS = [
+    {"value": PvPhaseSwitchingMode.DISABLED.value, "label": "Disabled"},
+    {"value": PvPhaseSwitchingMode.MANUAL_ONLY.value, "label": "Manual only"},
+    {"value": PvPhaseSwitchingMode.AUTOMATIC_1P3P.value, "label": "Automatic 1P/3P"},
 ]
 
 MIN_CURRENT_A = 6.0
@@ -349,6 +354,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_PV_MIN_RUNTIME, default=self.options.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_PAUSE, default=self.options.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_CURRENT, default=self.options.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=self.options.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
             vol.Optional(CONF_FIXED_CURRENT, default=self.options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="pv", data_schema=schema, errors=errors)

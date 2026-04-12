@@ -10,7 +10,7 @@ from custom_components.webasto_unite.config_flow import (
 )
 from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
-from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, HaSensorSnapshot, PhaseCurrents, WallboxState
+from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, HaSensorSnapshot, PhaseCurrents, PvPhaseSwitchingMode, WallboxState
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
@@ -469,6 +469,7 @@ def test_set_fixed_current_until_unplug_updates_override_state():
 
 def test_phase_switch_queues_register_405_when_charging_inactive():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.control_config = ControlConfig()
     coordinator.write_queue = WriteQueueManager()
     coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=False, phase_switch_mode_raw=1))
     coordinator._flush_write_queue = AsyncMock()
@@ -486,6 +487,7 @@ def test_phase_switch_queues_register_405_when_charging_inactive():
 
 def test_phase_switch_is_blocked_while_charging_active():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.control_config = ControlConfig()
     coordinator.write_queue = WriteQueueManager()
     coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=True, phase_switch_mode_raw=1))
 
@@ -495,6 +497,107 @@ def test_phase_switch_is_blocked_while_charging_active():
         assert "only allowed while charging is inactive" in str(err)
     else:
         raise AssertionError("Expected phase switching to be blocked while charging is active")
+
+
+def test_manual_phase_switch_is_blocked_when_phase_switching_is_disabled():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.control_config = ControlConfig(pv_phase_switching_mode=PvPhaseSwitchingMode.DISABLED)
+    coordinator.write_queue = WriteQueueManager()
+    coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=False, phase_switch_mode_raw=1))
+
+    try:
+        asyncio.run(coordinator.async_set_phase_switch_mode(1))
+    except ValueError as err:
+        assert "Phase switching is disabled" in str(err)
+    else:
+        raise AssertionError("Expected phase switching to be blocked when disabled")
+
+
+def test_automatic_pv_phase_switch_pauses_before_writing_register_405():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = None
+        coordinator._mode = ChargeMode.PV
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=1)
+        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert coordinator._pending_phase_switch_target == 1
+        assert item.key == "current_limit"
+        assert item.value == 0
+
+    asyncio.run(_run())
+
+
+def test_automatic_pv_phase_switch_writes_register_405_after_charging_stops():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 1
+        coordinator._mode = ChargeMode.PV
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=1)
+        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert item.key == "phase_switch_mode"
+        assert item.register == PHASE_SWITCH_MODE
+        assert item.value == 0
+
+    asyncio.run(_run())
+
+
+def test_pending_automatic_pv_phase_switch_is_cleared_outside_pv_mode():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 1
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=1)
+        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+
+        assert handled is False
+        assert coordinator._pending_phase_switch_target is None
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
 
 
 def test_capability_builder_marks_unconfirmed_and_optional_features():

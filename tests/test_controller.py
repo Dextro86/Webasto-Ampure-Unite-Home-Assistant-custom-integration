@@ -1,5 +1,5 @@
 from custom_components.webasto_unite.controller import WallboxController
-from custom_components.webasto_unite.models import ChargeMode, ControlConfig, HaSensorSnapshot, PhaseCurrents, WallboxState, ControlReason, PvControlStrategy, PvOverrideStrategy
+from custom_components.webasto_unite.models import ChargeMode, ControlConfig, HaSensorSnapshot, PhaseCurrents, WallboxState, ControlReason, PvControlStrategy, PvOverrideStrategy, PvPhaseSwitchingMode
 from time import monotonic
 
 
@@ -195,6 +195,38 @@ def test_pv_surplus_min_pause_blocks_restart_after_recent_stop():
     decision = controller.evaluate(ChargeMode.PV, wallbox, sensors)
 
     assert decision.charging_enabled is False
+
+
+def test_pv_phase_switching_is_manual_only_by_default():
+    controller = make_controller()
+    wallbox = WallboxState(installed_phases=1, phase_switch_mode_raw=0)
+    sensors = HaSensorSnapshot(surplus_power_w=6000.0, valid=True)
+
+    assert controller.resolve_pv_phase_target(ChargeMode.PV, wallbox, sensors) is None
+
+
+def test_pv_phase_switching_requests_3p_when_surplus_is_high():
+    controller = make_controller(pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P)
+    wallbox = WallboxState(installed_phases=1, phase_switch_mode_raw=0)
+    sensors = HaSensorSnapshot(surplus_power_w=6000.0, valid=True)
+
+    assert controller.resolve_pv_phase_target(ChargeMode.PV, wallbox, sensors) == 3
+
+
+def test_pv_phase_switching_requests_1p_when_surplus_is_below_3p_range():
+    controller = make_controller(pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P)
+    wallbox = WallboxState(installed_phases=3, phase_switch_mode_raw=1)
+    sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+
+    assert controller.resolve_pv_phase_target(ChargeMode.PV, wallbox, sensors) == 1
+
+
+def test_pv_phase_switching_does_not_request_switch_outside_pv_mode():
+    controller = make_controller(pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P)
+    wallbox = WallboxState(installed_phases=1, phase_switch_mode_raw=0)
+    sensors = HaSensorSnapshot(surplus_power_w=6000.0, valid=True)
+
+    assert controller.resolve_pv_phase_target(ChargeMode.NORMAL, wallbox, sensors) is None
 
 
 def test_invalid_sensors_fall_back_to_safe_current():

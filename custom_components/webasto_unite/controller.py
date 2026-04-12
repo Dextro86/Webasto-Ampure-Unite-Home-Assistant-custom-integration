@@ -12,6 +12,7 @@ from .models import (
     HaSensorSnapshot,
     PvControlStrategy,
     PvOverrideStrategy,
+    PvPhaseSwitchingMode,
     PvResult,
     WallboxState,
 )
@@ -307,6 +308,37 @@ class WallboxController:
         if not pv_until_unplug_active or until_unplug_strategy == PvOverrideStrategy.INHERIT:
             return base_strategy
         return PvControlStrategy(until_unplug_strategy.value)
+
+    def resolve_pv_phase_target(
+        self,
+        mode: ChargeMode,
+        wallbox: WallboxState,
+        sensors: HaSensorSnapshot,
+    ) -> int | None:
+        if mode != ChargeMode.PV:
+            return None
+        if self.config.pv_phase_switching_mode != PvPhaseSwitchingMode.AUTOMATIC_1P3P:
+            return None
+        if wallbox.phase_switch_mode_raw not in (0, 1):
+            return None
+
+        surplus_w = self._resolve_surplus_power(sensors)
+        if surplus_w is None:
+            return None
+
+        current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
+        nominal_voltage = 230.0
+        min_1p_w = self.config.pv_min_current_a * nominal_voltage
+        min_3p_w = self.config.pv_min_current_a * 3 * nominal_voltage
+        hysteresis_w = 500.0
+        switch_up_w = min_3p_w + hysteresis_w
+        switch_down_w = max(min_1p_w, min_3p_w - hysteresis_w)
+
+        if current_phases == 1 and surplus_w >= switch_up_w:
+            return 3
+        if current_phases == 3 and min_1p_w <= surplus_w <= switch_down_w:
+            return 1
+        return None
 
     def _resolve_surplus_power(self, sensors: HaSensorSnapshot) -> float | None:
         if sensors.surplus_power_w is not None:

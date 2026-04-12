@@ -6,7 +6,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, PvControlStrategy
+from .models import ChargeMode, PvControlStrategy, PvPhaseSwitchingMode
 
 CHARGE_MODE_LABELS = {
     ChargeMode.OFF: "Off",
@@ -77,6 +77,13 @@ class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
     @property
     def options(self) -> list[str]:
         return list(PHASE_SWITCH_LABELS.values())
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.control_config.pv_phase_switching_mode != PvPhaseSwitchingMode.DISABLED
+        )
 
     @property
     def current_option(self) -> str | None:

@@ -51,7 +51,7 @@
       },
       "pv": {
         "title": "PV and Fixed Current charging",
-        "description": "Configure optional PV charging behavior and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid.",
+        "description": "Configure optional PV charging behavior, PV phase switching and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid.",
         "data": {
           "pv_input_model": "PV measurement source",
           "pv_control_strategy": "PV control strategy",
@@ -64,6 +64,7 @@
           "pv_min_runtime": "PV minimum runtime",
           "pv_min_pause": "PV minimum pause",
           "pv_min_current": "PV minimum current",
+          "pv_phase_switching_mode": "PV phase switching",
           "fixed_current": "Fixed Current"
         }
       }
