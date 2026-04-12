@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import asyncio
+from unittest.mock import AsyncMock
 
 from custom_components.webasto_unite.config_flow import (
     _bounded_float,
@@ -13,6 +14,7 @@ from custom_components.webasto_unite.models import ChargeMode, ControlConfig, Co
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
+from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE
 
 
 def make_controller(**kwargs):
@@ -463,6 +465,36 @@ def test_set_fixed_current_until_unplug_updates_override_state():
 
     coordinator.set_fixed_current_until_unplug(False)
     assert coordinator.fixed_current_until_unplug_active is False
+
+
+def test_phase_switch_queues_register_405_when_charging_inactive():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.write_queue = WriteQueueManager()
+    coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=False, phase_switch_mode_raw=1))
+    coordinator._flush_write_queue = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
+
+    asyncio.run(coordinator.async_set_phase_switch_mode(3))
+
+    item = asyncio.run(coordinator.write_queue.peek_next())
+    assert item.key == "phase_switch_mode"
+    assert item.register == PHASE_SWITCH_MODE
+    assert item.value == 1
+    coordinator._flush_write_queue.assert_awaited_once()
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+def test_phase_switch_is_blocked_while_charging_active():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.write_queue = WriteQueueManager()
+    coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=True, phase_switch_mode_raw=1))
+
+    try:
+        asyncio.run(coordinator.async_set_phase_switch_mode(1))
+    except ValueError as err:
+        assert "only allowed while charging is inactive" in str(err)
+    else:
+        raise AssertionError("Expected phase switching to be blocked while charging is active")
 
 
 def test_capability_builder_marks_unconfirmed_and_optional_features():

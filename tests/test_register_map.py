@@ -59,7 +59,7 @@ def test_phase_switch_register_is_tracked_as_unconfirmed_candidate():
     assert PHASE_SWITCH_MODE.writable is True
     assert PHASE_SWITCH_MODE.readable is True
     assert PHASE_SWITCH_MODE in READ_REGISTERS
-    assert PHASE_SWITCH_MODE not in WRITE_REGISTERS
+    assert PHASE_SWITCH_MODE in WRITE_REGISTERS
 
 
 def test_voltage_and_session_time_registers_are_available():

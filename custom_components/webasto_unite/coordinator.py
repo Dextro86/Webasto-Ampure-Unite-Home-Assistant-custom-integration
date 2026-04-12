@@ -86,6 +86,7 @@ from .models import (
 from .registers import (
     COMM_TIMEOUT_S,
     LIFE_BIT,
+    PHASE_SWITCH_MODE,
     SAFE_CURRENT_A,
     SET_CHARGE_CURRENT_A,
 )
@@ -245,6 +246,21 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
     def set_fixed_current(self, current_a: float) -> None:
         self.control_config.fixed_current_a = current_a
+
+    async def async_set_phase_switch_mode(self, phases: int) -> None:
+        if phases not in (1, 3):
+            raise ValueError("Phase switch mode must be 1 or 3 phases")
+        if self.data is None:
+            raise ValueError("Phase switching is only allowed after charger state is available")
+        if self.data.wallbox.phase_switch_mode_raw not in (0, 1):
+            raise ValueError("Phase switch register 405 is unavailable or returned an unsupported value")
+        if self.data.wallbox.charging_active:
+            raise ValueError("Phase switching is only allowed while charging is inactive")
+        await self.write_queue.enqueue(
+            QueuedWrite("phase_switch_mode", PHASE_SWITCH_MODE, 0 if phases == 1 else 1, WritePriority.CONTROL)
+        )
+        await self._flush_write_queue()
+        await self.async_request_refresh()
 
     async def async_trigger_reconnect(self) -> None:
         await self.client.reconnect()

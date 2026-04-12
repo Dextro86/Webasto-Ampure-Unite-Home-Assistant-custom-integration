@@ -16,7 +16,7 @@ Use it at your own risk.
 
 The most important open validation points are:
 
-- candidate phase-switch register `405`
+- experimental manual phase-switch register `405`
 - behavior across multiple Unite / Ampure firmware versions
 
 ## What it does
@@ -214,7 +214,7 @@ It also includes simple automation examples for the temporary per-session overri
 
 At the current stage, assume the following:
 
-- register `405` is exposed as the diagnostic `Phase switch mode raw` sensor for discovery, but manual `1p/3p` switching is not implemented yet
+- register `405` is exposed as the diagnostic `Phase switch mode raw` sensor and as an experimental manual `Phase switch` control; only change it while charging is inactive
 - session command register `5006` is not used for start/stop control; `5004` current control is used instead
 - the integration has not yet been broadly validated across multiple chargers and firmware versions
 - power-based DLB and PV calculations use a practical nominal `230 V` conversion
