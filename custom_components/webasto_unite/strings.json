@@ -5,10 +5,10 @@
         "title": "Connect Webasto/Ampure Unite",
         "description": "Configure the basic Modbus TCP connection to the wallbox.",
         "data": {
-          "host": "Host",
+          "host": "Charger IP address",
           "port": "Port",
-          "unit_id": "Unit ID",
-          "installed_phases": "Installed phases"
+          "unit_id": "Modbus Unit ID",
+          "installed_phases": "Charger phase configuration"
         }
       }
     }
@@ -16,16 +16,16 @@
   "options": {
     "step": {
       "init": {
-        "title": "Core settings",
-        "description": "Configure polling, safety limits and whether the integration may actively control the charger.",
+        "title": "Connection and control",
+        "description": "Configure the charger connection, polling, safety limits and whether the integration may actively control charging.",
         "data": {
-          "host": "Host",
+          "host": "Charger IP address",
           "port": "Port",
-          "unit_id": "Unit ID",
-          "installed_phases": "Installed phases",
-          "polling_interval": "Polling interval",
-          "timeout": "Timeout",
-          "retries": "Retries",
+          "unit_id": "Modbus Unit ID",
+          "installed_phases": "Charger phase configuration",
+          "polling_interval": "Refresh interval",
+          "timeout": "Modbus timeout",
+          "retries": "Modbus retries",
           "control_mode": "Control mode",
           "keepalive_mode": "Keepalive mode",
           "keepalive_interval": "Keepalive interval",
@@ -37,25 +37,25 @@
       },
       "dlb": {
         "title": "Dynamic load balancing",
-        "description": "Choose how the integration measures available grid capacity. Phase-current sensors are recommended when available.",
+        "description": "Configure Dynamic Load Balancing (DLB). DLB reduces the charger current when your house load gets close to the configured main fuse limit.",
         "data": {
-          "dlb_input_model": "DLB input model",
-          "dlb_sensor_scope": "DLB sensor scope",
-          "main_fuse": "Main fuse size",
+          "dlb_input_model": "DLB measurement source",
+          "dlb_sensor_scope": "What do the DLB sensors measure?",
+          "main_fuse": "Main fuse limit",
           "safety_margin": "Safety margin",
-          "dlb_l1_sensor": "Phase L1 current sensor",
-          "dlb_l2_sensor": "Phase L2 current sensor",
-          "dlb_l3_sensor": "Phase L3 current sensor",
+          "dlb_l1_sensor": "L1 house current sensor",
+          "dlb_l2_sensor": "L2 house current sensor",
+          "dlb_l3_sensor": "L3 house current sensor",
           "dlb_grid_power_sensor": "Grid power sensor"
         }
       },
       "pv": {
         "title": "PV and Fixed Current charging",
-        "description": "Configure optional PV charging behavior and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging.",
+        "description": "Configure optional PV charging behavior and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid.",
         "data": {
-          "pv_input_model": "PV input model",
+          "pv_input_model": "PV measurement source",
           "pv_control_strategy": "PV control strategy",
-          "pv_until_unplug_strategy": "PV until-unplug strategy",
+          "pv_until_unplug_strategy": "PV until unplug strategy",
           "pv_surplus_sensor": "PV surplus sensor",
           "pv_start_threshold": "PV start threshold (W)",
           "pv_stop_threshold": "PV stop threshold (W)",

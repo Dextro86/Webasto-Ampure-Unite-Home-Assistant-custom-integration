@@ -25,11 +25,11 @@ from .registers import (
     LIFE_BIT,
     MAX_CURRENT_CABLE_A,
     MAX_CURRENT_EV_A,
-    MAX_CURRENT_HW_A,
     MODEL,
     MIN_CURRENT_HW_A,
     NUMBER_OF_PHASES,
     SAFE_CURRENT_A,
+    SESSION_MAX_CURRENT_A,
     SERIAL_NUMBER,
     SESSION_DURATION_S,
     SESSION_ENERGY_KWH,
@@ -91,8 +91,8 @@ class WallboxReader:
             wallbox.actual_current_a = wallbox.phase_currents.max_present()
             wallbox.phases_in_use = wallbox.phase_currents.active_phase_count()
             wallbox.charge_point_phase_count = 1 if number_of_phases == 0 else 3
-            wallbox.hardware_max_current_a = self._normalize_optional_current_limit_a(
-                await self.client.read(MAX_CURRENT_HW_A)
+            wallbox.session_max_current_a = self._normalize_optional_current_limit_a(
+                await self.client.read(SESSION_MAX_CURRENT_A)
             )
             wallbox.hardware_min_current_a = await self.client.read(MIN_CURRENT_HW_A)
             wallbox.cable_max_current_a = self._normalize_optional_current_limit_a(
@@ -117,11 +117,7 @@ class WallboxReader:
 
             wallbox.charging_state = self.map_charging_state(charge_point_state)
             wallbox.vehicle_connected = int(cable_state) >= 2
-            wallbox.charging_enabled = wallbox.charging_state in (
-                ChargingState.PREPARING,
-                ChargingState.CHARGING,
-                ChargingState.SUSPENDED,
-            )
+            wallbox.update_charging_active()
             wallbox.available = True
             wallbox.connection_state = ConnectionState.CONNECTED
             wallbox.installed_phases = 1 if configured_installed_phases == "1p" else 3
@@ -151,10 +147,13 @@ class WallboxReader:
         mapping = {
             0: ChargingState.IDLE,
             1: ChargingState.PREPARING,
-            3: ChargingState.CHARGING,
+            2: ChargingState.CHARGING,
+            3: ChargingState.SUSPENDED,
             4: ChargingState.SUSPENDED,
+            5: ChargingState.IDLE,
+            6: ChargingState.RESERVED,
             7: ChargingState.ERROR,
-            8: ChargingState.RESERVED,
+            8: ChargingState.ERROR,
         }
         return mapping.get(int(raw_state), ChargingState.UNKNOWN)
 

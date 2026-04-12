@@ -17,6 +17,8 @@ from custom_components.webasto_unite.registers import (
     RegisterType,
     ValueType,
 )
+from custom_components.webasto_unite.models import ChargingState, PhaseCurrents, WallboxState
+from custom_components.webasto_unite.wallbox_reader import WallboxReader
 
 
 def test_runtime_measurement_registers_use_input_registers():
@@ -67,3 +69,29 @@ def test_voltage_and_session_time_registers_are_available():
 def test_charge_current_register_is_readable_and_writable():
     assert SET_CHARGE_CURRENT_A.readable is True
     assert SET_CHARGE_CURRENT_A.writable is True
+
+
+def test_charge_point_state_mapping_matches_unite_status_codes():
+    assert WallboxReader.map_charging_state(0) == ChargingState.IDLE
+    assert WallboxReader.map_charging_state(1) == ChargingState.PREPARING
+    assert WallboxReader.map_charging_state(2) == ChargingState.CHARGING
+    assert WallboxReader.map_charging_state(3) == ChargingState.SUSPENDED
+    assert WallboxReader.map_charging_state(4) == ChargingState.SUSPENDED
+    assert WallboxReader.map_charging_state(5) == ChargingState.IDLE
+    assert WallboxReader.map_charging_state(6) == ChargingState.RESERVED
+    assert WallboxReader.map_charging_state(7) == ChargingState.ERROR
+    assert WallboxReader.map_charging_state(8) == ChargingState.ERROR
+
+
+def test_charging_active_uses_charging_state_register_with_measurement_fallback():
+    wallbox = WallboxState(charge_state_raw=1)
+    wallbox.update_charging_active()
+    assert wallbox.charging_active is True
+
+    wallbox = WallboxState(charge_state_raw=0, phase_currents=PhaseCurrents(l1=0.6))
+    wallbox.update_charging_active()
+    assert wallbox.charging_active is True
+
+    wallbox = WallboxState(charge_state_raw=0, active_power_w=0.0, phase_currents=PhaseCurrents(l1=0.0))
+    wallbox.update_charging_active()
+    assert wallbox.charging_active is False

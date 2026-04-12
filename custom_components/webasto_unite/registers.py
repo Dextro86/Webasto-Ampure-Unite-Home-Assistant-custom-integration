@@ -68,7 +68,7 @@ ACTIVE_POWER_L2_W = RegisterDef("active_power_l2_w", 1028, count=2, register_typ
 ACTIVE_POWER_L3_W = RegisterDef("active_power_l3_w", 1032, count=2, register_type=RegisterType.INPUT, value_type=ValueType.UINT32)
 ENERGY_METER_KWH = RegisterDef("energy_meter_kwh", 1036, count=2, register_type=RegisterType.INPUT, value_type=ValueType.UINT32, scale=0.1)
 
-MAX_CURRENT_HW_A = RegisterDef("max_current_hw_a", 1100, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
+SESSION_MAX_CURRENT_A = RegisterDef("session_max_current_a", 1100, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
 MIN_CURRENT_HW_A = RegisterDef("min_current_hw_a", 1102, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
 MAX_CURRENT_EVSE_A = RegisterDef("max_current_evse_a", 1104, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
 MAX_CURRENT_CABLE_A = RegisterDef("max_current_cable_a", 1106, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
@@ -121,7 +121,7 @@ READ_REGISTERS = (
     ACTIVE_POWER_L2_W,
     ACTIVE_POWER_L3_W,
     ENERGY_METER_KWH,
-    MAX_CURRENT_HW_A,
+    SESSION_MAX_CURRENT_A,
     MIN_CURRENT_HW_A,
     MAX_CURRENT_EVSE_A,
     MAX_CURRENT_CABLE_A,

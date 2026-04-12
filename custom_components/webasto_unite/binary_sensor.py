@@ -13,7 +13,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         WebastoBinarySensor(coordinator, "Vehicle connected", "vehicle_connected"),
-        WebastoBinarySensor(coordinator, "Charging enabled", "charging_enabled"),
+        WebastoBinarySensor(coordinator, "Charging active", "charging_active"),
         WebastoConnectionBinarySensor(coordinator),
         WebastoKeepaliveOverdueBinarySensor(coordinator),
     ])

@@ -213,7 +213,7 @@ def test_invalid_sensors_fall_back_to_safe_current():
 
 def test_unvalidated_hardware_limit_does_not_cap_target_current():
     controller = make_controller()
-    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, hardware_max_current_a=10.0)
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, session_max_current_a=10.0)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
 
     decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)

@@ -118,7 +118,7 @@ class WallboxState:
     cable_state_raw: Optional[int] = None
 
     vehicle_connected: bool = False
-    charging_enabled: bool = False
+    charging_active: bool = False
 
     actual_current_a: Optional[float] = None
     current_limit_a: Optional[float] = None
@@ -138,7 +138,7 @@ class WallboxState:
 
     safe_current_a: Optional[float] = None
     communication_timeout_s: Optional[int] = None
-    hardware_max_current_a: Optional[float] = None
+    session_max_current_a: Optional[float] = None
     hardware_min_current_a: Optional[float] = None
     cable_max_current_a: Optional[float] = None
     ev_max_current_a: Optional[float] = None
@@ -169,6 +169,11 @@ class WallboxState:
     @property
     def current_l3_a(self) -> Optional[float]:
         return self.phase_currents.l3
+
+    def update_charging_active(self) -> None:
+        active_power = self.active_power_w or 0.0
+        max_current = self.phase_currents.max_present() or 0.0
+        self.charging_active = self.charge_state_raw == 1 or active_power > 100.0 or max_current > 0.5
 
 
 @dataclass(slots=True)

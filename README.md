@@ -127,6 +127,19 @@ This means:
 - if you want strict surplus charging, use `Surplus only`
 - if you want more practical winter/cloud behavior, use `Minimum + surplus`
 
+PV surplus can be provided in two ways:
+
+- use a dedicated surplus power sensor
+- use a signed net grid power sensor where negative values mean export to the grid
+
+Do not use the signed grid power option with separate production and consumption sensors unless you first combine them into a single surplus sensor. If the consumption sensor includes the charger, the charger power must be added back when calculating surplus:
+
+```text
+surplus = PV production - total consumption + charger power
+```
+
+This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
+
 ## What the user sees in Home Assistant
 
 The most important entities for daily use are:
@@ -162,24 +175,24 @@ During setup, the user mainly configures:
   - host
   - port
   - unit id
-- installed phases:
+- charger phase configuration:
   - `1p` or `3p`
 - control mode:
   - `Read-only + Keepalive`
-  - `Managed Control`
-- DLB source:
+  - `Managed Charging Control`
+- DLB measurement source:
   - `Disabled`
   - `Phase current sensors (recommended)`
   - `Grid power sensor`
-- DLB sensor scope:
-  - `Load excluding charger (legacy/default)` for sensors that measure only non-charger house load
-  - `Total load including charger` for main/grid sensors that include the charger load
-- PV source and strategy
+- what the DLB sensors measure:
+  - `Total house current charger excluded` for sensors that measure only non-charger house load
+  - `Total house current charger included` for main/grid sensors that include the charger load
+- PV measurement source and strategy
 - current limits and safety values
 
 For Unite, `Read-only + Keepalive` is the safest first active mode.
 
-The charger connection fields and installed phases can also be changed later from the integration settings. Restart or reload the integration after changing these connection-related values.
+The charger connection fields and charger phase configuration can also be changed later from the integration settings. Restart or reload the integration after changing these connection-related values.
 
 ## Dashboard examples
 
