@@ -192,7 +192,7 @@ During setup, the user mainly configures:
 
 For Unite, `Read-only + Keepalive` is the safest first active mode.
 
-The charger connection fields and charger phase configuration can also be changed later from the integration settings. Restart or reload the integration after changing these connection-related values.
+The charger connection fields and charger phase configuration can also be changed later from the integration settings. The integration reloads after saving settings so the new values take effect.
 
 ## Dashboard examples
 
@@ -215,7 +215,7 @@ It also includes simple automation examples for the temporary per-session overri
 At the current stage, assume the following:
 
 - register `5006` is still not fully confirmed on real Unite hardware
-- register `405` is only a documented future candidate for manual `1p/3p` switching
+- register `405` is exposed as the diagnostic `Phase switch mode raw` sensor for discovery, but manual `1p/3p` switching is not implemented yet
 - the integration has not yet been broadly validated across multiple chargers and firmware versions
 - power-based DLB and PV calculations use a practical nominal `230 V` conversion
 

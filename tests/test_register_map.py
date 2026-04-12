@@ -7,6 +7,7 @@ from custom_components.webasto_unite.registers import (
     MAX_CURRENT_CABLE_A,
     NUMBER_OF_PHASES,
     PHASE_SWITCH_MODE,
+    READ_REGISTERS,
     SERIAL_NUMBER,
     SESSION_DURATION_S,
     SESSION_END_TIME,
@@ -14,6 +15,7 @@ from custom_components.webasto_unite.registers import (
     SESSION_START_TIME,
     SET_CHARGE_CURRENT_A,
     VOLTAGE_L1_V,
+    WRITE_REGISTERS,
     RegisterType,
     ValueType,
 )
@@ -56,6 +58,8 @@ def test_phase_switch_register_is_tracked_as_unconfirmed_candidate():
     assert PHASE_SWITCH_MODE.value_type == ValueType.UINT16
     assert PHASE_SWITCH_MODE.writable is True
     assert PHASE_SWITCH_MODE.readable is True
+    assert PHASE_SWITCH_MODE in READ_REGISTERS
+    assert PHASE_SWITCH_MODE not in WRITE_REGISTERS
 
 
 def test_voltage_and_session_time_registers_are_available():

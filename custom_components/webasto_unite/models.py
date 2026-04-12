@@ -128,6 +128,7 @@ class WallboxState:
     phases_in_use: Optional[int] = None
     installed_phases: Optional[int] = None
     charge_point_phase_count: Optional[int] = None
+    phase_switch_mode_raw: Optional[int] = None
 
     error_code: Optional[int] = None
     serial_number: Optional[str] = None

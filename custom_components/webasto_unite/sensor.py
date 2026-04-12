@@ -30,6 +30,7 @@ SENSORS = (
     WebastoSensorDescription(key="cable_state_raw", name="Cable state raw", value_key="cable_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="evse_fault_code", name="EVSE fault code", value_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="charge_point_phase_count", name="Charge point phases", value_key="charge_point_phase_count", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_mode_raw", name="Phase switch mode raw", value_key="phase_switch_mode_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="active_power", name="Active power", value_key="active_power_w", native_unit_of_measurement=UnitOfPower.WATT),
     WebastoSensorDescription(key="active_power_l1", name="Active power L1", value_key="active_power_l1_w", native_unit_of_measurement=UnitOfPower.WATT),
     WebastoSensorDescription(key="active_power_l2", name="Active power L2", value_key="active_power_l2_w", native_unit_of_measurement=UnitOfPower.WATT),

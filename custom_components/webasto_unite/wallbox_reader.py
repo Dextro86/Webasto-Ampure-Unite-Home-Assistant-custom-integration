@@ -28,6 +28,7 @@ from .registers import (
     MODEL,
     MIN_CURRENT_HW_A,
     NUMBER_OF_PHASES,
+    PHASE_SWITCH_MODE,
     SAFE_CURRENT_A,
     SESSION_MAX_CURRENT_A,
     SERIAL_NUMBER,
@@ -91,6 +92,11 @@ class WallboxReader:
             wallbox.actual_current_a = wallbox.phase_currents.max_present()
             wallbox.phases_in_use = wallbox.phase_currents.active_phase_count()
             wallbox.charge_point_phase_count = 1 if number_of_phases == 0 else 3
+            try:
+                wallbox.phase_switch_mode_raw = int(await self.client.read(PHASE_SWITCH_MODE))
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Optional phase switch register 405 unavailable: %s", err)
+                wallbox.phase_switch_mode_raw = None
             wallbox.session_max_current_a = self._normalize_optional_current_limit_a(
                 await self.client.read(SESSION_MAX_CURRENT_A)
             )
