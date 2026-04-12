@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Unite wallbox logo">
+  <defs>
+    <filter id="shadow" x="-35%" y="-25%" width="170%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="ringGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="6.8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="body" x1="128" y1="72" x2="384" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2d2f2f"/>
+      <stop offset="0.46" stop-color="#151717"/>
+      <stop offset="1" stop-color="#060707"/>
+    </linearGradient>
+    <linearGradient id="face" x1="156" y1="96" x2="356" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2a2c2c"/>
+      <stop offset="1" stop-color="#141616"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="none"/>
+  <path filter="url(#shadow)" d="M256 40c84 0 144 62 144 146v132c0 94-60 154-144 154s-144-60-144-154V186c0-84 60-146 144-146Z" fill="url(#body)"/>
+  <path d="M256 76c64 0 110 48 110 114v124c0 74-46 120-110 120s-110-46-110-120V190c0-66 46-114 110-114Z" fill="url(#face)" stroke="#343737" stroke-width="4"/>
+  <path d="M206 148c30-12 68-12 100 0" fill="none" stroke="#3b3e3f" stroke-width="6" stroke-linecap="round" opacity="0.45"/>
+  <path d="M236 178h40v32h16l-34 40v-40h-22Z" fill="none" stroke="#e9f2f8" stroke-width="6" stroke-linejoin="round" opacity="0.76"/>
+  <path d="M208 192c-10 12-16 26-16 42m112-42c10 12 16 26 16 42" fill="none" stroke="#e9f2f8" stroke-width="4.4" stroke-linecap="round" opacity="0.45"/>
+  <circle cx="256" cy="306" r="86" fill="none" stroke="#73c9ff" stroke-width="18" filter="url(#ringGlow)" opacity="0.98"/>
+  <circle cx="256" cy="306" r="72" fill="#070808" stroke="#2c2f31" stroke-width="8"/>
+  <rect x="210" y="264" width="92" height="86" rx="24" fill="#101112" stroke="#272a2c" stroke-width="4"/>
+  <path d="M224 280h64" stroke="#1d2022" stroke-width="6" stroke-linecap="round"/>
+</svg>

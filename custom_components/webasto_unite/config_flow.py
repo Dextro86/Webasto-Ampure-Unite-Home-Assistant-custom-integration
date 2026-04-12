@@ -344,6 +344,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
+            vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=self.options.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
             vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_INPUT_MODEL, default=self.options.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS)),
             _optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), self.options.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
@@ -354,7 +355,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_PV_MIN_RUNTIME, default=self.options.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_PAUSE, default=self.options.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_CURRENT, default=self.options.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=self.options.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
             vol.Optional(CONF_FIXED_CURRENT, default=self.options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="pv", data_schema=schema, errors=errors)

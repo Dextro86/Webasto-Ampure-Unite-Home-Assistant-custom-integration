@@ -232,6 +232,7 @@ It also includes simple automation examples for the temporary per-session overri
 At the current stage, assume the following:
 
 - register `405` is exposed as the diagnostic `Phase switch mode raw` sensor and as experimental phase-switch control; manual switching is blocked while charging is active
+- phase switching via register `405` has been validated on firmware `v3.187.0-1.0.156.0` with one tested charger; other firmware versions may behave differently
 - automatic PV phase switching is newly added and should be treated as experimental until validated on more vehicles and firmware versions
 - session command register `5006` is not used for start/stop control; `5004` current control is used instead
 - the integration has not yet been broadly validated across multiple chargers and firmware versions

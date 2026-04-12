@@ -44,9 +44,8 @@ FIRMWARE_VERSION = RegisterDef("firmware_version", 230, count=50, register_type=
 CHARGE_POINT_POWER_W = RegisterDef("charge_point_power_w", 400, count=2, register_type=RegisterType.INPUT, value_type=ValueType.UINT32)
 NUMBER_OF_PHASES = RegisterDef("number_of_phases", 404, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
 # Community Vestel/Webasto mappings consistently point to holding register 405
-# as the manual 1p/3p phase switch control path. It is tracked here as an
-# unconfirmed future feature candidate and is exposed read-only for discovery
-# before any write control is added.
+# as the 1p/3p phase switch control path. It is still treated as experimental
+# because validation currently comes from a limited hardware sample.
 PHASE_SWITCH_MODE = RegisterDef("phase_switch_mode", 405, value_type=ValueType.UINT16, writable=True, readable=True)
 
 CHARGE_POINT_STATE = RegisterDef("charge_point_state", 1000, register_type=RegisterType.INPUT)
