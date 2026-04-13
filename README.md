@@ -27,11 +27,11 @@ The most important open validation points are:
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Local Modbus monitoring | Validated on one charger | Tested on firmware `v3.187.0-1.0.156.0`. |
+| Local Modbus monitoring | Validated on one charger | Tested on firmware `3.187`. |
 | Keepalive handling | Validated on one charger | Required for active Unite Modbus control sessions. |
 | Current control through register `5004` | Validated on one charger | Used for current limiting and pausing by writing `0 A`. |
 | Dynamic Load Balancing (DLB) | Validated on one charger | Tested with sensors that include charger load and compensate for charger current. |
-| Manual 1P/3P phase switching through register `405` | Partially validated | Tested on firmware `v3.187.0-1.0.156.0`; switching back to 3-phase may require a pause/resume cycle. |
+| Manual 1P/3P phase switching through register `405` | Partially validated | Tested on firmware `3.187`; switching back to 3-phase may require a pause/resume cycle. |
 | PV charging | Partially validated | Calculation paths are implemented, but broader real-world validation is still needed. |
 | Automatic PV 1P/3P phase switching | Experimental | Implemented conservatively, but not yet validated with an active charging session. |
 
@@ -39,10 +39,10 @@ The most important open validation points are:
 
 | Charger / firmware | Status in this project | Notes |
 | --- | --- | --- |
-| Webasto/Ampure Unite, firmware `v3.187.0-1.0.156.0` | Tested by this project | Main development and validation firmware. |
+| Webasto/Ampure Unite, firmware `3.187` | Tested by this project | Main development and validation firmware. |
 | UNITE HMI `3.156` | Not tested by this project | Listed by NeLeSo as the latest stable Webasto/Ampure UNITE firmware. |
 | UNITE HMI `3.166` | Not tested by this project | Listed by NeLeSo for specific larger dynamic load-management clusters; not generally recommended there for single-user setups. |
-| UNITE HMI `3.187` | Partially tested by this project | Listed by NeLeSo under untested software downloads; this project has tested one charger running `v3.187.0-1.0.156.0`. |
+| UNITE HMI `3.187` | Partially tested by this project | Listed by NeLeSo under untested software downloads; this project has tested one charger running firmware `3.187`. |
 | Other UNITE firmware versions | Unknown | Register behavior may differ and should be verified carefully. |
 
 Firmware background: see the NeLeSo Webasto/Ampure UNITE firmware page: <https://www.neleso.com/unite-downloads>.
@@ -260,7 +260,7 @@ It also includes simple automation examples for the temporary per-session overri
 At the current stage, assume the following:
 
 - register `405` is exposed as the diagnostic `Phase switch mode raw` sensor and as experimental phase-switch control; manual switching is blocked while charging is active
-- phase switching via register `405` has been validated on firmware `v3.187.0-1.0.156.0` with one tested charger; other firmware versions may behave differently
+- phase switching via register `405` has been validated on firmware `3.187` with one tested charger; other firmware versions may behave differently
 - automatic PV phase switching is newly added and should be treated as experimental until validated on more vehicles and firmware versions
 - session command register `5006` is not used for start/stop control; `5004` current control is used instead
 - the integration has not yet been broadly validated across multiple chargers and firmware versions
