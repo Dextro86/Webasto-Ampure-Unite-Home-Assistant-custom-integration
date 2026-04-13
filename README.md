@@ -4,7 +4,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/)
 [![Latest release](https://img.shields.io/github/v/release/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration?label=latest%20release)](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/releases)
 
-Home Assistant custom integration for the `Webasto Unite` / `Ampure Unite` EV charger over local `Modbus/TCP`.
+Home Assistant custom integration for the Webasto Unite / Ampure Unite EV charger over local Modbus/TCP.
 
 This is a community project developed with significant AI assistance. It has been tested on one charger so far, so verify behavior on your own hardware before relying on automated charging control.
 
@@ -31,6 +31,11 @@ Temporary session overrides:
 
 - `PV until Unplug`
 - `Fixed Current until Unplug`
+
+## Documentation
+
+- [Configuration guide](docs/configuration.md): setup screens, DLB, PV charging, phase switching and important Home Assistant entities.
+- [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
 
 ## Compatibility
 
@@ -74,48 +79,6 @@ Before installing:
 ### Manual installation
 
 Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unite`, restart Home Assistant, and add the integration through `Settings` -> `Devices & Services` -> `Add Integration`.
-
-## Configuration
-
-Main settings:
-
-- `Charger IP address`, `Port` and `Modbus Unit ID`
-- `Charger phase configuration`
-- `Control mode`
-- `Refresh interval`, timeout and retries
-- Current limits and safety values
-
-For first setup, use `Read-only + Keepalive` first. Switch to `Managed Charging Control` only after monitoring works and the charger values look correct.
-
-DLB settings:
-
-- `Disabled`
-- `Phase current sensors (recommended)`
-- `Grid power sensor`
-
-For Dynamic Load Balancing (DLB), choose whether the sensors measure house current with the charger excluded or included. If the charger is included, the integration compensates for the charger's own measured current before calculating the available current.
-
-PV settings:
-
-- `Disabled`
-- `Surplus only`
-- `Minimum + surplus`
-
-PV surplus can come from a dedicated surplus sensor or from a signed net grid power sensor where negative values mean export to the grid. Do not use separate production and consumption sensors directly unless you first combine them into one surplus sensor.
-
-If your consumption sensor includes the charger, calculate surplus like this:
-
-```text
-surplus = PV production - total consumption + charger power
-```
-
-PV phase switching:
-
-- `Disabled`
-- `Manual only`
-- `Automatic 1P/3P`
-
-Automatic phase switching only runs in `PV` mode or `PV until Unplug`. It pauses charging by writing `0 A`, writes phase-switch register `405`, and resumes after the charger reports the new phase mode.
 
 ## Home Assistant entities
 
