@@ -12,6 +12,8 @@ cards:
         name: Active mode
       - entity: switch.webasto_unite_charging_allowed
         name: Allow charging
+      - entity: select.webasto_unite_phase_switch
+        name: Phase switch mode
       - entity: switch.webasto_unite_pv_until_unplug
         name: PV until unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
@@ -26,8 +28,8 @@ cards:
     entities:
       - entity: binary_sensor.webasto_unite_vehicle_connected
         name: Vehicle
-      - entity: binary_sensor.webasto_unite_charging_enabled
-        name: Charging
+      - entity: binary_sensor.webasto_unite_charging_active
+        name: Charging active
       - entity: binary_sensor.webasto_unite_connected
         name: Modbus
       - entity: binary_sensor.webasto_unite_keepalive_overdue
@@ -86,8 +88,8 @@ cards:
     entities:
       - entity: sensor.webasto_unite_firmware_version
         name: Firmware version
-      - entity: sensor.webasto_unite_charge_point_phases
-        name: Charge point phases
+      - entity: sensor.webasto_unite_charger_configured_phases
+        name: Charger configured phases
       - entity: sensor.webasto_unite_keepalive_age
         name: Keepalive age
       - entity: sensor.webasto_unite_keepalive_sent_count

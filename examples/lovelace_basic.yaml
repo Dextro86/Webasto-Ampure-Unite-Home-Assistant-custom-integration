@@ -12,6 +12,8 @@ cards:
         name: Charge mode
       - entity: switch.webasto_unite_charging_allowed
         name: Allow charging
+      - entity: select.webasto_unite_phase_switch
+        name: Phase switch mode
       - entity: switch.webasto_unite_pv_until_unplug
         name: PV until unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
@@ -26,8 +28,8 @@ cards:
     entities:
       - entity: binary_sensor.webasto_unite_vehicle_connected
         name: Vehicle
-      - entity: binary_sensor.webasto_unite_charging_enabled
-        name: Charging
+      - entity: binary_sensor.webasto_unite_charging_active
+        name: Charging active
       - entity: binary_sensor.webasto_unite_connected
         name: Modbus
 

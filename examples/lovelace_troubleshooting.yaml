@@ -48,8 +48,8 @@ cards:
     entities:
       - entity: sensor.webasto_unite_firmware_version
         name: Firmware version
-      - entity: sensor.webasto_unite_charge_point_phases
-        name: Charge point phases
+      - entity: sensor.webasto_unite_charger_configured_phases
+        name: Charger configured phases
       - entity: sensor.webasto_unite_dlb_limit
         name: DLB limit
       - entity: sensor.webasto_unite_final_target
