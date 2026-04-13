@@ -1,5 +1,9 @@
 # Webasto/Ampure Unite Home Assistant custom integration
 
+[![Tests](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/actions/workflows/tests.yml/badge.svg)](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/actions/workflows/tests.yml)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/)
+[![Latest release](https://img.shields.io/github/v/release/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration?label=latest%20release)](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/releases)
+
 Experimental Home Assistant custom integration for `Webasto Unite` / `Ampure Unite` chargers over local `Modbus/TCP`.
 
 ## Status
@@ -18,6 +22,30 @@ The most important open validation points are:
 
 - experimental phase-switch register `405`
 - behavior across multiple Unite / Ampure firmware versions
+
+## Validation status
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Local Modbus monitoring | Validated on one charger | Tested on firmware `v3.187.0-1.0.156.0`. |
+| Keepalive handling | Validated on one charger | Required for active Unite Modbus control sessions. |
+| Current control through register `5004` | Validated on one charger | Used for current limiting and pausing by writing `0 A`. |
+| Dynamic Load Balancing (DLB) | Validated on one charger | Tested with sensors that include charger load and compensate for charger current. |
+| Manual 1P/3P phase switching through register `405` | Partially validated | Tested on firmware `v3.187.0-1.0.156.0`; switching back to 3-phase may require a pause/resume cycle. |
+| PV charging | Partially validated | Calculation paths are implemented, but broader real-world validation is still needed. |
+| Automatic PV 1P/3P phase switching | Experimental | Implemented conservatively, but not yet validated with an active charging session. |
+
+## Compatibility matrix
+
+| Charger / firmware | Status in this project | Notes |
+| --- | --- | --- |
+| Webasto/Ampure Unite, firmware `v3.187.0-1.0.156.0` | Tested by this project | Main development and validation firmware. |
+| UNITE HMI `3.156` | Not tested by this project | Listed by NeLeSo as the latest stable Webasto/Ampure UNITE firmware. |
+| UNITE HMI `3.166` | Not tested by this project | Listed by NeLeSo for specific larger dynamic load-management clusters; not generally recommended there for single-user setups. |
+| UNITE HMI `3.187` | Partially tested by this project | Listed by NeLeSo under untested software downloads; this project has tested one charger running `v3.187.0-1.0.156.0`. |
+| Other UNITE firmware versions | Unknown | Register behavior may differ and should be verified carefully. |
+
+Firmware background: see the NeLeSo Webasto/Ampure UNITE firmware page: <https://www.neleso.com/unite-downloads>.
 
 ## What it does
 
@@ -147,7 +175,7 @@ PV phase switching supports:
 - `Disabled`
   - do not expose or use phase switching through the integration
 - `Manual only`
-  - allow manual `Phase switch` control, but do not switch automatically
+  - allow manual `Phase switch mode` control, but do not switch automatically
 - `Automatic 1P/3P`
   - in PV mode, switch to 1-phase when surplus is useful for 1-phase charging but too low for stable 3-phase charging, and switch back to 3-phase when surplus is clearly high enough
 

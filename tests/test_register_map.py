@@ -52,7 +52,7 @@ def test_identity_and_phase_registers_match_official_unite_pdf():
     assert NUMBER_OF_PHASES.register_type == RegisterType.INPUT
 
 
-def test_phase_switch_register_is_tracked_as_unconfirmed_candidate():
+def test_phase_switch_register_is_tracked_as_experimental_control_path():
     assert PHASE_SWITCH_MODE.address == 405
     assert PHASE_SWITCH_MODE.register_type == RegisterType.HOLDING
     assert PHASE_SWITCH_MODE.value_type == ValueType.UINT16
