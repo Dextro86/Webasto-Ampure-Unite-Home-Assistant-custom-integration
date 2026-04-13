@@ -4,7 +4,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/)
 [![Latest release](https://img.shields.io/github/v/release/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration?label=latest%20release)](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/releases)
 
-Home Assistant custom integration for the Webasto Unite / Ampure Unite EV charger over local Modbus/TCP.
+Home Assistant custom integration for Webasto Unite and Ampure Unite EV chargers over local Modbus/TCP.
 
 This is a community project developed with significant AI assistance. It has been tested on one charger so far, so verify behavior on your own hardware before relying on automated charging control.
 
