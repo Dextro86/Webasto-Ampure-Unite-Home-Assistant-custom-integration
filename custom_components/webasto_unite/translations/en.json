@@ -17,7 +17,7 @@
     "step": {
       "init": {
         "title": "Connection and Control",
-        "description": "Configure the charger connection, polling, safety limits and whether the integration may actively control charging.",
+        "description": "Configure the charger connection, polling, safety limits and whether the integration may actively control charging. Changes are saved only after completing all settings screens.",
         "data": {
           "host": "Charger IP address",
           "port": "Port",
@@ -37,7 +37,7 @@
       },
       "dlb": {
         "title": "Dynamic Load Balancing",
-        "description": "Configure Dynamic Load Balancing (DLB). DLB reduces the charger current when your house load gets close to the configured main fuse limit.",
+        "description": "Configure Dynamic Load Balancing (DLB). DLB reduces the charger current when your house load gets close to the configured main fuse limit. Continue through all settings screens to save changes.",
         "data": {
           "dlb_input_model": "DLB Measurement Source",
           "dlb_sensor_scope": "DLB Sensor Scope",
@@ -51,7 +51,7 @@
       },
       "pv": {
         "title": "PV and Fixed Current Charging",
-        "description": "Configure optional PV charging behavior, PV Phase Switching and the Fixed Current target. Choose Disabled for PV Control Strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid.",
+        "description": "Configure optional PV charging behavior, PV Phase Switching and the Fixed Current target. Choose Disabled for PV Control Strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid. Submit this final screen to save changes.",
         "data": {
           "pv_input_model": "PV Measurement Source",
           "pv_control_strategy": "PV Control Strategy",

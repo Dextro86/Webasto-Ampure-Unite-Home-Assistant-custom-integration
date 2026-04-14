@@ -108,6 +108,8 @@ Useful diagnostics:
 
 `Charge Mode` is the selected base mode. `Active Mode` shows what the integration is actually doing after overrides and PV behavior are applied. `Charging Behavior` is a short dashboard-friendly status summary.
 
+When changing integration settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
+
 ## Known limitations
 
 - Register `405` is used for phase switching and has been validated on firmware `3.187` with one tested charger. Other firmware versions may behave differently.

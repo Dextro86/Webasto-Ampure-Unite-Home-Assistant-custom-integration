@@ -27,6 +27,8 @@ Main settings:
 - `Modbus Timeout` and `Modbus Retries`: connection resilience settings.
 - `Control Mode`: whether the integration may actively control charging.
 
+When changing settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
+
 Recommended first setup:
 
 1. Use `Read-only + Keepalive`.
