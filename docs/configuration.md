@@ -51,6 +51,8 @@ The final current target can still be limited by the charger-reported session li
 
 Dynamic Load Balancing (DLB) reduces the charger current when house load gets close to the configured main fuse limit.
 
+DLB is disabled by default. Enable it only after selecting suitable Home Assistant sensors.
+
 DLB measurement sources:
 
 - `Disabled`: do not use DLB.
@@ -81,6 +83,8 @@ PV Control Strategy:
 - `Disabled`: do not use PV charging.
 - `Surplus Only`: charge only when enough surplus is available.
 - `Minimum + Surplus`: keep charging at minimum current and add surplus when available.
+
+PV charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
 
 PV surplus can be provided in two ways:
 

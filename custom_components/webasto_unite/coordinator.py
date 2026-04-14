@@ -135,12 +135,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             user_limit_a=float(merged.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)),
             main_fuse_a=float(merged.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)),
             safety_margin_a=float(merged.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)),
-            dlb_input_model=DlbInputModel(merged.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)),
+            dlb_input_model=DlbInputModel(merged.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)),
             dlb_sensor_scope=DlbSensorScope(
                 merged.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)
             ),
             pv_input_model=PvInputModel(merged.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)),
-            pv_control_strategy=PvControlStrategy(merged.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)),
+            pv_control_strategy=PvControlStrategy(merged.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)),
             pv_until_unplug_strategy=PvOverrideStrategy(
                 merged.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)
             ),

@@ -185,7 +185,7 @@ def _validate_pv_options(options: dict[str, Any]) -> dict[str, Any]:
     if not MIN_CURRENT_A <= fixed_current <= MAX_CURRENT_A:
         raise vol.Invalid(f"{CONF_FIXED_CURRENT} must be between {MIN_CURRENT_A} and {MAX_CURRENT_A}")
 
-    strategy = options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)
+    strategy = options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
     if strategy in (PvControlStrategy.SURPLUS.value, PvControlStrategy.MIN_PLUS_SURPLUS.value):
         model = options[CONF_PV_INPUT_MODEL]
         if model == PvInputModel.SURPLUS_SENSOR.value and not options.get(CONF_PV_SURPLUS_SENSOR):
@@ -289,17 +289,17 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_HOST, default=self.options.get(CONF_HOST, self._config_entry.data.get(CONF_HOST, ""))): str,
             vol.Optional(CONF_PORT, default=self.options.get(CONF_PORT, self._config_entry.data.get(CONF_PORT, DEFAULT_PORT))): _int_selector(1, 65535),
             vol.Optional(CONF_UNIT_ID, default=self.options.get(CONF_UNIT_ID, self._config_entry.data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID))): _int_selector(1, 255),
+            vol.Required(CONF_INSTALLED_PHASES, default=self.options.get(CONF_INSTALLED_PHASES, self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P))): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_MIN_CURRENT, default=self.options.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_MAX_CURRENT, default=self.options.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_USER_LIMIT, default=self.options.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
             vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
             vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
-            vol.Required(CONF_INSTALLED_PHASES, default=self.options.get(CONF_INSTALLED_PHASES, self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P))): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_MIN_CURRENT, default=self.options.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_MAX_CURRENT, default=self.options.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_USER_LIMIT, default=self.options.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
 
@@ -315,7 +315,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
-            vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.PHASE_CURRENTS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_DLB_INPUT_MODEL, default=self.options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
             vol.Optional(CONF_DLB_SENSOR_SCOPE, default=self.options.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_MAIN_FUSE, default=self.options.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
             vol.Optional(CONF_SAFETY_MARGIN, default=self.options.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
@@ -345,7 +345,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
-            vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.SURPLUS.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
+            vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=self.options.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
             vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_INPUT_MODEL, default=self.options.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS)),

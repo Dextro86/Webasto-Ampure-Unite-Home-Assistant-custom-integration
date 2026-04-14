@@ -58,6 +58,7 @@ Before installing:
 - `Modbus/TCP` is enabled in the charger's web interface.
 - No other system keeps an active `Modbus/TCP` connection open to the charger. The charger appears to accept only one active Modbus client at a time.
 - DLB and PV control require suitable Home Assistant sensors.
+- DLB and PV charging are disabled by default and should be enabled only after selecting suitable sensors.
 
 ## Installation
 

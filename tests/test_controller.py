@@ -18,7 +18,7 @@ def make_controller(**kwargs):
 
 
 def test_normal_mode_is_bounded_by_dlb():
-    controller = make_controller(dlb_sensor_scope="load_excluding_charger")
+    controller = make_controller(dlb_input_model="phase_currents", dlb_sensor_scope="load_excluding_charger")
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
     sensors = HaSensorSnapshot(
         phase_currents=PhaseCurrents(l1=14.0, l2=10.0, l3=9.0),
@@ -34,7 +34,7 @@ def test_normal_mode_is_bounded_by_dlb():
 
 
 def test_dlb_total_load_including_charger_adds_back_charger_current():
-    controller = make_controller(dlb_sensor_scope="total_including_charger")
+    controller = make_controller(dlb_input_model="phase_currents", dlb_sensor_scope="total_including_charger")
     wallbox = WallboxState(
         installed_phases=3,
         vehicle_connected=True,
@@ -248,7 +248,7 @@ def test_pv_phase_switching_does_not_request_switch_outside_pv_mode():
 
 
 def test_invalid_sensors_fall_back_to_safe_current():
-    controller = make_controller(safe_current_a=7.0)
+    controller = make_controller(dlb_input_model="phase_currents", safe_current_a=7.0)
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
     sensors = HaSensorSnapshot(valid=False, reason_invalid='missing sensors')
 
@@ -287,7 +287,12 @@ def test_transition_to_off_writes_zero_current_when_vehicle_connected():
 
 
 def test_normal_mode_loads_to_user_limit_but_is_still_limited_by_dlb():
-    controller = make_controller(max_current_a=20.0, user_limit_a=16.0, dlb_sensor_scope="load_excluding_charger")
+    controller = make_controller(
+        dlb_input_model="phase_currents",
+        max_current_a=20.0,
+        user_limit_a=16.0,
+        dlb_sensor_scope="load_excluding_charger",
+    )
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=17.0), valid=True)
 
