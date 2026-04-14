@@ -89,10 +89,22 @@ class _EntitySelectorConfig:
 class _EntitySelector:
     def __init__(self, config):
         self.config = config
+class _NumberSelectorConfig:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+class _NumberSelector:
+    def __init__(self, config):
+        self.config = config
+class _NumberSelectorMode:
+    BOX = "box"
 selector.SelectSelectorConfig = _SelectSelectorConfig
 selector.SelectSelector = _SelectSelector
 selector.EntitySelectorConfig = _EntitySelectorConfig
 selector.EntitySelector = _EntitySelector
+selector.NumberSelectorConfig = _NumberSelectorConfig
+selector.NumberSelector = _NumberSelector
+selector.NumberSelectorMode = _NumberSelectorMode
 sys.modules.setdefault("homeassistant.helpers.selector", selector)
 helpers.selector = selector
 

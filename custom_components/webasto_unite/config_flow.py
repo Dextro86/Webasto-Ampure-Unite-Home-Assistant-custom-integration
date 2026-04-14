@@ -60,6 +60,8 @@ MAX_CURRENT_A = 32.0
 MIN_POWER_W = 0.0
 MAX_POWER_W = 250_000.0
 MAX_PHASE_SWITCHING_HYSTERESIS_W = 10_000.0
+MAX_PHASE_SWITCHING_MIN_INTERVAL_S = 7_200.0
+MAX_PHASE_SWITCHING_PER_SESSION = 50
 MIN_SECONDS = 0.1
 MAX_SECONDS = 300.0
 MAX_RETRIES = 10
@@ -177,6 +179,7 @@ def _validate_pv_options(options: dict[str, Any]) -> dict[str, Any]:
     stop_threshold = float(options[CONF_PV_STOP_THRESHOLD])
     pv_min_current = float(options[CONF_PV_MIN_CURRENT])
     fixed_current = float(options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A))
+    phase_switch_max = int(options.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION))
 
     if stop_threshold > start_threshold:
         raise vol.Invalid(f"{CONF_PV_STOP_THRESHOLD} must be less than or equal to {CONF_PV_START_THRESHOLD}")
@@ -184,6 +187,8 @@ def _validate_pv_options(options: dict[str, Any]) -> dict[str, Any]:
         raise vol.Invalid(f"{CONF_PV_MIN_CURRENT} must be less than or equal to {MAX_CURRENT_A}")
     if not MIN_CURRENT_A <= fixed_current <= MAX_CURRENT_A:
         raise vol.Invalid(f"{CONF_FIXED_CURRENT} must be between {MIN_CURRENT_A} and {MAX_CURRENT_A}")
+    if not 1 <= phase_switch_max <= MAX_PHASE_SWITCHING_PER_SESSION:
+        raise vol.Invalid(f"{CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION} must be between 1 and {MAX_PHASE_SWITCHING_PER_SESSION}")
 
     strategy = options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
     if strategy in (PvControlStrategy.SURPLUS.value, PvControlStrategy.MIN_PLUS_SURPLUS.value):
@@ -229,6 +234,8 @@ def _validation_error_key(err: Exception) -> str:
         return "pv_grid_sensor_required"
     if CONF_FIXED_CURRENT in message:
         return "fixed_current_out_of_range"
+    if CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION in message:
+        return "phase_switch_limit_out_of_range"
     return "invalid_config"
 
 
@@ -338,6 +345,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 user_input[CONF_PV_MIN_PAUSE] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_PAUSE)(user_input[CONF_PV_MIN_PAUSE])
                 user_input[CONF_PV_MIN_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_PV_MIN_CURRENT)(user_input[CONF_PV_MIN_CURRENT])
                 user_input[CONF_PV_PHASE_SWITCHING_HYSTERESIS] = _bounded_float(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, CONF_PV_PHASE_SWITCHING_HYSTERESIS)(user_input[CONF_PV_PHASE_SWITCHING_HYSTERESIS])
+                user_input[CONF_PV_PHASE_SWITCHING_MIN_INTERVAL] = _bounded_float(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, CONF_PV_PHASE_SWITCHING_MIN_INTERVAL)(user_input[CONF_PV_PHASE_SWITCHING_MIN_INTERVAL])
+                user_input[CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION] = _bounded_int(1, MAX_PHASE_SWITCHING_PER_SESSION, CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION)(user_input[CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION])
                 user_input[CONF_FIXED_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_FIXED_CURRENT)(user_input[CONF_FIXED_CURRENT])
                 combined = {**self.options, **user_input}
                 self.options.update(_validate_pv_options(combined))
@@ -346,8 +355,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=self.options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
-            vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=self.options.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
-            vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
             vol.Optional(CONF_PV_INPUT_MODEL, default=self.options.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS)),
             _optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), self.options.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
             vol.Optional(CONF_PV_START_THRESHOLD, default=self.options.get(CONF_PV_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
@@ -357,7 +364,11 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_PV_MIN_RUNTIME, default=self.options.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_PAUSE, default=self.options.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_CURRENT, default=self.options.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=self.options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
+            vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=self.options.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
             vol.Optional(CONF_PV_PHASE_SWITCHING_HYSTERESIS, default=self.options.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W)): _float_selector(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, 1.0),
+            vol.Optional(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, default=self.options.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S)): _float_selector(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, 1.0),
+            vol.Optional(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, default=self.options.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION)): _int_selector(1, MAX_PHASE_SWITCHING_PER_SESSION),
             vol.Optional(CONF_FIXED_CURRENT, default=self.options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="pv", data_schema=schema, errors=errors)

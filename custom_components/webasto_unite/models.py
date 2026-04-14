@@ -220,6 +220,8 @@ class ControlConfig:
     pv_min_current_a: float = 6.0
     pv_phase_switching_mode: PvPhaseSwitchingMode = PvPhaseSwitchingMode.MANUAL_ONLY
     pv_phase_switching_hysteresis_w: float = 500.0
+    pv_phase_switching_min_interval_s: float = 300.0
+    pv_phase_switching_max_per_session: int = 6
     fixed_current_a: float = 6.0
     min_seconds_between_writes: float = 5.0
     min_current_change_a: float = 1.0
@@ -289,6 +291,9 @@ class RuntimeSnapshot:
     dlb_limit_a: Optional[float] = None
     final_target_a: Optional[float] = None
     mode_target_a: Optional[float] = None
+    pv_surplus_w: Optional[float] = None
+    phase_switch_decision: Optional[str] = None
+    phase_switch_count: int = 0
     dominant_limit_reason: Optional[str] = None
     fallback_active: bool = False
     last_client_error: str | None = None
@@ -319,6 +324,9 @@ class RuntimeSnapshot:
             "dlb_limit_a": self.dlb_limit_a,
             "final_target_a": self.final_target_a,
             "mode_target_a": self.mode_target_a,
+            "pv_surplus_w": self.pv_surplus_w,
+            "phase_switch_decision": self.phase_switch_decision,
+            "phase_switch_count": self.phase_switch_count,
             "dominant_limit_reason": self.dominant_limit_reason,
             "fallback_active": self.fallback_active,
             "last_client_error": self.last_client_error,

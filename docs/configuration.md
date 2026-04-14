@@ -101,6 +101,8 @@ surplus = PV production - total consumption + charger power
 
 This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
 
+There is no separate PV maximum-current setting. PV charging is still capped by `Default Current Limit`, `Maximum Current`, DLB, safety behavior and charger/session limits.
+
 ## PV Until Unplug
 
 `PV Until Unplug` is a temporary session override.
@@ -118,6 +120,10 @@ PV Phase Switching modes:
 - `Automatic 1P/3P`: allow automatic phase switching in PV mode.
 
 `PV Phase Switching Hysteresis (W)` controls the extra margin around the automatic 1P/3P switching point. The default is `500 W`.
+
+`Minimum Phase Switch Interval` limits how quickly automatic phase switching may happen again after a successful switch. The default is `300` seconds.
+
+`Maximum Phase Switches per Session` limits the number of automatic phase switches during one plug-in session. The default is `6`.
 
 With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 
@@ -137,6 +143,12 @@ The integration performs phase switching conservatively:
 4. It resumes charging after the charger reports the requested phase mode.
 
 Register `405` has been validated on one charger with firmware `3.187`. Other firmware versions may behave differently.
+
+Useful phase-switching diagnostics:
+
+- `PV Surplus Used`: surplus value used by the PV logic.
+- `Phase Switch Decision`: current automatic phase-switching decision or block reason.
+- `Phase Switch Count`: number of automatic phase switches in the current plug-in session.
 
 ## Important entities
 
@@ -163,6 +175,9 @@ Useful diagnostics:
 - `Sensor Invalid Reason`
 - `Write Queue Depth`
 - `Phase Switch Mode Code`
+- `PV Surplus Used`
+- `Phase Switch Decision`
+- `Phase Switch Count`
 
 ## Troubleshooting basics
 

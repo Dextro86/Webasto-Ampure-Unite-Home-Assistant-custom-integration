@@ -40,6 +40,8 @@ from .const import (
     CONF_PV_MIN_PAUSE,
     CONF_PV_PHASE_SWITCHING_MODE,
     CONF_PV_PHASE_SWITCHING_HYSTERESIS,
+    CONF_PV_PHASE_SWITCHING_MIN_INTERVAL,
+    CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION,
     CONF_PV_SURPLUS_SENSOR,
     CONF_RETRIES,
     CONF_SAFE_CURRENT,
@@ -62,6 +64,8 @@ from .const import (
     DEFAULT_PV_MIN_PAUSE_S,
     DEFAULT_PV_PHASE_SWITCHING_MODE,
     DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W,
+    DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S,
+    DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION,
     DEFAULT_RETRIES,
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
@@ -113,6 +117,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._fixed_current_until_unplug_active = False
         self._last_vehicle_connected = False
         self._pending_phase_switch_target: int | None = None
+        self._last_phase_switch_monotonic = 0.0
+        self._phase_switch_count_this_session = 0
+        self._phase_switch_decision: str | None = None
         self._sensor_unsubscribers = []
         self._last_keepalive_sent_monotonic = 0.0
         self._keepalive_started_monotonic = monotonic()
@@ -156,6 +163,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             ),
             pv_phase_switching_hysteresis_w=float(
                 merged.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W)
+            ),
+            pv_phase_switching_min_interval_s=float(
+                merged.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S)
+            ),
+            pv_phase_switching_max_per_session=int(
+                merged.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION)
             ),
             fixed_current_a=float(merged.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)),
             communication_timeout_s=float(merged.get(CONF_COMM_TIMEOUT, 30.0)),
@@ -293,8 +306,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pv_until_unplug_active = False
                 self._fixed_current_until_unplug_active = False
                 self._reset_pv_runtime_state()
+                self._phase_switch_count_this_session = 0
+                self._pending_phase_switch_target = None
+            if not self._last_vehicle_connected and wallbox.vehicle_connected:
+                self._phase_switch_count_this_session = 0
             self._last_vehicle_connected = wallbox.vehicle_connected
             sensors = self._read_sensor_snapshot()
+            pv_surplus_w = self.controller._resolve_surplus_power(sensors)
             pv_strategy = self.controller.resolve_effective_pv_strategy(
                 self.control_config.pv_control_strategy,
                 self.control_config.pv_until_unplug_strategy,
@@ -328,6 +346,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 dlb_limit_a=decision.dlb_limit_a,
                 final_target_a=decision.final_target_a,
                 mode_target_a=decision.mode_target_a,
+                pv_surplus_w=pv_surplus_w,
+                phase_switch_decision=self._phase_switch_decision,
+                phase_switch_count=self._phase_switch_count_this_session,
                 dominant_limit_reason=decision.dominant_limit_reason.value if decision.dominant_limit_reason is not None else None,
                 fallback_active=decision.fallback_active,
                 last_client_error=self.client.stats.last_error,
@@ -472,40 +493,65 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
     async def _enqueue_pv_phase_switch_if_needed(self, wallbox, sensors) -> bool:
         if not self._allows_control_writes():
+            self._phase_switch_decision = "control_writes_disabled"
             return False
         if (
             self.effective_mode != ChargeMode.PV
             or self.control_config.pv_phase_switching_mode != PvPhaseSwitchingMode.AUTOMATIC_1P3P
         ):
             self._pending_phase_switch_target = None
+            self._phase_switch_decision = (
+                "outside_pv_mode"
+                if self.effective_mode != ChargeMode.PV
+                else "automatic_phase_switching_disabled"
+            )
             return False
 
         current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3 if wallbox.phase_switch_mode_raw == 1 else None
         if current_phases is None:
             self._pending_phase_switch_target = None
+            self._phase_switch_decision = "phase_switch_register_unavailable"
             return False
         if self._pending_phase_switch_target is None:
-            self._pending_phase_switch_target = self.controller.resolve_pv_phase_target(
+            target = self.controller.resolve_pv_phase_target(
                 self.effective_mode,
                 wallbox,
                 sensors,
             )
+            if target is None:
+                self._phase_switch_decision = "no_phase_switch_needed"
+                return False
+            phase_switch_count = getattr(self, "_phase_switch_count_this_session", 0)
+            if phase_switch_count >= self.control_config.pv_phase_switching_max_per_session:
+                self._phase_switch_decision = "phase_switch_session_limit_reached"
+                return False
+            last_phase_switch = getattr(self, "_last_phase_switch_monotonic", 0.0)
+            elapsed = monotonic() - last_phase_switch if last_phase_switch else None
+            if elapsed is not None and elapsed < self.control_config.pv_phase_switching_min_interval_s:
+                self._phase_switch_decision = "phase_switch_rate_limited"
+                return False
+            self._pending_phase_switch_target = target
+            self._phase_switch_decision = "phase_switch_requested"
 
         target_phases = self._pending_phase_switch_target
         if target_phases is None:
+            self._phase_switch_decision = "no_phase_switch_needed"
             return False
         if current_phases == target_phases:
             self._pending_phase_switch_target = None
+            self._phase_switch_decision = "phase_switch_complete"
             return False
 
         await self.write_queue.clear()
         await self._enqueue_keepalive_if_needed()
         if wallbox.charging_active:
+            self._phase_switch_decision = "pausing_before_phase_switch"
             await self.write_queue.enqueue(
                 QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
             )
             return True
 
+        self._phase_switch_decision = "writing_phase_switch_mode"
         await self.write_queue.enqueue(
             QueuedWrite(
                 "phase_switch_mode",
@@ -544,6 +590,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                     self._keepalive_sent_count += 1
                 if item.key == "current_limit":
                     self.controller.mark_current_written(float(item.value))
+                if item.key == "phase_switch_mode":
+                    self._last_phase_switch_monotonic = monotonic()
+                    self._phase_switch_count_this_session = getattr(self, "_phase_switch_count_this_session", 0) + 1
 
     def _allows_keepalive(self) -> bool:
         return self.control_config.control_mode in (ControlMode.KEEPALIVE_ONLY, ControlMode.MANAGED_CONTROL)

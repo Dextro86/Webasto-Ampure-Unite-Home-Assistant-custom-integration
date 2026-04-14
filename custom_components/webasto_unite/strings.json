@@ -66,6 +66,8 @@
           "pv_min_current": "PV Minimum Current",
           "pv_phase_switching_mode": "PV Phase Switching",
           "pv_phase_switching_hysteresis": "PV Phase Switching Hysteresis (W)",
+          "pv_phase_switching_min_interval": "Minimum Phase Switch Interval",
+          "pv_phase_switching_max_per_session": "Maximum Phase Switches per Session",
           "fixed_current": "Fixed Current"
         }
       }
@@ -84,7 +86,8 @@
       "pv_threshold_order": "The PV stop threshold must be less than or equal to the PV start threshold.",
       "pv_surplus_sensor_required": "Select a PV surplus sensor for the surplus-sensor PV model.",
       "pv_grid_sensor_required": "Select a grid power sensor when PV surplus is derived from grid power.",
-      "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range."
+      "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range.",
+      "phase_switch_limit_out_of_range": "The phase switching session limit must stay within the supported range."
     }
   }
 }
