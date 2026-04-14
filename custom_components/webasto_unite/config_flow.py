@@ -22,36 +22,36 @@ CONTROL_MODE_SELECTOR_OPTIONS = [
     {"value": ControlMode.MANAGED_CONTROL.value, "label": "Managed Charging Control"},
 ]
 KEEPALIVE_MODE_SELECTOR_OPTIONS = [
-    {"value": KeepaliveMode.AUTO.value, "label": "Auto (recommended)"},
-    {"value": KeepaliveMode.FORCED.value, "label": "Always send keepalive"},
-    {"value": KeepaliveMode.DISABLED.value, "label": "Disable keepalive"},
+    {"value": KeepaliveMode.AUTO.value, "label": "Auto (Recommended)"},
+    {"value": KeepaliveMode.FORCED.value, "label": "Always Send Keepalive"},
+    {"value": KeepaliveMode.DISABLED.value, "label": "Disable Keepalive"},
 ]
 DLB_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": DlbInputModel.DISABLED.value, "label": "Disabled"},
-    {"value": DlbInputModel.PHASE_CURRENTS.value, "label": "Phase current sensors (recommended)"},
-    {"value": DlbInputModel.GRID_POWER.value, "label": "Grid power sensor"},
+    {"value": DlbInputModel.PHASE_CURRENTS.value, "label": "Phase Current Sensors (Recommended)"},
+    {"value": DlbInputModel.GRID_POWER.value, "label": "Grid Power Sensor"},
 ]
 DLB_SENSOR_SCOPE_SELECTOR_OPTIONS = [
-    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Total house current charger excluded"},
-    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Total house current charger included"},
+    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Total House Current Charger Excluded"},
+    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Total House Current Charger Included"},
 ]
 PV_INPUT_MODEL_SELECTOR_OPTIONS = [
-    {"value": PvInputModel.SURPLUS_SENSOR.value, "label": "Use a surplus power sensor"},
-    {"value": PvInputModel.GRID_POWER_DERIVED.value, "label": "Use signed grid power sensor"},
+    {"value": PvInputModel.SURPLUS_SENSOR.value, "label": "Use a Surplus Power Sensor"},
+    {"value": PvInputModel.GRID_POWER_DERIVED.value, "label": "Use Signed Grid Power Sensor"},
 ]
 PV_CONTROL_STRATEGY_OPTIONS = [
     {"value": PvControlStrategy.DISABLED.value, "label": "Disabled"},
-    {"value": PvControlStrategy.SURPLUS.value, "label": "Surplus only"},
-    {"value": PvControlStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + surplus"},
+    {"value": PvControlStrategy.SURPLUS.value, "label": "Surplus Only"},
+    {"value": PvControlStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + Surplus"},
 ]
 PV_OVERRIDE_STRATEGY_OPTIONS = [
-    {"value": PvOverrideStrategy.INHERIT.value, "label": "Same as PV control strategy"},
-    {"value": PvOverrideStrategy.SURPLUS.value, "label": "Surplus only"},
-    {"value": PvOverrideStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + surplus"},
+    {"value": PvOverrideStrategy.INHERIT.value, "label": "Same as PV Control Strategy"},
+    {"value": PvOverrideStrategy.SURPLUS.value, "label": "Surplus Only"},
+    {"value": PvOverrideStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + Surplus"},
 ]
 PV_PHASE_SWITCHING_MODE_OPTIONS = [
     {"value": PvPhaseSwitchingMode.DISABLED.value, "label": "Disabled"},
-    {"value": PvPhaseSwitchingMode.MANUAL_ONLY.value, "label": "Manual only"},
+    {"value": PvPhaseSwitchingMode.MANUAL_ONLY.value, "label": "Manual Only"},
     {"value": PvPhaseSwitchingMode.AUTOMATIC_1P3P.value, "label": "Automatic 1P/3P"},
 ]
 
@@ -59,6 +59,7 @@ MIN_CURRENT_A = 6.0
 MAX_CURRENT_A = 32.0
 MIN_POWER_W = 0.0
 MAX_POWER_W = 250_000.0
+MAX_PHASE_SWITCHING_HYSTERESIS_W = 10_000.0
 MIN_SECONDS = 0.1
 MAX_SECONDS = 300.0
 MAX_RETRIES = 10
@@ -271,6 +272,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                     CONF_INSTALLED_PHASES: user_input.pop(CONF_INSTALLED_PHASES),
                 }
                 self.entry_data = _validate_connection_data(connection_input)
+                user_input.update(self.entry_data)
                 user_input[CONF_POLLING_INTERVAL] = _bounded_float(MIN_SECONDS, MAX_SECONDS, CONF_POLLING_INTERVAL)(user_input[CONF_POLLING_INTERVAL])
                 user_input[CONF_TIMEOUT] = _bounded_float(MIN_SECONDS, 60.0, CONF_TIMEOUT)(user_input[CONF_TIMEOUT])
                 user_input[CONF_RETRIES] = _bounded_int(1, MAX_RETRIES, CONF_RETRIES)(user_input[CONF_RETRIES])
@@ -284,16 +286,16 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
-            vol.Required(CONF_HOST, default=self._config_entry.data.get(CONF_HOST, "")): str,
-            vol.Optional(CONF_PORT, default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)): _int_selector(1, 65535),
-            vol.Optional(CONF_UNIT_ID, default=self._config_entry.data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)): _int_selector(1, 255),
+            vol.Required(CONF_HOST, default=self.options.get(CONF_HOST, self._config_entry.data.get(CONF_HOST, ""))): str,
+            vol.Optional(CONF_PORT, default=self.options.get(CONF_PORT, self._config_entry.data.get(CONF_PORT, DEFAULT_PORT))): _int_selector(1, 65535),
+            vol.Optional(CONF_UNIT_ID, default=self.options.get(CONF_UNIT_ID, self._config_entry.data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID))): _int_selector(1, 255),
             vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             vol.Optional(CONF_TIMEOUT, default=self.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
             vol.Optional(CONF_RETRIES, default=self.options.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
-            vol.Required(CONF_INSTALLED_PHASES, default=self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
+            vol.Required(CONF_INSTALLED_PHASES, default=self.options.get(CONF_INSTALLED_PHASES, self._config_entry.data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P))): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_MIN_CURRENT, default=self.options.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
             vol.Optional(CONF_MAX_CURRENT, default=self.options.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
             vol.Optional(CONF_USER_LIMIT, default=self.options.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
@@ -335,10 +337,10 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 user_input[CONF_PV_MIN_RUNTIME] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_RUNTIME)(user_input[CONF_PV_MIN_RUNTIME])
                 user_input[CONF_PV_MIN_PAUSE] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_PAUSE)(user_input[CONF_PV_MIN_PAUSE])
                 user_input[CONF_PV_MIN_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_PV_MIN_CURRENT)(user_input[CONF_PV_MIN_CURRENT])
+                user_input[CONF_PV_PHASE_SWITCHING_HYSTERESIS] = _bounded_float(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, CONF_PV_PHASE_SWITCHING_HYSTERESIS)(user_input[CONF_PV_PHASE_SWITCHING_HYSTERESIS])
                 user_input[CONF_FIXED_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_FIXED_CURRENT)(user_input[CONF_FIXED_CURRENT])
                 combined = {**self.options, **user_input}
                 self.options.update(_validate_pv_options(combined))
-                self.hass.config_entries.async_update_entry(self._config_entry, data=self.entry_data)
                 return self.async_create_entry(title="", data=self.options)
             except vol.Invalid as err:
                 errors["base"] = _validation_error_key(err)
@@ -355,6 +357,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_PV_MIN_RUNTIME, default=self.options.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_PAUSE, default=self.options.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
             vol.Optional(CONF_PV_MIN_CURRENT, default=self.options.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            vol.Optional(CONF_PV_PHASE_SWITCHING_HYSTERESIS, default=self.options.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W)): _float_selector(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, 1.0),
             vol.Optional(CONF_FIXED_CURRENT, default=self.options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
         })
         return self.async_show_form(step_id="pv", data_schema=schema, errors=errors)

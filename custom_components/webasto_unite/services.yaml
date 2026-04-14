@@ -1,7 +1,7 @@
 
 set_mode:
-  name: Set charge mode
-  description: Set the active charge mode for a configured Webasto Unite integration entry.
+  name: Set Charge Mode
+  description: Set the active Charge Mode for a configured Webasto Unite integration entry.
   fields:
     entry_id:
       name: Entry ID
@@ -10,12 +10,12 @@ set_mode:
       example: "abc123"
     mode:
       name: Mode
-      description: Charge mode to apply.
+      description: Charge Mode to apply.
       required: true
       example: "pv"
 set_user_limit:
-  name: Set current limit
-  description: Set the default current limit used by normal charging mode.
+  name: Set Current Limit
+  description: Set the default Current Limit used by normal charging mode.
   fields:
     entry_id:
       name: Entry ID
@@ -24,11 +24,11 @@ set_user_limit:
       example: "abc123"
     current_a:
       name: Current
-      description: Current limit in amperes.
+      description: Current Limit in amperes.
       required: true
       example: 10
 trigger_reconnect:
-  name: Reconnect charger
+  name: Reconnect Charger
   description: Reconnect the Modbus/TCP client and refresh charger state.
   fields:
     entry_id:
@@ -37,7 +37,7 @@ trigger_reconnect:
       required: true
       example: "abc123"
 enable_pv_until_unplug:
-  name: Enable PV until unplug
+  name: Enable PV Until Unplug
   description: Temporarily use PV charging until the vehicle is unplugged.
   fields:
     entry_id:
@@ -46,8 +46,8 @@ enable_pv_until_unplug:
       required: true
       example: "abc123"
 disable_pv_until_unplug:
-  name: Disable PV until unplug
-  description: Disable the temporary PV-until-unplug override.
+  name: Disable PV Until Unplug
+  description: Disable the temporary PV Until Unplug override.
   fields:
     entry_id:
       name: Entry ID
@@ -55,7 +55,7 @@ disable_pv_until_unplug:
       required: true
       example: "abc123"
 enable_fixed_current_until_unplug:
-  name: Enable Fixed Current until Unplug
+  name: Enable Fixed Current Until Unplug
   description: Temporarily use Fixed Current charging until the vehicle is unplugged.
   fields:
     entry_id:
@@ -64,8 +64,8 @@ enable_fixed_current_until_unplug:
       required: true
       example: "abc123"
 disable_fixed_current_until_unplug:
-  name: Disable Fixed Current until Unplug
-  description: Disable the temporary Fixed Current until Unplug override.
+  name: Disable Fixed Current Until Unplug
+  description: Disable the temporary Fixed Current Until Unplug override.
   fields:
     entry_id:
       name: Entry ID

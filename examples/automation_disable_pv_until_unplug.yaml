@@ -1,4 +1,4 @@
-alias: Webasto Unite - Disable PV until unplug
+alias: Webasto Unite - Disable PV Until Unplug
 mode: single
 trigger: []
 condition: []

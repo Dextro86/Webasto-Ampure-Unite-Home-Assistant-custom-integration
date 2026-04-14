@@ -6,6 +6,7 @@ import logging
 from time import monotonic
 from datetime import timedelta
 
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -38,6 +39,7 @@ from .const import (
     CONF_PV_MIN_RUNTIME,
     CONF_PV_MIN_PAUSE,
     CONF_PV_PHASE_SWITCHING_MODE,
+    CONF_PV_PHASE_SWITCHING_HYSTERESIS,
     CONF_PV_SURPLUS_SENSOR,
     CONF_RETRIES,
     CONF_SAFE_CURRENT,
@@ -59,6 +61,7 @@ from .const import (
     DEFAULT_PV_MIN_RUNTIME_S,
     DEFAULT_PV_MIN_PAUSE_S,
     DEFAULT_PV_PHASE_SWITCHING_MODE,
+    DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W,
     DEFAULT_RETRIES,
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
@@ -151,15 +154,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             pv_phase_switching_mode=PvPhaseSwitchingMode(
                 merged.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)
             ),
+            pv_phase_switching_hysteresis_w=float(
+                merged.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W)
+            ),
             fixed_current_a=float(merged.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)),
             communication_timeout_s=float(merged.get(CONF_COMM_TIMEOUT, 30.0)),
         )
         self.controller = WallboxController(self.control_config)
         self.client = WebastoModbusClient(
             ModbusClientConfig(
-                host=entry.data["host"],
-                port=int(entry.data.get("port", DEFAULT_PORT)),
-                unit_id=int(entry.data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)),
+                host=merged[CONF_HOST],
+                port=int(merged.get(CONF_PORT, DEFAULT_PORT)),
+                unit_id=int(merged.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)),
                 timeout_s=self.control_config.timeout_s,
                 retries=self.control_config.retries,
             )
@@ -256,7 +262,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
     async def async_set_phase_switch_mode(self, phases: int) -> None:
         if phases not in (1, 3):
-            raise ValueError("Phase switch mode must be 1 or 3 phases")
+            raise ValueError("Phase Switch Mode must be 1 or 3 phases")
         if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
             raise ValueError("Phase switching is disabled in the integration settings")
         if self.data is None:

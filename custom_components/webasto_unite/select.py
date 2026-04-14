@@ -26,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 
 class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
-    _attr_name = "Charge mode"
+    _attr_name = "Charge Mode"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
@@ -68,7 +68,7 @@ PHASE_SWITCH_PHASES_BY_RAW = {
 
 
 class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
-    _attr_name = "Phase switch mode"
+    _attr_name = "Phase Switch Mode"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)

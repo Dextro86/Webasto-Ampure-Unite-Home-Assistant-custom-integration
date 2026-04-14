@@ -20,7 +20,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 
 class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
-    _attr_name = "Current limit"
+    _attr_name = "Current Limit"
     _attr_native_min_value = 6
     _attr_native_max_value = 32
     _attr_native_step = 1

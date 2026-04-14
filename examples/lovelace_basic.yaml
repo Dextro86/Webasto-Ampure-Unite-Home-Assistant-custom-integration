@@ -4,22 +4,22 @@ cards:
     title: Webasto Unite
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_operating_state
-        name: Charging behavior
-      - entity: sensor.webasto_unite_effective_mode
-        name: Active mode
-      - entity: select.webasto_unite_charge_mode
-        name: Charge mode
       - entity: switch.webasto_unite_charging_allowed
-        name: Allow charging
+        name: Charging On/Off
+      - entity: select.webasto_unite_charge_mode
+        name: Charge Mode
       - entity: select.webasto_unite_phase_switch
-        name: Phase switch mode
+        name: Phase Switch Mode
+      - entity: sensor.webasto_unite_operating_state
+        name: Charging Behavior
+      - entity: sensor.webasto_unite_effective_mode
+        name: Active Mode
       - entity: switch.webasto_unite_pv_until_unplug
-        name: PV until unplug
+        name: PV Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
-        name: Fixed Current until Unplug
+        name: Fixed Current Until Unplug
       - entity: number.webasto_unite_current_limit
-        name: Current limit
+        name: Current Limit
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
 
@@ -29,7 +29,7 @@ cards:
       - entity: binary_sensor.webasto_unite_vehicle_connected
         name: Vehicle
       - entity: binary_sensor.webasto_unite_charging_active
-        name: Charging active
+        name: Charging Active
       - entity: binary_sensor.webasto_unite_connected
         name: Modbus
 
@@ -38,10 +38,10 @@ cards:
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_active_power
-        name: Active power
+        name: Active Power
       - entity: sensor.webasto_unite_actual_current
-        name: Max phase current
+        name: Max Phase Current
       - entity: sensor.webasto_unite_session_energy
-        name: Session energy
+        name: Session Energy
       - entity: sensor.webasto_unite_session_duration
-        name: Session duration
+        name: Session Duration

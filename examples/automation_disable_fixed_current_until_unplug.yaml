@@ -1,4 +1,4 @@
-alias: Webasto Unite - Disable fixed current until unplug
+alias: Webasto Unite - Disable Fixed Current Until Unplug
 mode: single
 trigger: []
 condition: []

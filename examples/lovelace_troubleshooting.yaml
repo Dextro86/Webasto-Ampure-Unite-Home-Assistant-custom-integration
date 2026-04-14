@@ -5,52 +5,52 @@ cards:
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_operating_state
-        name: Charging behavior
+        name: Charging Behavior
       - entity: sensor.webasto_unite_effective_mode
-        name: Active mode
+        name: Active Mode
       - entity: sensor.webasto_unite_capability_summary
-        name: Capability summary
+        name: Capability Summary
       - entity: sensor.webasto_unite_control_reason
-        name: Control reason
+        name: Control Reason
       - entity: switch.webasto_unite_pv_until_unplug
-        name: PV until unplug
+        name: PV Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
-        name: Fixed Current until Unplug
+        name: Fixed Current Until Unplug
       - entity: sensor.webasto_unite_dominant_limit
-        name: Dominant limit
+        name: Dominant Limit
       - entity: sensor.webasto_unite_sensor_invalid_reason
-        name: Sensor invalid reason
+        name: Sensor Invalid Reason
       - entity: sensor.webasto_unite_fallback_active
-        name: Fallback active
+        name: Fallback Active
 
   - type: entities
     title: Modbus & Keepalive
     show_header_toggle: false
     entities:
       - entity: binary_sensor.webasto_unite_connected
-        name: Modbus connected
+        name: Modbus Connected
       - entity: binary_sensor.webasto_unite_keepalive_overdue
-        name: Keepalive overdue
+        name: Keepalive Overdue
       - entity: sensor.webasto_unite_keepalive_age
-        name: Keepalive age
+        name: Keepalive Age
       - entity: sensor.webasto_unite_keepalive_sent_count
-        name: Keepalive sent count
+        name: Keepalive Sent Count
       - entity: sensor.webasto_unite_keepalive_write_failures
-        name: Keepalive write failures
+        name: Keepalive Write Failures
       - entity: sensor.webasto_unite_pending_write
-        name: Pending write
+        name: Pending Write
       - entity: sensor.webasto_unite_client_error
-        name: Client error
+        name: Client Error
 
   - type: entities
     title: Validation Context
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_firmware_version
-        name: Firmware version
+        name: Firmware Version
       - entity: sensor.webasto_unite_charger_configured_phases
-        name: Charger configured phases
+        name: Charger Configured Phases
       - entity: sensor.webasto_unite_dlb_limit
-        name: DLB limit
+        name: DLB Limit
       - entity: sensor.webasto_unite_final_target
-        name: Final target
+        name: Final Target

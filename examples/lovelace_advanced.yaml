@@ -4,22 +4,22 @@ cards:
     title: Webasto Unite Control
     show_header_toggle: false
     entities:
-      - entity: select.webasto_unite_charge_mode
-        name: Charge mode
-      - entity: sensor.webasto_unite_operating_state
-        name: Charging behavior
-      - entity: sensor.webasto_unite_effective_mode
-        name: Active mode
       - entity: switch.webasto_unite_charging_allowed
-        name: Allow charging
+        name: Charging On/Off
+      - entity: select.webasto_unite_charge_mode
+        name: Charge Mode
       - entity: select.webasto_unite_phase_switch
-        name: Phase switch mode
+        name: Phase Switch Mode
+      - entity: sensor.webasto_unite_operating_state
+        name: Charging Behavior
+      - entity: sensor.webasto_unite_effective_mode
+        name: Active Mode
       - entity: switch.webasto_unite_pv_until_unplug
-        name: PV until unplug
+        name: PV Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
-        name: Fixed Current until Unplug
+        name: Fixed Current Until Unplug
       - entity: number.webasto_unite_current_limit
-        name: Current limit
+        name: Current Limit
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
 
@@ -28,41 +28,41 @@ cards:
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_active_power
-        name: Active power
+        name: Active Power
       - entity: sensor.webasto_unite_actual_current
-        name: Max phase current
+        name: Max Phase Current
       - entity: sensor.webasto_unite_session_energy
-        name: Session energy
+        name: Session Energy
       - entity: sensor.webasto_unite_energy_meter
-        name: Energy meter
+        name: Energy Meter
       - entity: sensor.webasto_unite_session_duration
-        name: Session duration
+        name: Session Duration
 
   - type: entities
     title: Control Logic
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_dlb_limit
-        name: DLB limit
+        name: DLB Limit
       - entity: sensor.webasto_unite_final_target
-        name: Final target
+        name: Final Target
       - entity: sensor.webasto_unite_control_reason
-        name: Control reason
+        name: Control Reason
       - entity: sensor.webasto_unite_dominant_limit
-        name: Dominant limit
+        name: Dominant Limit
       - entity: sensor.webasto_unite_fallback_active
-        name: Fallback active
+        name: Fallback Active
 
   - type: entities
     title: Three-Phase Detail
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_active_power_l1
-        name: Active power L1
+        name: Active Power L1
       - entity: sensor.webasto_unite_active_power_l2
-        name: Active power L2
+        name: Active Power L2
       - entity: sensor.webasto_unite_active_power_l3
-        name: Active power L3
+        name: Active Power L3
       - entity: sensor.webasto_unite_voltage_l1
         name: Voltage L1
       - entity: sensor.webasto_unite_voltage_l2

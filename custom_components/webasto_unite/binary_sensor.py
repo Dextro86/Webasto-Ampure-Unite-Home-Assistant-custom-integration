@@ -12,8 +12,8 @@ from .entity import WebastoUniteCoordinatorEntity
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        WebastoBinarySensor(coordinator, "Vehicle connected", "vehicle_connected"),
-        WebastoBinarySensor(coordinator, "Charging active", "charging_active"),
+        WebastoBinarySensor(coordinator, "Vehicle Connected", "vehicle_connected"),
+        WebastoBinarySensor(coordinator, "Charging Active", "charging_active"),
         WebastoConnectionBinarySensor(coordinator),
         WebastoKeepaliveOverdueBinarySensor(coordinator),
     ])
@@ -51,7 +51,7 @@ class WebastoConnectionBinarySensor(WebastoUniteCoordinatorEntity, BinarySensorE
 
 
 class WebastoKeepaliveOverdueBinarySensor(WebastoUniteCoordinatorEntity, BinarySensorEntity):
-    _attr_name = "Keepalive overdue"
+    _attr_name = "Keepalive Overdue"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator) -> None:

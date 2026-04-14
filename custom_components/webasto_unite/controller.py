@@ -330,7 +330,7 @@ class WallboxController:
         nominal_voltage = 230.0
         min_1p_w = self.config.pv_min_current_a * nominal_voltage
         min_3p_w = self.config.pv_min_current_a * 3 * nominal_voltage
-        hysteresis_w = 500.0
+        hysteresis_w = self.config.pv_phase_switching_hysteresis_w
         switch_up_w = min_3p_w + hysteresis_w
         switch_down_w = max(min_1p_w, min_3p_w - hysteresis_w)
 

@@ -29,8 +29,8 @@ Supported charge modes:
 
 Temporary session overrides:
 
-- `PV until Unplug`
-- `Fixed Current until Unplug`
+- `PV Until Unplug`
+- `Fixed Current Until Unplug`
 
 ## Documentation
 
@@ -84,29 +84,29 @@ Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unit
 
 Important entities for daily use:
 
-- `Charge mode`
-- `Allow charging`
-- `Phase switch mode`
-- `PV until Unplug`
-- `Fixed Current until Unplug`
-- `Current limit`
+- `Charge Mode`
+- `Charging On/Off`
+- `Phase Switch Mode`
+- `PV Until Unplug`
+- `Fixed Current Until Unplug`
+- `Current Limit`
 - `Fixed Current`
-- `Active mode`
-- `Charging behavior`
-- `Final target`
-- `DLB limit`
+- `Active Mode`
+- `Charging Behavior`
+- `Final Target`
+- `DLB Limit`
 
 Useful diagnostics:
 
 - `Connected`
-- `Client error`
-- `Control reason`
-- `Dominant limit`
-- `Sensor invalid reason`
-- `Write queue depth`
-- `Phase switch mode code`
+- `Client Error`
+- `Control Reason`
+- `Dominant Limit`
+- `Sensor Invalid Reason`
+- `Write Queue Depth`
+- `Phase Switch Mode Code`
 
-`Charge mode` is the selected base mode. `Active mode` shows what the integration is actually doing after overrides and PV behavior are applied. `Charging behavior` is a short dashboard-friendly status summary.
+`Charge Mode` is the selected base mode. `Active Mode` shows what the integration is actually doing after overrides and PV behavior are applied. `Charging Behavior` is a short dashboard-friendly status summary.
 
 ## Known limitations
 

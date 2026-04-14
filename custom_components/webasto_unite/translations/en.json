@@ -8,7 +8,7 @@
           "host": "Charger IP address",
           "port": "Port",
           "unit_id": "Modbus Unit ID",
-          "installed_phases": "Charger phase configuration"
+          "installed_phases": "Charger Phase Configuration"
         }
       }
     }
@@ -16,55 +16,56 @@
   "options": {
     "step": {
       "init": {
-        "title": "Connection and control",
+        "title": "Connection and Control",
         "description": "Configure the charger connection, polling, safety limits and whether the integration may actively control charging.",
         "data": {
           "host": "Charger IP address",
           "port": "Port",
           "unit_id": "Modbus Unit ID",
-          "installed_phases": "Charger phase configuration",
-          "polling_interval": "Refresh interval",
-          "timeout": "Modbus timeout",
-          "retries": "Modbus retries",
-          "control_mode": "Control mode",
-          "keepalive_mode": "Keepalive mode",
-          "keepalive_interval": "Keepalive interval",
-          "safe_current": "Safe current on failure",
-          "min_current": "Minimum current",
-          "max_current": "Maximum current",
-          "user_limit": "Default current limit"
+          "installed_phases": "Charger Phase Configuration",
+          "polling_interval": "Refresh Interval",
+          "timeout": "Modbus Timeout",
+          "retries": "Modbus Retries",
+          "control_mode": "Control Mode",
+          "keepalive_mode": "Keepalive Mode",
+          "keepalive_interval": "Keepalive Interval",
+          "safe_current": "Safe Current on Failure",
+          "min_current": "Minimum Current",
+          "max_current": "Maximum Current",
+          "user_limit": "Default Current Limit"
         }
       },
       "dlb": {
-        "title": "Dynamic load balancing",
+        "title": "Dynamic Load Balancing",
         "description": "Configure Dynamic Load Balancing (DLB). DLB reduces the charger current when your house load gets close to the configured main fuse limit.",
         "data": {
-          "dlb_input_model": "DLB measurement source",
-          "dlb_sensor_scope": "What do the DLB sensors measure?",
-          "main_fuse": "Main fuse limit",
-          "safety_margin": "Safety margin",
-          "dlb_l1_sensor": "L1 house current sensor",
-          "dlb_l2_sensor": "L2 house current sensor",
-          "dlb_l3_sensor": "L3 house current sensor",
-          "dlb_grid_power_sensor": "Grid power sensor"
+          "dlb_input_model": "DLB Measurement Source",
+          "dlb_sensor_scope": "DLB Sensor Scope",
+          "main_fuse": "Main Fuse Limit",
+          "safety_margin": "Safety Margin",
+          "dlb_l1_sensor": "L1 House Current Sensor",
+          "dlb_l2_sensor": "L2 House Current Sensor",
+          "dlb_l3_sensor": "L3 House Current Sensor",
+          "dlb_grid_power_sensor": "Grid Power Sensor"
         }
       },
       "pv": {
-        "title": "PV and Fixed Current charging",
-        "description": "Configure optional PV charging behavior, PV phase switching and the Fixed Current target. Choose Disabled for PV control strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid.",
+        "title": "PV and Fixed Current Charging",
+        "description": "Configure optional PV charging behavior, PV Phase Switching and the Fixed Current target. Choose Disabled for PV Control Strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid.",
         "data": {
-          "pv_input_model": "PV measurement source",
-          "pv_control_strategy": "PV control strategy",
-          "pv_until_unplug_strategy": "PV until unplug strategy",
-          "pv_surplus_sensor": "PV surplus sensor",
-          "pv_start_threshold": "PV start threshold (W)",
-          "pv_stop_threshold": "PV stop threshold (W)",
-          "pv_start_delay": "PV start delay",
-          "pv_stop_delay": "PV stop delay",
-          "pv_min_runtime": "PV minimum runtime",
-          "pv_min_pause": "PV minimum pause",
-          "pv_min_current": "PV minimum current",
-          "pv_phase_switching_mode": "PV phase switching",
+          "pv_input_model": "PV Measurement Source",
+          "pv_control_strategy": "PV Control Strategy",
+          "pv_until_unplug_strategy": "PV Until Unplug Strategy",
+          "pv_surplus_sensor": "PV Surplus Sensor",
+          "pv_start_threshold": "PV Start Threshold (W)",
+          "pv_stop_threshold": "PV Stop Threshold (W)",
+          "pv_start_delay": "PV Start Delay",
+          "pv_stop_delay": "PV Stop Delay",
+          "pv_min_runtime": "PV Minimum Runtime",
+          "pv_min_pause": "PV Minimum Pause",
+          "pv_min_current": "PV Minimum Current",
+          "pv_phase_switching_mode": "PV Phase Switching",
+          "pv_phase_switching_hysteresis": "PV Phase Switching Hysteresis (W)",
           "fixed_current": "Fixed Current"
         }
       }

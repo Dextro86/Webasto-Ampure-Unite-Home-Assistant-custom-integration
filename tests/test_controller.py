@@ -221,6 +221,24 @@ def test_pv_phase_switching_requests_1p_when_surplus_is_below_3p_range():
     assert controller.resolve_pv_phase_target(ChargeMode.PV, wallbox, sensors) == 1
 
 
+def test_pv_phase_switching_hysteresis_is_configurable():
+    controller = make_controller(
+        pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        pv_phase_switching_hysteresis_w=1000.0,
+    )
+
+    assert controller.resolve_pv_phase_target(
+        ChargeMode.PV,
+        WallboxState(installed_phases=1, phase_switch_mode_raw=0),
+        HaSensorSnapshot(surplus_power_w=5000.0, valid=True),
+    ) is None
+    assert controller.resolve_pv_phase_target(
+        ChargeMode.PV,
+        WallboxState(installed_phases=1, phase_switch_mode_raw=0),
+        HaSensorSnapshot(surplus_power_w=5200.0, valid=True),
+    ) == 3
+
+
 def test_pv_phase_switching_does_not_request_switch_outside_pv_mode():
     controller = make_controller(pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P)
     wallbox = WallboxState(installed_phases=1, phase_switch_mode_raw=0)
