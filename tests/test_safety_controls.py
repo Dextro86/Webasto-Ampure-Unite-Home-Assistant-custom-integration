@@ -819,6 +819,7 @@ def test_automatic_pv_phase_switch_is_rate_limited_after_recent_switch():
         coordinator.write_queue = WriteQueueManager()
         coordinator._pending_phase_switch_target = None
         coordinator._last_phase_switch_monotonic = monotonic()
+        coordinator._phase_switch_up_condition_since = monotonic() - 301.0
         coordinator._phase_switch_count_this_session = 1
         coordinator._phase_switch_decision = None
         coordinator._mode = ChargeMode.PV
@@ -826,8 +827,8 @@ def test_automatic_pv_phase_switch_is_rate_limited_after_recent_switch():
         coordinator._pv_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._allows_control_writes = lambda: True
-        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=1)
-        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=0)
+        sensors = HaSensorSnapshot(surplus_power_w=6000.0, valid=True)
 
         handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
 
@@ -850,6 +851,7 @@ def test_automatic_pv_phase_switch_obeys_session_limit():
         coordinator.write_queue = WriteQueueManager()
         coordinator._pending_phase_switch_target = None
         coordinator._last_phase_switch_monotonic = 0.0
+        coordinator._phase_switch_up_condition_since = monotonic() - 301.0
         coordinator._phase_switch_count_this_session = 1
         coordinator._phase_switch_decision = None
         coordinator._mode = ChargeMode.PV
@@ -857,13 +859,80 @@ def test_automatic_pv_phase_switch_obeys_session_limit():
         coordinator._pv_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._allows_control_writes = lambda: True
-        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=1)
-        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=0)
+        sensors = HaSensorSnapshot(surplus_power_w=6000.0, valid=True)
 
         handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
 
         assert handled is False
         assert coordinator._phase_switch_decision == "phase_switch_session_limit_reached"
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
+
+
+def test_automatic_pv_phase_switch_allows_return_to_1p_after_session_limit():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+            pv_phase_switching_max_per_session=1,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = None
+        coordinator._last_phase_switch_monotonic = monotonic()
+        coordinator._phase_switch_up_condition_since = None
+        coordinator._phase_switch_count_this_session = 1
+        coordinator._phase_switch_decision = None
+        coordinator._mode = ChargeMode.PV
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=1)
+        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert coordinator._phase_switch_decision == "writing_phase_switch_mode"
+        assert item.key == "phase_switch_mode"
+        assert item.value == 0
+
+    asyncio.run(_run())
+
+
+def test_pending_automatic_pv_phase_switch_is_cancelled_when_surplus_changes():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 3
+        coordinator._last_phase_switch_monotonic = 0.0
+        coordinator._phase_switch_up_condition_since = monotonic() - 301.0
+        coordinator._phase_switch_count_this_session = 0
+        coordinator._phase_switch_decision = None
+        coordinator._mode = ChargeMode.PV
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=0)
+        sensors = HaSensorSnapshot(surplus_power_w=3000.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+
+        assert handled is False
+        assert coordinator._pending_phase_switch_target is None
+        assert coordinator._phase_switch_decision == "phase_switch_cancelled"
         assert await coordinator.write_queue.size() == 0
 
     asyncio.run(_run())

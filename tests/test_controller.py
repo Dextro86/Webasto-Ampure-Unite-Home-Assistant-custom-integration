@@ -109,6 +109,24 @@ def test_pv_mode_min_plus_surplus_scales_above_minimum_when_surplus_is_high():
     assert decision.final_target_a == 10.0
 
 
+def test_pv_mode_uses_effective_active_phases_while_charging():
+    controller = make_controller(pv_control_strategy="min_plus_surplus", pv_min_current_a=6.0)
+    wallbox = WallboxState(
+        installed_phases=3,
+        phases_in_use=1,
+        charging_active=True,
+        vehicle_connected=True,
+    )
+    sensors = HaSensorSnapshot(surplus_power_w=2300.0, valid=True)
+
+    decision = controller.evaluate(ChargeMode.PV, wallbox, sensors)
+
+    assert decision.charging_enabled is True
+    assert decision.reason == ControlReason.PV_MODE
+    assert decision.mode_target_a == 10.0
+    assert decision.final_target_a == 10.0
+
+
 def test_pv_mode_min_plus_surplus_keeps_minimum_current_when_sensor_is_unavailable():
     controller = make_controller(pv_control_strategy="min_plus_surplus", pv_min_current_a=6.0)
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True)

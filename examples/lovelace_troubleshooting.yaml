@@ -62,6 +62,8 @@ cards:
         name: DLB Limit
       - entity: sensor.webasto_unite_actual_current
         name: Max Phase Current
+      - entity: sensor.webasto_unite_effective_active_phases
+        name: Effective Active Phases
       - entity: sensor.webasto_unite_current_l1
         name: Current L1
       - entity: sensor.webasto_unite_current_l2

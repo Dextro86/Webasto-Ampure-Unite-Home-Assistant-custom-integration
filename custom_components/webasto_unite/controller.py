@@ -73,6 +73,7 @@ class WallboxController:
             self.reset_pv_state()
 
         installed_phases = self._resolve_installed_phases(wallbox)
+        pv_phase_count = self._resolve_pv_phase_count(wallbox)
         dlb_result = self.dlb.calculate_available_current(
             sensors,
             installed_phases,
@@ -83,7 +84,7 @@ class WallboxController:
         mode_target, reason = self._mode_target(
             mode,
             sensors,
-            installed_phases,
+            pv_phase_count,
             effective_pv_strategy,
         )
 
@@ -150,6 +151,11 @@ class WallboxController:
         if wallbox.installed_phases in (1, 3):
             return wallbox.installed_phases
         return 3
+
+    def _resolve_pv_phase_count(self, wallbox: WallboxState) -> int:
+        if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
+            return wallbox.phases_in_use
+        return self._resolve_installed_phases(wallbox)
 
     def _mode_target(
         self,

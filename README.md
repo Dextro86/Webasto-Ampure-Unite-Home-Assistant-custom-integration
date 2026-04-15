@@ -106,6 +106,7 @@ Useful diagnostics:
 - `Sensor Invalid Reason`
 - `Write Queue Depth`
 - `Phase Switch Mode Code`
+- `Effective Active Phases`
 - `PV Surplus Input`
 - `Phase Switch Decision`
 - `Phase Switch Count`
@@ -119,7 +120,7 @@ When changing integration settings, continue through all settings screens and su
 - Register `405` is used for phase switching and has been validated on firmware `3.187` with one tested charger. Other firmware versions may behave differently.
 - Automatic PV phase switching is implemented but still experimental until validated with more charging sessions, vehicles and firmware versions.
 - Manual switching back to 3-phase may require a pause/resume cycle before the charger applies the new phase mode.
-- Automatic phase switching uses guardrails: minimum time between switches and maximum switches per plug-in session.
+- Automatic phase switching uses guardrails: stable surplus before switching to 3-phase, minimum time between 1P->3P switches and a maximum switch budget for 1P->3P attempts.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
 - Power-based DLB and PV calculations use a practical nominal `230 V` conversion.
 

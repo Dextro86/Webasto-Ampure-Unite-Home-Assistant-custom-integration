@@ -125,6 +125,8 @@ PV Phase Switching modes:
 
 `Maximum Phase Switches per Session` limits the number of automatic phase switches during one plug-in session. The default is `6`.
 
+The integration distinguishes between the requested phase-switch mode and the phases that are actually drawing current. `Phase Switch Mode Code` reports register `405`; `Effective Active Phases` is derived from the measured charger currents. PV current calculation uses the effective active phases while charging, because some vehicles or firmware states may report 3-phase mode while still drawing current mostly on one phase.
+
 With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 
 - switch from 1P to 3P at `4640 W` or more surplus
@@ -134,6 +136,8 @@ With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 Manual phase switching uses register `405` and is only available when phase switching is not disabled.
 
 Automatic phase switching only runs in `PV` mode or `PV Until Unplug`. It does not run in `Normal`, `Fixed Current` or `Off`.
+
+Automatic 1P->3P switching is deliberately conservative. Surplus must remain high for the configured `Minimum Phase Switch Interval` before the integration requests 3-phase mode. Returning from 3P to 1P is treated as a fallback path and is allowed even when the normal 1P->3P switch budget has been reached.
 
 The integration performs phase switching conservatively:
 
@@ -146,6 +150,7 @@ Register `405` has been validated on one charger with firmware `3.187`. Other fi
 
 Useful phase-switching diagnostics:
 
+- `Effective Active Phases`: phases currently drawing measurable current.
 - `PV Surplus Input`: surplus value used by the PV logic.
 - `Phase Switch Decision`: current automatic phase-switching decision or block reason.
 - `Phase Switch Count`: number of automatic phase switches in the current plug-in session.
@@ -175,6 +180,7 @@ Useful diagnostics:
 - `Sensor Invalid Reason`
 - `Write Queue Depth`
 - `Phase Switch Mode Code`
+- `Effective Active Phases`
 - `PV Surplus Input`
 - `Phase Switch Decision`
 - `Phase Switch Count`
