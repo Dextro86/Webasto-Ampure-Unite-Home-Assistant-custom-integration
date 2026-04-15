@@ -87,7 +87,7 @@ Important entities for daily use:
 
 - `Charge Mode`
 - `Charging On/Off`
-- `Phase Switch Mode`
+- `Manual Phase Switch`
 - `PV Until Unplug`
 - `Fixed Current Until Unplug`
 - `Current Limit`
@@ -106,7 +106,7 @@ Useful diagnostics:
 - `Sensor Invalid Reason`
 - `Write Queue Depth`
 - `Phase Switch Mode Code`
-- `PV Surplus Used`
+- `PV Surplus Input`
 - `Phase Switch Decision`
 - `Phase Switch Count`
 

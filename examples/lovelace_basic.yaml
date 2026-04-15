@@ -9,7 +9,7 @@ cards:
       - entity: select.webasto_unite_charge_mode
         name: Charge Mode
       - entity: select.webasto_unite_phase_switch
-        name: Phase Switch Mode
+        name: Manual Phase Switch
       - entity: sensor.webasto_unite_operating_state
         name: Charging Behavior
       - entity: sensor.webasto_unite_effective_mode

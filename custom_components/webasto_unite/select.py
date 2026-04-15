@@ -68,7 +68,7 @@ PHASE_SWITCH_PHASES_BY_RAW = {
 
 
 class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
-    _attr_name = "Phase Switch Mode"
+    _attr_name = "Manual Phase Switch"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)

@@ -9,7 +9,7 @@ cards:
       - entity: select.webasto_unite_charge_mode
         name: Charge Mode
       - entity: select.webasto_unite_phase_switch
-        name: Phase Switch Mode
+        name: Manual Phase Switch
       - entity: sensor.webasto_unite_operating_state
         name: Charging Behavior
       - entity: sensor.webasto_unite_effective_mode
@@ -53,20 +53,40 @@ cards:
         name: Client Error
 
   - type: entities
-    title: Validation Context
+    title: Current Limiting
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_final_target
+        name: Final Target
+      - entity: sensor.webasto_unite_dlb_limit
+        name: DLB Limit
+      - entity: sensor.webasto_unite_actual_current
+        name: Max Phase Current
+      - entity: sensor.webasto_unite_current_l1
+        name: Current L1
+      - entity: sensor.webasto_unite_current_l2
+        name: Current L2
+      - entity: sensor.webasto_unite_current_l3
+        name: Current L3
+
+  - type: entities
+    title: PV & Phase Switching
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_pv_surplus_input
+        name: PV Surplus Input
+      - entity: select.webasto_unite_phase_switch
+        name: Manual Phase Switch
+      - entity: sensor.webasto_unite_phase_switch_decision
+        name: Phase Switch Decision
+      - entity: sensor.webasto_unite_phase_switch_count
+        name: Phase Switch Count
+
+  - type: entities
+    title: Charger Context
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_firmware_version
         name: Firmware Version
       - entity: sensor.webasto_unite_charger_configured_phases
         name: Charger Configured Phases
-      - entity: sensor.webasto_unite_dlb_limit
-        name: DLB Limit
-      - entity: sensor.webasto_unite_final_target
-        name: Final Target
-      - entity: sensor.webasto_unite_pv_surplus_used
-        name: PV Surplus Used
-      - entity: sensor.webasto_unite_phase_switch_decision
-        name: Phase Switch Decision
-      - entity: sensor.webasto_unite_phase_switch_count
-        name: Phase Switch Count
