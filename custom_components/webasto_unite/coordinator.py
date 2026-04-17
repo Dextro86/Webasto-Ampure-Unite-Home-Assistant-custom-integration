@@ -110,8 +110,6 @@ from .wallbox_reader import WallboxReader
 from .write_queue import QueuedWrite, WritePriority, WriteQueueManager
 
 _LOGGER = logging.getLogger(__name__)
-PHASE_RESTORE_SETTLE_DELAY_S = 15.0
-STARTUP_PHASE_RESTORE_1P_GRACE_S = 20.0
 
 
 class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
@@ -125,14 +123,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._last_vehicle_connected = False
         self._pending_phase_switch_target: int | None = None
         self._pending_phase_switch_is_integration_managed = False
-        self._pending_phase_switch_reason: str | None = None
-        self._pending_phase_switch_3p_written = False
-        self._pending_phase_switch_settle_until: float | None = None
-        self._pending_phase_switch_normalization_step: str | None = None
         self._integration_managed_phase_switch_active = False
         self._startup_phase_restore_checked = False
-        self._startup_phase_restore_session_restart_attempted = False
-        self._startup_phase_restore_1p_since: float | None = None
         self._last_phase_switch_monotonic = 0.0
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
@@ -227,16 +219,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._setup_sensor_listeners()
         await self.client.connect()
         await self._sync_static_registers()
-        _LOGGER.info(
-            "Webasto Unite setup: control_mode=%s startup_mode=%s startup_phase_restore_mode=%s "
-            "configured_installed_phases=%s configured_phase_count=%s pv_phase_switching_mode=%s",
-            self.control_config.control_mode.value,
-            self._mode.value,
-            self.control_config.startup_phase_restore_mode.value,
-            self._configured_installed_phases(),
-            self._configured_phase_count(),
-            self.control_config.pv_phase_switching_mode.value,
-        )
         if self._allows_keepalive():
             self._keepalive_task = asyncio.create_task(self._keepalive_loop())
 
@@ -330,12 +312,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             raise ValueError("Phase switch register 405 is unavailable or returned an unsupported value")
         if self.data.wallbox.charging_active:
             raise ValueError("Phase switching is only allowed while charging is inactive")
-        self._pending_phase_switch_target = None
         self._pending_phase_switch_is_integration_managed = False
-        self._pending_phase_switch_reason = None
-        self._pending_phase_switch_3p_written = False
-        self._pending_phase_switch_settle_until = None
-        self._pending_phase_switch_normalization_step = None
         self._integration_managed_phase_switch_active = False
         await self.write_queue.enqueue(
             QueuedWrite("phase_switch_mode", PHASE_SWITCH_MODE, 0 if phases == 1 else 1, WritePriority.CONTROL)
@@ -363,13 +340,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._phase_switch_count_this_session = 0
                 self._pending_phase_switch_target = None
                 self._pending_phase_switch_is_integration_managed = False
-                self._pending_phase_switch_reason = None
-                self._pending_phase_switch_3p_written = False
-                self._pending_phase_switch_settle_until = None
-                self._pending_phase_switch_normalization_step = None
                 self._integration_managed_phase_switch_active = False
-                self._startup_phase_restore_session_restart_attempted = False
-                self._startup_phase_restore_1p_since = None
                 self._phase_switch_up_condition_since = None
             if not self._last_vehicle_connected and wallbox.vehicle_connected:
                 self._phase_switch_count_this_session = 0
@@ -383,9 +354,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pv_until_unplug_active,
             )
             decision = self.controller.evaluate(self.effective_mode, wallbox, sensors, pv_strategy)
-            phase_switch_handled = await self._enqueue_pending_phase_switch_if_needed(wallbox)
-            if not phase_switch_handled:
-                phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+            phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
             if not phase_switch_handled:
                 await self._enqueue_decision(decision)
             await self._flush_write_queue()
@@ -415,13 +384,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 pv_surplus_w=pv_surplus_w,
                 phase_switch_decision=self._phase_switch_decision,
                 phase_switch_count=self._phase_switch_count_this_session,
-                configured_installed_phases=self._configured_installed_phases(),
-                configured_phase_count=self._configured_phase_count(),
-                startup_phase_restore_allowed=self._allows_startup_phase_restore(),
-                startup_phase_restore_retry_used=getattr(self, "_startup_phase_restore_session_restart_attempted", False),
-                pending_phase_switch_target=self._pending_phase_switch_target,
-                pending_phase_switch_reason=self._pending_phase_switch_reason,
-                integration_managed_phase_switch_active=self._integration_managed_phase_switch_active,
                 dominant_limit_reason=decision.dominant_limit_reason.value if decision.dominant_limit_reason is not None else None,
                 fallback_active=decision.fallback_active,
                 last_client_error=self.client.stats.last_error,
@@ -531,86 +493,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return snapshot
 
     def _configured_installed_phases(self) -> str:
-        return self.entry.options.get(
-            CONF_INSTALLED_PHASES,
-            self.entry.data.get(CONF_INSTALLED_PHASES, "3p"),
-        )
+        return self.entry.data.get(CONF_INSTALLED_PHASES, "3p")
 
     def _configured_phase_count(self) -> int:
         return 1 if self._configured_installed_phases() == "1p" else 3
-
-    def _phase_log_context(self, wallbox=None, **extra) -> dict[str, object]:
-        control_config = getattr(self, "control_config", None)
-        try:
-            configured_installed_phases = self._configured_installed_phases()
-            configured_phase_count = self._configured_phase_count()
-        except AttributeError:
-            configured_installed_phases = None
-            configured_phase_count = None
-        control_mode = control_config.control_mode.value if control_config is not None else None
-        startup_phase_restore_mode = (
-            control_config.startup_phase_restore_mode.value if control_config is not None else None
-        )
-        try:
-            startup_phase_restore_allowed = self._allows_startup_phase_restore()
-        except AttributeError:
-            startup_phase_restore_allowed = False
-        context: dict[str, object] = {
-            "configured_installed_phases": configured_installed_phases,
-            "configured_phase_count": configured_phase_count,
-            "control_mode": control_mode,
-            "startup_phase_restore_mode": startup_phase_restore_mode,
-            "startup_phase_restore_allowed": startup_phase_restore_allowed,
-            "startup_phase_restore_checked": getattr(self, "_startup_phase_restore_checked", None),
-            "startup_phase_restore_retry_used": getattr(
-                self,
-                "_startup_phase_restore_session_restart_attempted",
-                False,
-            ),
-            "startup_phase_restore_1p_since": getattr(self, "_startup_phase_restore_1p_since", None),
-            "pending_phase_switch_target": getattr(self, "_pending_phase_switch_target", None),
-            "pending_phase_switch_reason": getattr(self, "_pending_phase_switch_reason", None),
-            "pending_phase_switch_3p_written": getattr(self, "_pending_phase_switch_3p_written", False),
-            "pending_phase_switch_settle_until": getattr(self, "_pending_phase_switch_settle_until", None),
-            "pending_phase_switch_normalization_step": getattr(
-                self,
-                "_pending_phase_switch_normalization_step",
-                None,
-            ),
-            "phase_switch_decision": getattr(self, "_phase_switch_decision", None),
-            "integration_managed_phase_switch_active": getattr(
-                self,
-                "_integration_managed_phase_switch_active",
-                None,
-            ),
-        }
-        if wallbox is not None:
-            context.update(
-                {
-                    "phase_switch_mode_raw": wallbox.phase_switch_mode_raw,
-                    "phases_in_use": wallbox.phases_in_use,
-                    "charging_active": wallbox.charging_active,
-                    "vehicle_connected": wallbox.vehicle_connected,
-                    "active_power_w": wallbox.active_power_w,
-                }
-            )
-        context.update(extra)
-        return context
-
-    def _log_phase_debug(self, event: str, wallbox=None, **extra) -> None:
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            _LOGGER.debug(
-                "Webasto Unite phase: %s; context=%s",
-                event,
-                self._phase_log_context(wallbox, **extra),
-            )
-
-    def _log_phase_info(self, event: str, wallbox=None, **extra) -> None:
-        _LOGGER.info(
-            "Webasto Unite phase: %s; context=%s",
-            event,
-            self._phase_log_context(wallbox, **extra),
-        )
 
     def _restore_configured_phases_after_pv_if_needed(self, was_pv_mode: bool) -> None:
         if not was_pv_mode or self.effective_mode == ChargeMode.PV:
@@ -625,182 +511,36 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if current_phases == configured_phases:
             self._integration_managed_phase_switch_active = False
             return
-        self._set_pending_phase_switch(configured_phases, "phase_restore")
+        self._pending_phase_switch_target = configured_phases
+        self._pending_phase_switch_is_integration_managed = True
         self._phase_switch_up_condition_since = None
-        self._phase_switch_decision = self._phase_switch_decision_for("requested")
-        self._log_phase_info(
-            "configured phase restore scheduled after leaving pv mode",
-            data.wallbox,
-            current_phases=current_phases,
-            target_phases=configured_phases,
-        )
+        self._phase_switch_decision = "phase_restore_requested"
 
     def _schedule_startup_phase_restore_if_needed(self, wallbox) -> None:
-        self._log_phase_debug("startup phase restore check", wallbox)
         if self._startup_phase_restore_checked:
-            self._log_phase_debug("startup phase restore already checked", wallbox)
-            self._schedule_startup_phase_session_restart_if_needed(wallbox)
             return
         self._startup_phase_restore_checked = True
-        if not self._allows_startup_phase_restore():
-            self._log_phase_debug("startup phase restore skipped: not allowed", wallbox)
+        if self.control_config.startup_phase_restore_mode != StartupPhaseRestoreMode.RESTORE_CONFIGURED:
+            return
+        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            return
+        if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
             return
         if wallbox.phase_switch_mode_raw not in (0, 1):
-            self._log_phase_debug("startup phase restore skipped: phase switch register unavailable", wallbox)
             return
         configured_phases = self._configured_phase_count()
         current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
         if current_phases == configured_phases:
-            self._log_phase_debug(
-                "startup phase restore register already matches configured phases",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=configured_phases,
-            )
-            self._schedule_startup_phase_session_restart_if_needed(wallbox)
             return
-        self._set_pending_phase_switch(configured_phases, "startup_phase_restore")
+        self._pending_phase_switch_target = configured_phases
+        self._pending_phase_switch_is_integration_managed = True
         self._phase_switch_up_condition_since = None
-        self._phase_switch_decision = self._phase_switch_decision_for("requested")
-        self._log_phase_info(
-            "startup phase restore scheduled",
-            wallbox,
-            current_phases=current_phases,
-            target_phases=configured_phases,
-        )
-
-    def _allows_startup_phase_restore(self) -> bool:
-        return (
-            self.control_config.startup_phase_restore_mode == StartupPhaseRestoreMode.RESTORE_CONFIGURED
-            and self.control_config.control_mode == ControlMode.MANAGED_CONTROL
-        )
-
-    def _schedule_startup_phase_session_restart_if_needed(self, wallbox) -> None:
-        if not self._allows_startup_phase_restore():
-            self._log_phase_debug("startup phase session restart skipped: restore not allowed", wallbox)
-            return
-        if getattr(self, "_startup_phase_restore_session_restart_attempted", False):
-            self._log_phase_debug("startup phase session restart skipped: retry already used", wallbox)
-            return
-        configured_phases = self._configured_phase_count()
-        if not self._phase_switch_needs_active_session_restart(wallbox, configured_phases):
-            self._startup_phase_restore_1p_since = None
-            self._log_phase_debug(
-                "startup phase session restart skipped: no active session mismatch",
-                wallbox,
-                target_phases=configured_phases,
-            )
-            return
-        now = monotonic()
-        one_phase_since = getattr(self, "_startup_phase_restore_1p_since", None)
-        if one_phase_since is None:
-            self._startup_phase_restore_1p_since = now
-            self._phase_switch_decision = "startup_phase_restore_waiting_for_1p_session"
-            self._log_phase_info(
-                "startup phase restore waiting for active 1p session before switching",
-                wallbox,
-                target_phases=configured_phases,
-                grace_s=STARTUP_PHASE_RESTORE_1P_GRACE_S,
-            )
-            return
-        elapsed_s = now - one_phase_since
-        if elapsed_s < STARTUP_PHASE_RESTORE_1P_GRACE_S:
-            self._phase_switch_decision = "startup_phase_restore_waiting_for_1p_session"
-            self._log_phase_debug(
-                "startup phase restore still waiting for active 1p session grace",
-                wallbox,
-                target_phases=configured_phases,
-                elapsed_s=round(elapsed_s, 1),
-                required_s=STARTUP_PHASE_RESTORE_1P_GRACE_S,
-            )
-            return
-        self._startup_phase_restore_session_restart_attempted = True
-        self._set_pending_phase_switch(configured_phases, "startup_phase_restore")
-        self._phase_switch_up_condition_since = None
-        self._startup_phase_restore_1p_since = None
-        self._phase_switch_decision = self._phase_switch_decision_for("waiting_for_ev")
-        self._log_phase_info(
-            "startup phase session restart scheduled",
-            wallbox,
-            target_phases=configured_phases,
-        )
+        self._phase_switch_decision = "startup_phase_restore_requested"
 
     def _reset_pv_runtime_state(self) -> None:
         controller = getattr(self, "controller", None)
         if controller is not None:
             controller.reset_pv_state()
-
-    def _set_pending_phase_switch(self, target_phases: int, reason: str) -> None:
-        self._pending_phase_switch_target = target_phases
-        self._pending_phase_switch_is_integration_managed = True
-        self._pending_phase_switch_reason = reason
-        self._pending_phase_switch_3p_written = False
-        self._pending_phase_switch_settle_until = None
-        self._pending_phase_switch_normalization_step = None
-
-    def _clear_pending_phase_switch(self) -> None:
-        self._pending_phase_switch_target = None
-        self._pending_phase_switch_is_integration_managed = False
-        self._pending_phase_switch_reason = None
-        self._pending_phase_switch_3p_written = False
-        self._pending_phase_switch_settle_until = None
-        self._pending_phase_switch_normalization_step = None
-
-    def _phase_switch_decision_for(self, action: str) -> str:
-        reason = getattr(self, "_pending_phase_switch_reason", None)
-        if reason == "startup_phase_restore":
-            return {
-                "requested": "startup_phase_restore_requested",
-                "pausing": "pausing_before_startup_phase_restore",
-                "writing": "writing_startup_phase_restore",
-                "complete": "startup_phase_restore_complete",
-                "waiting_for_ev": "startup_phase_restore_waiting_for_ev",
-                "normalizing_to_1p": "normalizing_startup_phase_restore_to_1p",
-            }[action]
-        if reason == "phase_restore":
-            return {
-                "requested": "phase_restore_requested",
-                "pausing": "pausing_before_phase_restore",
-                "writing": "writing_phase_restore",
-                "complete": "phase_restore_complete",
-                "waiting_for_ev": "phase_restore_waiting_for_ev",
-                "normalizing_to_1p": "normalizing_phase_restore_to_1p",
-            }[action]
-        return {
-            "requested": "phase_switch_requested",
-            "pausing": "pausing_before_phase_switch",
-            "writing": "writing_phase_switch_mode",
-            "complete": "phase_switch_complete",
-            "waiting_for_ev": "phase_switch_waiting_for_ev",
-        }[action]
-
-    def _phase_switch_needs_active_session_restart(self, wallbox, target_phases: int) -> bool:
-        return (
-            target_phases == 3
-            and wallbox.phase_switch_mode_raw == 1
-            and wallbox.charging_active
-            and wallbox.phases_in_use == 1
-        )
-
-    def _pending_phase_switch_needs_3p_restore_write(self, wallbox, current_phases: int, target_phases: int) -> bool:
-        return (
-            self._pending_phase_switch_reason in ("startup_phase_restore", "phase_restore")
-            and target_phases == 3
-            and current_phases == target_phases
-            and not wallbox.charging_active
-            and wallbox.phases_in_use == 0
-            and not getattr(self, "_pending_phase_switch_3p_written", False)
-        )
-
-    def _pending_phase_switch_needs_normalize_to_1p(self, wallbox, current_phases: int, target_phases: int) -> bool:
-        return (
-            self._pending_phase_switch_needs_3p_restore_write(wallbox, current_phases, target_phases)
-            and getattr(self, "_pending_phase_switch_normalization_step", None) is None
-        )
-
-    def _pending_phase_switch_is_settling(self) -> bool:
-        settle_until = getattr(self, "_pending_phase_switch_settle_until", None)
-        return settle_until is not None and monotonic() < settle_until
 
     async def _enqueue_keepalive_if_needed(self) -> None:
         if not self._allows_keepalive():
@@ -828,163 +568,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, int(round(decision.target_current_a)), WritePriority.CURRENT)
             )
 
-    async def _enqueue_pending_phase_switch_if_needed(self, wallbox) -> bool:
-        if self._pending_phase_switch_target is None:
-            return False
-        if not getattr(self, "_pending_phase_switch_is_integration_managed", False):
-            return False
-        if not self._allows_control_writes():
-            self._phase_switch_decision = "control_writes_disabled"
-            self._log_phase_debug("pending phase switch skipped: control writes disabled", wallbox)
-            return False
-
-        current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3 if wallbox.phase_switch_mode_raw == 1 else None
-        if current_phases is None:
-            self._clear_pending_phase_switch()
-            self._phase_switch_up_condition_since = None
-            self._phase_switch_decision = "phase_switch_register_unavailable"
-            self._log_phase_info("pending phase switch cancelled: phase switch register unavailable", wallbox)
-            return False
-
-        target_phases = self._pending_phase_switch_target
-        if self._pending_phase_switch_is_settling():
-            remaining_s = max(0.0, self._pending_phase_switch_settle_until - monotonic())
-            self._phase_switch_decision = f"{self._pending_phase_switch_reason}_settling"
-            self._log_phase_debug(
-                "pending phase switch waiting for restore settle delay",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=target_phases,
-                normalization_step=getattr(self, "_pending_phase_switch_normalization_step", None),
-                remaining_s=round(remaining_s, 1),
-            )
-            await self.write_queue.clear()
-            await self._enqueue_keepalive_if_needed()
-            return True
-
-        if current_phases == target_phases and not self._phase_switch_needs_active_session_restart(wallbox, target_phases):
-            if self._pending_phase_switch_needs_normalize_to_1p(wallbox, current_phases, target_phases):
-                self._phase_switch_decision = self._phase_switch_decision_for("normalizing_to_1p")
-                self._pending_phase_switch_normalization_step = "wrote_1p"
-                self._pending_phase_switch_settle_until = monotonic() + PHASE_RESTORE_SETTLE_DELAY_S
-                self._log_phase_info(
-                    "pending phase switch normalizing restore through 1p before 3p",
-                    wallbox,
-                    current_phases=current_phases,
-                    target_phases=target_phases,
-                    register_value=0,
-                    settle_delay_s=PHASE_RESTORE_SETTLE_DELAY_S,
-                )
-                await self.write_queue.enqueue(
-                    QueuedWrite(
-                        "phase_switch_mode",
-                        PHASE_SWITCH_MODE,
-                        0,
-                        WritePriority.CONTROL,
-                    )
-                )
-                return True
-            if self._pending_phase_switch_needs_3p_restore_write(wallbox, current_phases, target_phases):
-                self._phase_switch_decision = self._phase_switch_decision_for("writing")
-                self._pending_phase_switch_3p_written = True
-                self._pending_phase_switch_normalization_step = "wrote_3p"
-                self._pending_phase_switch_settle_until = monotonic() + PHASE_RESTORE_SETTLE_DELAY_S
-                self._log_phase_info(
-                    "pending phase switch writing restore target after pause",
-                    wallbox,
-                    current_phases=current_phases,
-                    target_phases=target_phases,
-                    register_value=1,
-                    settle_delay_s=PHASE_RESTORE_SETTLE_DELAY_S,
-                )
-                await self.write_queue.enqueue(
-                    QueuedWrite(
-                        "phase_switch_mode",
-                        PHASE_SWITCH_MODE,
-                        1,
-                        WritePriority.CONTROL,
-                    )
-                )
-                return True
-            self._phase_switch_decision = self._phase_switch_decision_for("complete")
-            self._log_phase_info(
-                "pending phase switch completed",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=target_phases,
-            )
-            self._clear_pending_phase_switch()
-            return False
-
-        await self.write_queue.clear()
-        await self._enqueue_keepalive_if_needed()
-        if wallbox.charging_active:
-            self._phase_switch_decision = self._phase_switch_decision_for("pausing")
-            self._log_phase_info(
-                "pending phase switch pausing active session",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=target_phases,
-            )
-            await self.write_queue.enqueue(
-                QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
-            )
-            return True
-
-        if current_phases == target_phases:
-            self._phase_switch_decision = self._phase_switch_decision_for("complete")
-            self._log_phase_info(
-                "pending phase switch completed after pause",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=target_phases,
-            )
-            self._clear_pending_phase_switch()
-            return False
-
-        self._phase_switch_decision = self._phase_switch_decision_for("writing")
-        if (
-            getattr(self, "_pending_phase_switch_reason", None) in ("startup_phase_restore", "phase_restore")
-            and target_phases == 3
-            and current_phases == 1
-            and getattr(self, "_pending_phase_switch_normalization_step", None) == "wrote_1p"
-        ):
-            self._pending_phase_switch_3p_written = True
-            self._pending_phase_switch_normalization_step = "wrote_3p"
-            self._pending_phase_switch_settle_until = monotonic() + PHASE_RESTORE_SETTLE_DELAY_S
-        self._log_phase_info(
-            "pending phase switch writing phase switch mode",
-            wallbox,
-            current_phases=current_phases,
-            target_phases=target_phases,
-            register_value=0 if target_phases == 1 else 1,
-        )
-        await self.write_queue.enqueue(
-            QueuedWrite(
-                "phase_switch_mode",
-                PHASE_SWITCH_MODE,
-                0 if target_phases == 1 else 1,
-                WritePriority.CONTROL,
-            )
-        )
-        return True
-
     async def _enqueue_pv_phase_switch_if_needed(self, wallbox, sensors) -> bool:
         if not self._allows_control_writes():
             self._phase_switch_decision = "control_writes_disabled"
-            self._log_phase_debug("pv phase switch skipped: control writes disabled", wallbox)
             return False
         current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3 if wallbox.phase_switch_mode_raw == 1 else None
         if current_phases is None:
             self._pending_phase_switch_target = None
             self._pending_phase_switch_is_integration_managed = False
-            self._pending_phase_switch_reason = None
-            self._pending_phase_switch_3p_written = False
-            self._pending_phase_switch_settle_until = None
-            self._pending_phase_switch_normalization_step = None
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = "phase_switch_register_unavailable"
-            self._log_phase_info("pv phase switch cancelled: phase switch register unavailable", wallbox)
             return False
 
         automatic_pv_phase_switching = (
@@ -1000,10 +593,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         ):
             self._pending_phase_switch_target = None
             self._pending_phase_switch_is_integration_managed = False
-            self._pending_phase_switch_reason = None
-            self._pending_phase_switch_3p_written = False
-            self._pending_phase_switch_settle_until = None
-            self._pending_phase_switch_normalization_step = None
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = (
                 "outside_pv_mode"
@@ -1020,31 +609,20 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 sensors,
             )
         if self._pending_phase_switch_target is not None and current_phases == self._pending_phase_switch_target:
-            if self._phase_switch_needs_active_session_restart(wallbox, self._pending_phase_switch_target):
-                await self.write_queue.clear()
-                await self._enqueue_keepalive_if_needed()
-                self._phase_switch_decision = self._phase_switch_decision_for("pausing")
-                await self.write_queue.enqueue(
-                    QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
-                )
-                return True
-            self._phase_switch_decision = self._phase_switch_decision_for("complete")
-            self._clear_pending_phase_switch()
+            self._pending_phase_switch_target = None
+            self._pending_phase_switch_is_integration_managed = False
+            self._phase_switch_decision = "phase_switch_complete"
             return False
         if (
             automatic_pv_phase_switching
             and self._pending_phase_switch_target is not None
             and target != self._pending_phase_switch_target
         ):
-            self._clear_pending_phase_switch()
+            self._pending_phase_switch_target = None
+            self._pending_phase_switch_is_integration_managed = False
             if target is None:
                 self._phase_switch_up_condition_since = None
                 self._phase_switch_decision = "phase_switch_cancelled"
-                self._log_phase_info(
-                    "pv phase switch cancelled: target no longer needed",
-                    wallbox,
-                    current_phases=current_phases,
-                )
                 return False
         if self._pending_phase_switch_target is None:
             if target is None:
@@ -1054,12 +632,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             phase_switch_count = getattr(self, "_phase_switch_count_this_session", 0)
             if target == 3 and phase_switch_count >= self.control_config.pv_phase_switching_max_per_session:
                 self._phase_switch_decision = "phase_switch_session_limit_reached"
-                self._log_phase_debug(
-                    "pv phase switch skipped: session limit reached",
-                    wallbox,
-                    target_phases=target,
-                    phase_switch_count=phase_switch_count,
-                )
                 return False
             last_phase_switch = getattr(self, "_last_phase_switch_monotonic", 0.0)
             elapsed = monotonic() - last_phase_switch if last_phase_switch else None
@@ -1069,42 +641,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 if stable_since is None:
                     self._phase_switch_up_condition_since = now
                     self._phase_switch_decision = "waiting_for_stable_3p_surplus"
-                    self._log_phase_debug(
-                        "pv phase switch waiting: stable 3p surplus timer started",
-                        wallbox,
-                        target_phases=target,
-                    )
                     return False
                 if (now - stable_since) < self.control_config.pv_phase_switching_min_interval_s:
                     self._phase_switch_decision = "waiting_for_stable_3p_surplus"
-                    self._log_phase_debug(
-                        "pv phase switch waiting: stable 3p surplus delay",
-                        wallbox,
-                        target_phases=target,
-                        stable_for_s=round(now - stable_since, 1),
-                        required_s=self.control_config.pv_phase_switching_min_interval_s,
-                    )
                     return False
             else:
                 self._phase_switch_up_condition_since = None
             if target == 3 and elapsed is not None and elapsed < self.control_config.pv_phase_switching_min_interval_s:
                 self._phase_switch_decision = "phase_switch_rate_limited"
-                self._log_phase_debug(
-                    "pv phase switch skipped: rate limited",
-                    wallbox,
-                    target_phases=target,
-                    elapsed_s=round(elapsed, 1),
-                    required_s=self.control_config.pv_phase_switching_min_interval_s,
-                )
                 return False
-            self._set_pending_phase_switch(target, "automatic_pv_phase_switch")
-            self._phase_switch_decision = self._phase_switch_decision_for("requested")
-            self._log_phase_info(
-                "pv phase switch scheduled",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=target,
-            )
+            self._pending_phase_switch_target = target
+            self._pending_phase_switch_is_integration_managed = True
+            self._phase_switch_decision = "phase_switch_requested"
 
         target_phases = self._pending_phase_switch_target
         if target_phases is None:
@@ -1113,26 +661,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         await self.write_queue.clear()
         await self._enqueue_keepalive_if_needed()
         if wallbox.charging_active:
-            self._phase_switch_decision = self._phase_switch_decision_for("pausing")
-            self._log_phase_info(
-                "pv phase switch pausing active session",
-                wallbox,
-                current_phases=current_phases,
-                target_phases=target_phases,
-            )
+            self._phase_switch_decision = "pausing_before_phase_switch"
             await self.write_queue.enqueue(
                 QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
             )
             return True
 
-        self._phase_switch_decision = self._phase_switch_decision_for("writing")
-        self._log_phase_info(
-            "pv phase switch writing phase switch mode",
-            wallbox,
-            current_phases=current_phases,
-            target_phases=target_phases,
-            register_value=0 if target_phases == 1 else 1,
-        )
+        self._phase_switch_decision = "writing_phase_switch_mode"
         await self.write_queue.enqueue(
             QueuedWrite(
                 "phase_switch_mode",
@@ -1162,36 +697,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                     break
                 try:
                     await self.client.write(item.register, item.value)
-                except Exception as err:
+                except Exception:
                     if item.key == "keepalive":
                         self._keepalive_write_failures += 1
-                    _LOGGER.warning(
-                        "Webasto Unite write failed: key=%s register=%s value=%s error=%s",
-                        item.key,
-                        item.register.address,
-                        item.value,
-                        err,
-                    )
                     raise
                 if item.key == "keepalive":
                     self._last_keepalive_sent_monotonic = monotonic()
                     self._keepalive_sent_count += 1
                 if item.key == "current_limit":
                     self.controller.mark_current_written(float(item.value))
-                    if item.value == 0:
-                        _LOGGER.info(
-                            "Webasto Unite write succeeded: key=%s register=%s value=%s",
-                            item.key,
-                            item.register.address,
-                            item.value,
-                        )
-                    else:
-                        _LOGGER.debug(
-                            "Webasto Unite write succeeded: key=%s register=%s value=%s",
-                            item.key,
-                            item.register.address,
-                            item.value,
-                        )
                 if item.key == "phase_switch_mode":
                     self._last_phase_switch_monotonic = monotonic()
                     self._phase_switch_count_this_session = getattr(self, "_phase_switch_count_this_session", 0) + 1
@@ -1200,13 +714,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                         self._integration_managed_phase_switch_active = written_phases != self._configured_phase_count()
                     else:
                         self._integration_managed_phase_switch_active = False
-                    _LOGGER.info(
-                        "Webasto Unite write succeeded: key=%s register=%s value=%s written_phases=%s",
-                        item.key,
-                        item.register.address,
-                        item.value,
-                        written_phases,
-                    )
 
     def _allows_keepalive(self) -> bool:
         return self.control_config.control_mode in (ControlMode.KEEPALIVE_ONLY, ControlMode.MANAGED_CONTROL)
