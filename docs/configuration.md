@@ -39,7 +39,7 @@ Recommended first setup:
 
 If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
 
-If you enable `Startup Phase Restore`, the integration may restore the charger phase mode to `Charger Phase Configuration` after startup/reload. Keep this disabled if you sometimes intentionally leave the charger in `1 Phase`. This restore only runs when `Control Mode` is `Managed Charging Control`, phase switching is not disabled and register `405` returns a supported value.
+If you enable `Startup Phase Restore`, the integration may restore the charger phase mode to `Charger Phase Configuration` after startup/reload. Keep this disabled if you sometimes intentionally leave the charger in `1 Phase`. This restore only runs when `Control Mode` is `Managed Charging Control` and register `405` returns a supported value. It is independent from automatic PV phase switching.
 
 When the charger is already set to `3 Phases` but an active charging session is still physically using `1 Phase`, the integration may briefly pause charging and let the normal control loop restart it. Some vehicles only pick up a return to 3-phase charging after such a pause.
 

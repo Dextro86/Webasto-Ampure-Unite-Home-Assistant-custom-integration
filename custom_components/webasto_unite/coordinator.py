@@ -360,7 +360,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pv_until_unplug_active,
             )
             decision = self.controller.evaluate(self.effective_mode, wallbox, sensors, pv_strategy)
-            phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+            phase_switch_handled = await self._enqueue_pending_phase_switch_if_needed(wallbox)
+            if not phase_switch_handled:
+                phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
             if not phase_switch_handled:
                 await self._enqueue_decision(decision)
             await self._flush_write_queue()
@@ -543,7 +545,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return (
             self.control_config.startup_phase_restore_mode == StartupPhaseRestoreMode.RESTORE_CONFIGURED
             and self.control_config.control_mode == ControlMode.MANAGED_CONTROL
-            and self.control_config.pv_phase_switching_mode != PvPhaseSwitchingMode.DISABLED
         )
 
     def _schedule_startup_phase_session_restart_if_needed(self, wallbox) -> None:
@@ -633,6 +634,53 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             await self.write_queue.enqueue(
                 QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, int(round(decision.target_current_a)), WritePriority.CURRENT)
             )
+
+    async def _enqueue_pending_phase_switch_if_needed(self, wallbox) -> bool:
+        if self._pending_phase_switch_target is None:
+            return False
+        if not getattr(self, "_pending_phase_switch_is_integration_managed", False):
+            return False
+        if not self._allows_control_writes():
+            self._phase_switch_decision = "control_writes_disabled"
+            return False
+
+        current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3 if wallbox.phase_switch_mode_raw == 1 else None
+        if current_phases is None:
+            self._clear_pending_phase_switch()
+            self._phase_switch_up_condition_since = None
+            self._phase_switch_decision = "phase_switch_register_unavailable"
+            return False
+
+        target_phases = self._pending_phase_switch_target
+        if current_phases == target_phases and not self._phase_switch_needs_active_session_restart(wallbox, target_phases):
+            self._phase_switch_decision = self._phase_switch_decision_for("complete")
+            self._clear_pending_phase_switch()
+            return False
+
+        await self.write_queue.clear()
+        await self._enqueue_keepalive_if_needed()
+        if wallbox.charging_active:
+            self._phase_switch_decision = self._phase_switch_decision_for("pausing")
+            await self.write_queue.enqueue(
+                QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
+            )
+            return True
+
+        if current_phases == target_phases:
+            self._phase_switch_decision = self._phase_switch_decision_for("complete")
+            self._clear_pending_phase_switch()
+            return False
+
+        self._phase_switch_decision = self._phase_switch_decision_for("writing")
+        await self.write_queue.enqueue(
+            QueuedWrite(
+                "phase_switch_mode",
+                PHASE_SWITCH_MODE,
+                0 if target_phases == 1 else 1,
+                WritePriority.CONTROL,
+            )
+        )
+        return True
 
     async def _enqueue_pv_phase_switch_if_needed(self, wallbox, sensors) -> bool:
         if not self._allows_control_writes():
