@@ -580,6 +580,8 @@ def test_set_mode_updates_resume_mode_only_for_active_modes():
     coordinator._mode = ChargeMode.NORMAL
     coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = False
+    coordinator._fixed_current_until_unplug_active = False
+    coordinator._pv_auto_phase_switch_active = False
     coordinator.controller = make_controller()
     coordinator.controller.pv_state.active = True
 
@@ -693,8 +695,11 @@ def test_pv_until_unplug_is_reset_after_vehicle_disconnect():
 
 def test_set_pv_until_unplug_updates_override_state():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._mode = ChargeMode.NORMAL
+    coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
+    coordinator._pv_auto_phase_switch_active = False
 
     coordinator.set_pv_until_unplug(True)
     assert coordinator.pv_until_unplug_active is True
@@ -708,6 +713,9 @@ def test_set_fixed_current_until_unplug_updates_override_state():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator._pv_until_unplug_active = True
     coordinator._fixed_current_until_unplug_active = False
+    coordinator._mode = ChargeMode.NORMAL
+    coordinator._charging_paused = False
+    coordinator._pv_auto_phase_switch_active = False
 
     coordinator.set_fixed_current_until_unplug(True)
     assert coordinator.fixed_current_until_unplug_active is True
@@ -715,6 +723,49 @@ def test_set_fixed_current_until_unplug_updates_override_state():
 
     coordinator.set_fixed_current_until_unplug(False)
     assert coordinator.fixed_current_until_unplug_active is False
+
+
+def test_leaving_pv_after_automatic_phase_switch_restores_configured_phases():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+    coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=True, phase_switch_mode_raw=0))
+    coordinator._mode = ChargeMode.NORMAL
+    coordinator._charging_paused = False
+    coordinator._pv_until_unplug_active = True
+    coordinator._fixed_current_until_unplug_active = False
+    coordinator._pv_auto_phase_switch_active = True
+    coordinator._pending_phase_switch_target = None
+    coordinator._pending_phase_switch_is_pv_auto = False
+    coordinator._phase_switch_up_condition_since = monotonic()
+    coordinator._phase_switch_decision = None
+
+    coordinator.set_fixed_current_until_unplug(True)
+
+    assert coordinator.fixed_current_until_unplug_active is True
+    assert coordinator.pv_until_unplug_active is False
+    assert coordinator._pending_phase_switch_target == 3
+    assert coordinator._pending_phase_switch_is_pv_auto is True
+    assert coordinator._phase_switch_up_condition_since is None
+    assert coordinator._phase_switch_decision == "phase_restore_requested"
+
+
+def test_leaving_pv_does_not_restore_manual_phase_switch_choice():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+    coordinator.data = SimpleNamespace(wallbox=WallboxState(charging_active=True, phase_switch_mode_raw=0))
+    coordinator._mode = ChargeMode.NORMAL
+    coordinator._charging_paused = False
+    coordinator._pv_until_unplug_active = True
+    coordinator._fixed_current_until_unplug_active = False
+    coordinator._pv_auto_phase_switch_active = False
+    coordinator._pending_phase_switch_target = None
+    coordinator._pending_phase_switch_is_pv_auto = False
+    coordinator._phase_switch_decision = None
+
+    coordinator.set_fixed_current_until_unplug(True)
+
+    assert coordinator._pending_phase_switch_target is None
+    assert coordinator._phase_switch_decision is None
 
 
 def test_phase_switch_queues_register_405_when_charging_inactive():
@@ -827,6 +878,78 @@ def test_automatic_pv_phase_switch_writes_register_405_after_charging_stops():
         assert item.key == "phase_switch_mode"
         assert item.register == PHASE_SWITCH_MODE
         assert item.value == 0
+
+    asyncio.run(_run())
+
+
+def test_pending_phase_restore_runs_outside_pv_mode():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 3
+        coordinator._pending_phase_switch_is_pv_auto = True
+        coordinator._last_phase_switch_monotonic = 0.0
+        coordinator._phase_switch_up_condition_since = None
+        coordinator._phase_switch_count_this_session = 1
+        coordinator._phase_switch_decision = None
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = True
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=0)
+        sensors = HaSensorSnapshot(surplus_power_w=0.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert coordinator._phase_switch_decision == "pausing_before_phase_switch"
+        assert item.key == "current_limit"
+        assert item.value == 0
+
+    asyncio.run(_run())
+
+
+def test_pending_phase_restore_writes_register_405_outside_pv_mode():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 3
+        coordinator._pending_phase_switch_is_pv_auto = True
+        coordinator._last_phase_switch_monotonic = 0.0
+        coordinator._phase_switch_up_condition_since = None
+        coordinator._phase_switch_count_this_session = 1
+        coordinator._phase_switch_decision = None
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = True
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(charging_active=False, phase_switch_mode_raw=0)
+        sensors = HaSensorSnapshot(surplus_power_w=0.0, valid=True)
+
+        handled = await coordinator._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert coordinator._phase_switch_decision == "writing_phase_switch_mode"
+        assert item.key == "phase_switch_mode"
+        assert item.value == 1
 
     asyncio.run(_run())
 

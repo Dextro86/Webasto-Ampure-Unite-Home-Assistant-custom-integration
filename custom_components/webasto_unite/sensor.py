@@ -135,6 +135,7 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "phase_switch_rate_limited": "Phase Switch Rate Limited",
                 "phase_switch_session_limit_reached": "Phase Switch Session Limit Reached",
                 "phase_switch_cancelled": "Phase Switch Cancelled",
+                "phase_restore_requested": "Phase Restore Requested",
                 "waiting_for_stable_3p_surplus": "Waiting for Stable 3P Surplus",
                 "pausing_before_phase_switch": "Pausing Before Phase Switch",
                 "writing_phase_switch_mode": "Writing Phase Switch Mode",
