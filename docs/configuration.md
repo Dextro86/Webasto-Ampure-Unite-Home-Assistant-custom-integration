@@ -41,6 +41,8 @@ If you want the integration to return to PV charging after a Home Assistant rest
 
 If you enable `Startup Phase Restore`, the integration may restore the charger phase mode to `Charger Phase Configuration` after startup/reload. Keep this disabled if you sometimes intentionally leave the charger in `1 Phase`. This restore only runs when `Control Mode` is `Managed Charging Control`, phase switching is not disabled and register `405` returns a supported value.
 
+When the charger is already set to `3 Phases` but an active charging session is still physically using `1 Phase`, the integration may briefly pause charging and let the normal control loop restart it. Some vehicles only pick up a return to 3-phase charging after such a pause.
+
 ## Current Limits
 
 Important current settings:
@@ -196,6 +198,7 @@ Useful phase-switching diagnostics:
 - `PV Surplus Input`: surplus value used by the PV logic.
 - `Phase Switch Decision`: current automatic phase-switching decision or block reason.
 - `Phase Switch Commands`: number of phase-switch commands in the current plug-in session. This can include automatic PV switching and integration-managed restore actions.
+- `Startup Phase Restore Waiting for EV`: the charger is configured for 3 phases, but the active EV session is still using 1 phase. The integration will pause and let charging restart so the EV can renegotiate phases.
 
 ## Important entities
 
