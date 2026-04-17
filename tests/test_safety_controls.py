@@ -1227,7 +1227,7 @@ def test_pending_startup_phase_restore_is_handled_before_outside_pv_mode_path():
     asyncio.run(_run())
 
 
-def test_pending_startup_phase_restore_reasserts_3p_after_session_pause():
+def test_pending_startup_phase_restore_normalizes_to_1p_after_session_pause():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
         coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
@@ -1240,7 +1240,8 @@ def test_pending_startup_phase_restore_reasserts_3p_after_session_pause():
         coordinator._pending_phase_switch_target = 3
         coordinator._pending_phase_switch_is_integration_managed = True
         coordinator._pending_phase_switch_reason = "startup_phase_restore"
-        coordinator._pending_phase_switch_reassert_written = False
+        coordinator._pending_phase_switch_3p_written = False
+        coordinator._pending_phase_switch_normalization_step = None
         coordinator._phase_switch_up_condition_since = None
         coordinator._phase_switch_decision = "pausing_before_startup_phase_restore"
         coordinator._mode = ChargeMode.NORMAL
@@ -1260,7 +1261,52 @@ def test_pending_startup_phase_restore_reasserts_3p_after_session_pause():
 
         assert handled is True
         assert coordinator._pending_phase_switch_target == 3
-        assert coordinator._pending_phase_switch_reassert_written is True
+        assert coordinator._pending_phase_switch_3p_written is False
+        assert coordinator._pending_phase_switch_normalization_step == "wrote_1p"
+        assert coordinator._phase_switch_decision == "normalizing_startup_phase_restore_to_1p"
+        assert item.key == "phase_switch_mode"
+        assert item.value == 0
+
+    asyncio.run(_run())
+
+
+def test_pending_startup_phase_restore_writes_3p_after_1p_normalization():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.MANUAL_ONLY,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 3
+        coordinator._pending_phase_switch_is_integration_managed = True
+        coordinator._pending_phase_switch_reason = "startup_phase_restore"
+        coordinator._pending_phase_switch_3p_written = False
+        coordinator._pending_phase_switch_normalization_step = "wrote_1p"
+        coordinator._pending_phase_switch_settle_until = None
+        coordinator._phase_switch_up_condition_since = None
+        coordinator._phase_switch_decision = "normalizing_startup_phase_restore_to_1p"
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(
+            charging_active=False,
+            phase_switch_mode_raw=0,
+            phases_in_use=0,
+        )
+
+        handled = await coordinator._enqueue_pending_phase_switch_if_needed(wallbox)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert coordinator._pending_phase_switch_target == 3
+        assert coordinator._pending_phase_switch_3p_written is True
+        assert coordinator._pending_phase_switch_normalization_step == "wrote_3p"
         assert coordinator._phase_switch_decision == "writing_startup_phase_restore"
         assert item.key == "phase_switch_mode"
         assert item.value == 1
@@ -1281,7 +1327,7 @@ def test_pending_startup_phase_restore_holds_current_during_settle_delay():
         coordinator._pending_phase_switch_target = 3
         coordinator._pending_phase_switch_is_integration_managed = True
         coordinator._pending_phase_switch_reason = "startup_phase_restore"
-        coordinator._pending_phase_switch_reassert_written = True
+        coordinator._pending_phase_switch_3p_written = True
         coordinator._pending_phase_switch_settle_until = monotonic() + 30.0
         coordinator._phase_switch_up_condition_since = None
         coordinator._phase_switch_decision = "writing_startup_phase_restore"

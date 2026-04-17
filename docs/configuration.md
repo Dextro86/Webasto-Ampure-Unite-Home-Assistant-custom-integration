@@ -41,7 +41,7 @@ If you want the integration to return to PV charging after a Home Assistant rest
 
 If you enable `Startup Phase Restore`, the integration may restore the charger phase mode to `Charger Phase Configuration` after startup/reload. Keep this disabled if you sometimes intentionally leave the charger in `1 Phase`. This restore only runs when `Control Mode` is `Managed Charging Control` and register `405` returns a supported value. It is independent from automatic PV phase switching.
 
-When the charger is already set to `3 Phases` but an active charging session is still physically using `1 Phase`, the integration may briefly pause charging and let the normal control loop restart it. Some vehicles only pick up a return to 3-phase charging after such a pause.
+When the charger is already set to `3 Phases` but an active charging session is still physically using `1 Phase`, the integration treats this as a real phase mismatch instead of a completed restore. It pauses charging, normalizes register `405` through `1 Phase`, then writes `3 Phases` again before the normal current-control loop is released.
 
 ## Current Limits
 
@@ -190,6 +190,8 @@ The integration performs phase switching conservatively:
 3. It writes phase-switch register `405`.
 4. It resumes charging after the charger reports the requested phase mode.
 
+For startup or post-PV restore from a physical 1P session while register `405` already reports `3 Phases`, the integration first writes `405 = 1 Phase` and then `405 = 3 Phases`. This forces a real register transition instead of re-writing the same 3P value.
+
 Register `405` has been validated on one charger with firmware `3.187`. Other firmware versions may behave differently.
 
 Useful phase-switching diagnostics:
@@ -198,7 +200,8 @@ Useful phase-switching diagnostics:
 - `PV Surplus Input`: surplus value used by the PV logic.
 - `Phase Switch Decision`: current automatic phase-switching decision or block reason.
 - `Phase Switch Commands`: number of phase-switch commands in the current plug-in session. This can include automatic PV switching and integration-managed restore actions.
-- `Startup Phase Restore Waiting for EV`: the charger is configured for 3 phases, but the active EV session is still using 1 phase. The integration will pause and let charging restart so the EV can renegotiate phases.
+- `Startup Phase Restore Waiting for EV`: the charger is configured for 3 phases, but the active EV session is still using 1 phase. The integration will pause before restoring the configured phase state.
+- `Normalizing Startup Phase Restore to 1P`: the restore flow intentionally writes 1P first because the charger already reported 3P while the physical session was still 1P.
 - `Configured Installed Phases`, `Startup Phase Restore Allowed`, `Pending Phase Switch Target` and `Pending Phase Switch Reason`: diagnostic values that help verify why a startup restore or phase switch did or did not run.
 
 ## Important entities
