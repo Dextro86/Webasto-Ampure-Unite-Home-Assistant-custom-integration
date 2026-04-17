@@ -28,6 +28,7 @@
           "retries": "Modbus Retries",
           "control_mode": "Control Mode",
           "startup_charge_mode": "Startup Charge Mode",
+          "startup_phase_restore_mode": "Startup Phase Restore",
           "keepalive_mode": "Keepalive Mode",
           "keepalive_interval": "Keepalive Interval",
           "safe_current": "Safe Current on Failure",

@@ -6,7 +6,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode
+from .models import ChargeMode, PvControlStrategy
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -33,6 +33,8 @@ class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
         return not data.charging_paused and data.mode != ChargeMode.OFF
 
     async def async_turn_on(self, **kwargs):
+        if self.coordinator.mode == ChargeMode.OFF:
+            self.coordinator.set_mode(ChargeMode.NORMAL)
         self.coordinator.resume_charging()
         await self.coordinator.async_request_refresh()
 
@@ -47,6 +49,13 @@ class WebastoPvUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_pv_until_unplug"
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.control_config.pv_control_strategy != PvControlStrategy.DISABLED
+        )
 
     @property
     def is_on(self):

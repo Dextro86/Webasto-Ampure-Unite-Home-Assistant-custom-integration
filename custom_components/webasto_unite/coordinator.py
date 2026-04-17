@@ -47,6 +47,7 @@ from .const import (
     CONF_SAFE_CURRENT,
     CONF_SAFETY_MARGIN,
     CONF_STARTUP_CHARGE_MODE,
+    CONF_STARTUP_PHASE_RESTORE_MODE,
     CONF_TIMEOUT,
     CONF_UNIT_ID,
     CONF_USER_LIMIT,
@@ -71,6 +72,7 @@ from .const import (
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
     DEFAULT_STARTUP_CHARGE_MODE,
+    DEFAULT_STARTUP_PHASE_RESTORE_MODE,
     DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
     DEFAULT_USER_LIMIT_A,
@@ -94,6 +96,7 @@ from .models import (
     PvOverrideStrategy,
     PvPhaseSwitchingMode,
     RuntimeSnapshot,
+    StartupPhaseRestoreMode,
 )
 from .registers import (
     COMM_TIMEOUT_S,
@@ -119,8 +122,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._fixed_current_until_unplug_active = False
         self._last_vehicle_connected = False
         self._pending_phase_switch_target: int | None = None
-        self._pending_phase_switch_is_pv_auto = False
-        self._pv_auto_phase_switch_active = False
+        self._pending_phase_switch_is_integration_managed = False
+        self._integration_managed_phase_switch_active = False
+        self._startup_phase_restore_checked = False
         self._last_phase_switch_monotonic = 0.0
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
@@ -139,6 +143,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             timeout_s=float(merged.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)),
             retries=int(merged.get(CONF_RETRIES, DEFAULT_RETRIES)),
             control_mode=ControlMode(merged.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)),
+            startup_phase_restore_mode=StartupPhaseRestoreMode(
+                merged.get(CONF_STARTUP_PHASE_RESTORE_MODE, DEFAULT_STARTUP_PHASE_RESTORE_MODE)
+            ),
             keepalive_mode=KeepaliveMode(merged.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)),
             keepalive_interval_s=float(merged.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)),
             safe_current_a=float(merged.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)),
@@ -305,8 +312,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             raise ValueError("Phase switch register 405 is unavailable or returned an unsupported value")
         if self.data.wallbox.charging_active:
             raise ValueError("Phase switching is only allowed while charging is inactive")
-        self._pending_phase_switch_is_pv_auto = False
-        self._pv_auto_phase_switch_active = False
+        self._pending_phase_switch_is_integration_managed = False
+        self._integration_managed_phase_switch_active = False
         await self.write_queue.enqueue(
             QueuedWrite("phase_switch_mode", PHASE_SWITCH_MODE, 0 if phases == 1 else 1, WritePriority.CONTROL)
         )
@@ -321,6 +328,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     async def _async_update_data(self) -> RuntimeSnapshot:
         try:
             wallbox = await self.wallbox_reader.read_wallbox_state(self._configured_installed_phases())
+            self._schedule_startup_phase_restore_if_needed(wallbox)
             if (
                 (self._pv_until_unplug_active or self._fixed_current_until_unplug_active)
                 and self._last_vehicle_connected
@@ -331,8 +339,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._reset_pv_runtime_state()
                 self._phase_switch_count_this_session = 0
                 self._pending_phase_switch_target = None
-                self._pending_phase_switch_is_pv_auto = False
-                self._pv_auto_phase_switch_active = False
+                self._pending_phase_switch_is_integration_managed = False
+                self._integration_managed_phase_switch_active = False
                 self._phase_switch_up_condition_since = None
             if not self._last_vehicle_connected and wallbox.vehicle_connected:
                 self._phase_switch_count_this_session = 0
@@ -493,7 +501,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     def _restore_configured_phases_after_pv_if_needed(self, was_pv_mode: bool) -> None:
         if not was_pv_mode or self.effective_mode == ChargeMode.PV:
             return
-        if not getattr(self, "_pv_auto_phase_switch_active", False):
+        if not getattr(self, "_integration_managed_phase_switch_active", False):
             return
         data = getattr(self, "data", None)
         if data is None or data.wallbox.phase_switch_mode_raw not in (0, 1):
@@ -501,12 +509,33 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         configured_phases = self._configured_phase_count()
         current_phases = 1 if data.wallbox.phase_switch_mode_raw == 0 else 3
         if current_phases == configured_phases:
-            self._pv_auto_phase_switch_active = False
+            self._integration_managed_phase_switch_active = False
             return
         self._pending_phase_switch_target = configured_phases
-        self._pending_phase_switch_is_pv_auto = True
+        self._pending_phase_switch_is_integration_managed = True
         self._phase_switch_up_condition_since = None
         self._phase_switch_decision = "phase_restore_requested"
+
+    def _schedule_startup_phase_restore_if_needed(self, wallbox) -> None:
+        if self._startup_phase_restore_checked:
+            return
+        self._startup_phase_restore_checked = True
+        if self.control_config.startup_phase_restore_mode != StartupPhaseRestoreMode.RESTORE_CONFIGURED:
+            return
+        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            return
+        if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
+            return
+        if wallbox.phase_switch_mode_raw not in (0, 1):
+            return
+        configured_phases = self._configured_phase_count()
+        current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
+        if current_phases == configured_phases:
+            return
+        self._pending_phase_switch_target = configured_phases
+        self._pending_phase_switch_is_integration_managed = True
+        self._phase_switch_up_condition_since = None
+        self._phase_switch_decision = "startup_phase_restore_requested"
 
     def _reset_pv_runtime_state(self) -> None:
         controller = getattr(self, "controller", None)
@@ -546,7 +575,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3 if wallbox.phase_switch_mode_raw == 1 else None
         if current_phases is None:
             self._pending_phase_switch_target = None
-            self._pending_phase_switch_is_pv_auto = False
+            self._pending_phase_switch_is_integration_managed = False
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = "phase_switch_register_unavailable"
             return False
@@ -559,11 +588,11 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             not automatic_pv_phase_switching
             and (
                 self._pending_phase_switch_target is None
-                or not getattr(self, "_pending_phase_switch_is_pv_auto", False)
+                or not getattr(self, "_pending_phase_switch_is_integration_managed", False)
             )
         ):
             self._pending_phase_switch_target = None
-            self._pending_phase_switch_is_pv_auto = False
+            self._pending_phase_switch_is_integration_managed = False
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = (
                 "outside_pv_mode"
@@ -581,7 +610,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
         if self._pending_phase_switch_target is not None and current_phases == self._pending_phase_switch_target:
             self._pending_phase_switch_target = None
-            self._pending_phase_switch_is_pv_auto = False
+            self._pending_phase_switch_is_integration_managed = False
             self._phase_switch_decision = "phase_switch_complete"
             return False
         if (
@@ -590,7 +619,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and target != self._pending_phase_switch_target
         ):
             self._pending_phase_switch_target = None
-            self._pending_phase_switch_is_pv_auto = False
+            self._pending_phase_switch_is_integration_managed = False
             if target is None:
                 self._phase_switch_up_condition_since = None
                 self._phase_switch_decision = "phase_switch_cancelled"
@@ -622,7 +651,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._phase_switch_decision = "phase_switch_rate_limited"
                 return False
             self._pending_phase_switch_target = target
-            self._pending_phase_switch_is_pv_auto = True
+            self._pending_phase_switch_is_integration_managed = True
             self._phase_switch_decision = "phase_switch_requested"
 
         target_phases = self._pending_phase_switch_target
@@ -681,10 +710,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                     self._last_phase_switch_monotonic = monotonic()
                     self._phase_switch_count_this_session = getattr(self, "_phase_switch_count_this_session", 0) + 1
                     written_phases = 1 if item.value == 0 else 3
-                    if getattr(self, "_pending_phase_switch_is_pv_auto", False):
-                        self._pv_auto_phase_switch_active = written_phases != self._configured_phase_count()
+                    if getattr(self, "_pending_phase_switch_is_integration_managed", False):
+                        self._integration_managed_phase_switch_active = written_phases != self._configured_phase_count()
                     else:
-                        self._pv_auto_phase_switch_active = False
+                        self._integration_managed_phase_switch_active = False
 
     def _allows_keepalive(self) -> bool:
         return self.control_config.control_mode in (ControlMode.KEEPALIVE_ONLY, ControlMode.MANAGED_CONTROL)

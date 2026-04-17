@@ -47,6 +47,11 @@ class PvPhaseSwitchingMode(str, Enum):
     AUTOMATIC_1P3P = "automatic_1p3p"
 
 
+class StartupPhaseRestoreMode(str, Enum):
+    DISABLED = "disabled"
+    RESTORE_CONFIGURED = "restore_configured"
+
+
 class KeepaliveMode(str, Enum):
     AUTO = "auto"
     FORCED = "forced"
@@ -198,6 +203,7 @@ class ControlConfig:
     timeout_s: float = 3.0
     retries: int = 3
     control_mode: ControlMode = ControlMode.KEEPALIVE_ONLY
+    startup_phase_restore_mode: StartupPhaseRestoreMode = StartupPhaseRestoreMode.DISABLED
     keepalive_mode: KeepaliveMode = KeepaliveMode.AUTO
     keepalive_interval_s: float = 10.0
     safe_current_a: float = 6.0

@@ -13,7 +13,7 @@ from custom_components.webasto_unite.config_flow import (
 from custom_components.webasto_unite.const import DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S
 from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
-from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, HaSensorSnapshot, PhaseCurrents, PvPhaseSwitchingMode, WallboxState
+from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, HaSensorSnapshot, PhaseCurrents, PvPhaseSwitchingMode, StartupPhaseRestoreMode, WallboxState
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
@@ -57,6 +57,7 @@ def default_init_input(**overrides):
         "safe_current": 6.0,
         "control_mode": "keepalive_only",
         "startup_charge_mode": "normal",
+        "startup_phase_restore_mode": "disabled",
         "keepalive_mode": "auto",
         "keepalive_interval": 10.0,
         "polling_interval": 2.0,
@@ -215,6 +216,7 @@ def test_options_flow_saves_connection_and_disabled_dlb_pv_at_final_step():
         assert result["data"]["unit_id"] == 42
         assert result["data"]["installed_phases"] == "1p"
         assert result["data"]["startup_charge_mode"] == "normal"
+        assert result["data"]["startup_phase_restore_mode"] == "disabled"
         assert result["data"]["dlb_input_model"] == "disabled"
         assert result["data"]["pv_control_strategy"] == "disabled"
         assert result["data"]["pv_phase_switching_mode"] == "manual_only"
@@ -242,6 +244,83 @@ def test_startup_charge_mode_accepts_pv_when_pv_is_enabled():
     coordinator.control_config = ControlConfig(pv_control_strategy="surplus")
 
     assert coordinator._resolve_startup_mode({"startup_charge_mode": "pv"}) == ChargeMode.PV
+
+
+def test_startup_phase_restore_mode_can_be_configured():
+    result = _validate_init_options(
+        default_init_input(startup_phase_restore_mode="restore_configured")
+    )
+
+    assert result["startup_phase_restore_mode"] == "restore_configured"
+
+
+def test_startup_phase_restore_schedules_configured_phase_restore():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+    coordinator.control_config = ControlConfig(
+        control_mode=ControlMode.MANAGED_CONTROL,
+        pv_phase_switching_mode=PvPhaseSwitchingMode.MANUAL_ONLY,
+        startup_phase_restore_mode=StartupPhaseRestoreMode.RESTORE_CONFIGURED,
+    )
+    coordinator._startup_phase_restore_checked = False
+    coordinator._pending_phase_switch_target = None
+    coordinator._pending_phase_switch_is_integration_managed = False
+    coordinator._phase_switch_up_condition_since = monotonic()
+    coordinator._phase_switch_decision = None
+
+    coordinator._schedule_startup_phase_restore_if_needed(WallboxState(phase_switch_mode_raw=0))
+
+    assert coordinator._startup_phase_restore_checked is True
+    assert coordinator._pending_phase_switch_target == 3
+    assert coordinator._pending_phase_switch_is_integration_managed is True
+    assert coordinator._phase_switch_up_condition_since is None
+    assert coordinator._phase_switch_decision == "startup_phase_restore_requested"
+
+
+def test_startup_phase_restore_is_disabled_by_default():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+    coordinator.control_config = ControlConfig(
+        control_mode=ControlMode.MANAGED_CONTROL,
+        pv_phase_switching_mode=PvPhaseSwitchingMode.MANUAL_ONLY,
+    )
+    coordinator._startup_phase_restore_checked = False
+    coordinator._pending_phase_switch_target = None
+    coordinator._pending_phase_switch_is_integration_managed = False
+
+    coordinator._schedule_startup_phase_restore_if_needed(WallboxState(phase_switch_mode_raw=0))
+
+    assert coordinator._startup_phase_restore_checked is True
+    assert coordinator._pending_phase_switch_target is None
+    assert coordinator._pending_phase_switch_is_integration_managed is False
+
+
+def test_startup_phase_restore_requires_managed_control_and_phase_switching():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+    coordinator.control_config = ControlConfig(
+        control_mode=ControlMode.KEEPALIVE_ONLY,
+        pv_phase_switching_mode=PvPhaseSwitchingMode.MANUAL_ONLY,
+        startup_phase_restore_mode=StartupPhaseRestoreMode.RESTORE_CONFIGURED,
+    )
+    coordinator._startup_phase_restore_checked = False
+    coordinator._pending_phase_switch_target = None
+    coordinator._pending_phase_switch_is_integration_managed = False
+
+    coordinator._schedule_startup_phase_restore_if_needed(WallboxState(phase_switch_mode_raw=0))
+
+    assert coordinator._pending_phase_switch_target is None
+
+    coordinator.control_config = ControlConfig(
+        control_mode=ControlMode.MANAGED_CONTROL,
+        pv_phase_switching_mode=PvPhaseSwitchingMode.DISABLED,
+        startup_phase_restore_mode=StartupPhaseRestoreMode.RESTORE_CONFIGURED,
+    )
+    coordinator._startup_phase_restore_checked = False
+
+    coordinator._schedule_startup_phase_restore_if_needed(WallboxState(phase_switch_mode_raw=0))
+
+    assert coordinator._pending_phase_switch_target is None
 
 
 def test_options_flow_dlb_phase_current_3p_requires_all_phase_sensors():
@@ -581,7 +660,7 @@ def test_set_mode_updates_resume_mode_only_for_active_modes():
     coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
-    coordinator._pv_auto_phase_switch_active = False
+    coordinator._integration_managed_phase_switch_active = False
     coordinator.controller = make_controller()
     coordinator.controller.pv_state.active = True
 
@@ -699,7 +778,7 @@ def test_set_pv_until_unplug_updates_override_state():
     coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
-    coordinator._pv_auto_phase_switch_active = False
+    coordinator._integration_managed_phase_switch_active = False
 
     coordinator.set_pv_until_unplug(True)
     assert coordinator.pv_until_unplug_active is True
@@ -715,7 +794,7 @@ def test_set_fixed_current_until_unplug_updates_override_state():
     coordinator._fixed_current_until_unplug_active = False
     coordinator._mode = ChargeMode.NORMAL
     coordinator._charging_paused = False
-    coordinator._pv_auto_phase_switch_active = False
+    coordinator._integration_managed_phase_switch_active = False
 
     coordinator.set_fixed_current_until_unplug(True)
     assert coordinator.fixed_current_until_unplug_active is True
@@ -733,9 +812,9 @@ def test_leaving_pv_after_automatic_phase_switch_restores_configured_phases():
     coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = True
     coordinator._fixed_current_until_unplug_active = False
-    coordinator._pv_auto_phase_switch_active = True
+    coordinator._integration_managed_phase_switch_active = True
     coordinator._pending_phase_switch_target = None
-    coordinator._pending_phase_switch_is_pv_auto = False
+    coordinator._pending_phase_switch_is_integration_managed = False
     coordinator._phase_switch_up_condition_since = monotonic()
     coordinator._phase_switch_decision = None
 
@@ -744,7 +823,7 @@ def test_leaving_pv_after_automatic_phase_switch_restores_configured_phases():
     assert coordinator.fixed_current_until_unplug_active is True
     assert coordinator.pv_until_unplug_active is False
     assert coordinator._pending_phase_switch_target == 3
-    assert coordinator._pending_phase_switch_is_pv_auto is True
+    assert coordinator._pending_phase_switch_is_integration_managed is True
     assert coordinator._phase_switch_up_condition_since is None
     assert coordinator._phase_switch_decision == "phase_restore_requested"
 
@@ -757,9 +836,9 @@ def test_leaving_pv_does_not_restore_manual_phase_switch_choice():
     coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = True
     coordinator._fixed_current_until_unplug_active = False
-    coordinator._pv_auto_phase_switch_active = False
+    coordinator._integration_managed_phase_switch_active = False
     coordinator._pending_phase_switch_target = None
-    coordinator._pending_phase_switch_is_pv_auto = False
+    coordinator._pending_phase_switch_is_integration_managed = False
     coordinator._phase_switch_decision = None
 
     coordinator.set_fixed_current_until_unplug(True)
@@ -893,7 +972,7 @@ def test_pending_phase_restore_runs_outside_pv_mode():
         coordinator.controller = WallboxController(coordinator.control_config)
         coordinator.write_queue = WriteQueueManager()
         coordinator._pending_phase_switch_target = 3
-        coordinator._pending_phase_switch_is_pv_auto = True
+        coordinator._pending_phase_switch_is_integration_managed = True
         coordinator._last_phase_switch_monotonic = 0.0
         coordinator._phase_switch_up_condition_since = None
         coordinator._phase_switch_count_this_session = 1
@@ -929,7 +1008,7 @@ def test_pending_phase_restore_writes_register_405_outside_pv_mode():
         coordinator.controller = WallboxController(coordinator.control_config)
         coordinator.write_queue = WriteQueueManager()
         coordinator._pending_phase_switch_target = 3
-        coordinator._pending_phase_switch_is_pv_auto = True
+        coordinator._pending_phase_switch_is_integration_managed = True
         coordinator._last_phase_switch_monotonic = 0.0
         coordinator._phase_switch_up_condition_since = None
         coordinator._phase_switch_count_this_session = 1

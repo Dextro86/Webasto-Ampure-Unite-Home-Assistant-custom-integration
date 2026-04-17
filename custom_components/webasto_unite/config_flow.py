@@ -9,7 +9,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy, PvPhaseSwitchingMode
+from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy, PvPhaseSwitchingMode, StartupPhaseRestoreMode
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
@@ -26,6 +26,10 @@ STARTUP_CHARGE_MODE_SELECTOR_OPTIONS = [
     {"value": ChargeMode.NORMAL.value, "label": "Normal"},
     {"value": ChargeMode.PV.value, "label": "PV"},
     {"value": ChargeMode.FIXED_CURRENT.value, "label": "Fixed Current"},
+]
+STARTUP_PHASE_RESTORE_SELECTOR_OPTIONS = [
+    {"value": StartupPhaseRestoreMode.DISABLED.value, "label": "Disabled"},
+    {"value": StartupPhaseRestoreMode.RESTORE_CONFIGURED.value, "label": "Restore to Charger Configuration"},
 ]
 KEEPALIVE_MODE_SELECTOR_OPTIONS = [
     {"value": KeepaliveMode.AUTO.value, "label": "Auto (Recommended)"},
@@ -147,6 +151,10 @@ def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     if startup_mode not in {mode.value for mode in ChargeMode}:
         raise vol.Invalid(f"{CONF_STARTUP_CHARGE_MODE} must be a supported charge mode")
     options[CONF_STARTUP_CHARGE_MODE] = startup_mode
+    startup_phase_restore = options.get(CONF_STARTUP_PHASE_RESTORE_MODE, DEFAULT_STARTUP_PHASE_RESTORE_MODE)
+    if startup_phase_restore not in {mode.value for mode in StartupPhaseRestoreMode}:
+        raise vol.Invalid(f"{CONF_STARTUP_PHASE_RESTORE_MODE} must be a supported startup phase restore mode")
+    options[CONF_STARTUP_PHASE_RESTORE_MODE] = startup_phase_restore
     return options
 
 
@@ -313,6 +321,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
             vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_STARTUP_CHARGE_MODE, default=self.options.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_CHARGE_MODE_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_STARTUP_PHASE_RESTORE_MODE, default=self.options.get(CONF_STARTUP_PHASE_RESTORE_MODE, DEFAULT_STARTUP_PHASE_RESTORE_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_PHASE_RESTORE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),

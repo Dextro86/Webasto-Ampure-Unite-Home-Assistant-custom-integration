@@ -27,6 +27,7 @@ Main settings:
 - `Modbus Timeout` and `Modbus Retries`: connection resilience settings.
 - `Control Mode`: whether the integration may actively control charging.
 - `Startup Charge Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
+- `Startup Phase Restore`: optionally restore register `405` to `Charger Phase Configuration` after Home Assistant startup or integration reload. The default is `Disabled`.
 
 When changing settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
 
@@ -37,6 +38,8 @@ Recommended first setup:
 3. Switch to `Managed Charging Control` only after the read-only values are plausible.
 
 If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
+
+If you enable `Startup Phase Restore`, the integration may restore the charger phase mode to `Charger Phase Configuration` after startup/reload. Keep this disabled if you sometimes intentionally leave the charger in `1 Phase`. This restore only runs when `Control Mode` is `Managed Charging Control`, phase switching is not disabled and register `405` returns a supported value.
 
 ## Current Limits
 
@@ -49,6 +52,10 @@ Important current settings:
 - `Fixed Current`: target used by `Fixed Current` mode.
 
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
+
+`Default Current Limit` is also a general user limit. This means `Fixed Current` and `Fixed Current Until Unplug` can still be capped by `Default Current Limit`, `Maximum Current`, DLB and charger/session limits. Example: if `Fixed Current` is `16 A` but `Default Current Limit` is `10 A`, the final target will not exceed `10 A`.
+
+If DLB or another required control input becomes unavailable, the integration falls back to `Safe Current on Failure`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured input sensors.
 
 ## Dynamic Load Balancing
 
@@ -94,6 +101,8 @@ PV Control Strategy:
 - `Minimum + Surplus`: keep charging at minimum current and add surplus when available.
 
 PV charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
+
+`Minimum + Surplus` is not pure surplus-only charging. It may charge at `PV Minimum Current` even when little or no surplus is available. Use `Surplus Only` if you want PV charging to wait until enough surplus is present.
 
 PV surplus can be provided in two ways:
 
@@ -161,6 +170,8 @@ With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 - do not switch in the hysteresis band between `3640 W` and `4640 W`
 
 Manual phase switching uses register `405` and is only available when phase switching is not disabled.
+
+Manual phase switching is persistent charger state. If you manually select `1 Phase`, the charger can remain in 1-phase mode for `Normal`, `Fixed Current` and later sessions until you manually select `3 Phases` again or automatic PV phase switching changes it. The integration only auto-restores the configured phase mode when it knows that automatic PV phase switching changed the phase mode.
 
 Automatic phase switching only runs in `PV` mode or `PV Until Unplug`. It does not run in `Normal`, `Fixed Current` or `Off`.
 
