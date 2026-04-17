@@ -126,6 +126,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._pending_phase_switch_reason: str | None = None
         self._integration_managed_phase_switch_active = False
         self._startup_phase_restore_checked = False
+        self._startup_phase_restore_session_restart_attempted = False
         self._last_phase_switch_monotonic = 0.0
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
@@ -345,6 +346,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pending_phase_switch_is_integration_managed = False
                 self._pending_phase_switch_reason = None
                 self._integration_managed_phase_switch_active = False
+                self._startup_phase_restore_session_restart_attempted = False
                 self._phase_switch_up_condition_since = None
             if not self._last_vehicle_connected and wallbox.vehicle_connected:
                 self._phase_switch_count_this_session = 0
@@ -521,27 +523,41 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
     def _schedule_startup_phase_restore_if_needed(self, wallbox) -> None:
         if self._startup_phase_restore_checked:
+            self._schedule_startup_phase_session_restart_if_needed(wallbox)
             return
         self._startup_phase_restore_checked = True
-        if self.control_config.startup_phase_restore_mode != StartupPhaseRestoreMode.RESTORE_CONFIGURED:
-            return
-        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
-            return
-        if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
+        if not self._allows_startup_phase_restore():
             return
         if wallbox.phase_switch_mode_raw not in (0, 1):
             return
         configured_phases = self._configured_phase_count()
         current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
         if current_phases == configured_phases:
-            if self._phase_switch_needs_active_session_restart(wallbox, configured_phases):
-                self._set_pending_phase_switch(configured_phases, "startup_phase_restore")
-                self._phase_switch_decision = self._phase_switch_decision_for("waiting_for_ev")
-                return
+            self._schedule_startup_phase_session_restart_if_needed(wallbox)
             return
         self._set_pending_phase_switch(configured_phases, "startup_phase_restore")
         self._phase_switch_up_condition_since = None
         self._phase_switch_decision = self._phase_switch_decision_for("requested")
+
+    def _allows_startup_phase_restore(self) -> bool:
+        return (
+            self.control_config.startup_phase_restore_mode == StartupPhaseRestoreMode.RESTORE_CONFIGURED
+            and self.control_config.control_mode == ControlMode.MANAGED_CONTROL
+            and self.control_config.pv_phase_switching_mode != PvPhaseSwitchingMode.DISABLED
+        )
+
+    def _schedule_startup_phase_session_restart_if_needed(self, wallbox) -> None:
+        if not self._allows_startup_phase_restore():
+            return
+        if getattr(self, "_startup_phase_restore_session_restart_attempted", False):
+            return
+        configured_phases = self._configured_phase_count()
+        if not self._phase_switch_needs_active_session_restart(wallbox, configured_phases):
+            return
+        self._startup_phase_restore_session_restart_attempted = True
+        self._set_pending_phase_switch(configured_phases, "startup_phase_restore")
+        self._phase_switch_up_condition_since = None
+        self._phase_switch_decision = self._phase_switch_decision_for("waiting_for_ev")
 
     def _reset_pv_runtime_state(self) -> None:
         controller = getattr(self, "controller", None)
