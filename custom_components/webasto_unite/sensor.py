@@ -155,6 +155,7 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "writing_startup_phase_restore": "Writing Startup Phase Restore",
                 "startup_phase_restore_complete": "Startup Phase Restore Complete",
                 "startup_phase_restore_waiting_for_ev": "Startup Phase Restore Waiting for EV",
+                "startup_phase_restore_waiting_for_1p_session": "Startup Phase Restore Waiting for 1P Session",
                 "startup_phase_restore_settling": "Startup Phase Restore Settling",
                 "normalizing_startup_phase_restore_to_1p": "Normalizing Startup Phase Restore to 1P",
                 "startup_phase_restore": "Startup Phase Restore",

@@ -290,7 +290,7 @@ def test_configured_phase_count_prefers_options_over_initial_entry_data():
     assert coordinator._configured_phase_count() == 3
 
 
-def test_startup_phase_restore_schedules_restart_when_3p_mode_is_active_but_session_is_1p():
+def test_startup_phase_restore_waits_before_switching_active_1p_session():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
     coordinator.control_config = ControlConfig(
@@ -302,6 +302,7 @@ def test_startup_phase_restore_schedules_restart_when_3p_mode_is_active_but_sess
     coordinator._pending_phase_switch_target = None
     coordinator._pending_phase_switch_is_integration_managed = False
     coordinator._pending_phase_switch_reason = None
+    coordinator._startup_phase_restore_1p_since = None
     coordinator._phase_switch_up_condition_since = monotonic()
     coordinator._phase_switch_decision = None
 
@@ -313,10 +314,11 @@ def test_startup_phase_restore_schedules_restart_when_3p_mode_is_active_but_sess
         )
     )
 
-    assert coordinator._pending_phase_switch_target == 3
-    assert coordinator._pending_phase_switch_is_integration_managed is True
-    assert coordinator._pending_phase_switch_reason == "startup_phase_restore"
-    assert coordinator._phase_switch_decision == "startup_phase_restore_waiting_for_ev"
+    assert coordinator._pending_phase_switch_target is None
+    assert coordinator._pending_phase_switch_is_integration_managed is False
+    assert coordinator._pending_phase_switch_reason is None
+    assert coordinator._startup_phase_restore_1p_since is not None
+    assert coordinator._phase_switch_decision == "startup_phase_restore_waiting_for_1p_session"
 
 
 def test_startup_phase_restore_can_detect_1p_active_session_after_initial_check():
@@ -332,6 +334,7 @@ def test_startup_phase_restore_can_detect_1p_active_session_after_initial_check(
     coordinator._pending_phase_switch_target = None
     coordinator._pending_phase_switch_is_integration_managed = False
     coordinator._pending_phase_switch_reason = None
+    coordinator._startup_phase_restore_1p_since = 0.0
     coordinator._phase_switch_up_condition_since = None
     coordinator._phase_switch_decision = "outside_pv_mode"
 

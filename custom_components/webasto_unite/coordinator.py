@@ -111,6 +111,7 @@ from .write_queue import QueuedWrite, WritePriority, WriteQueueManager
 
 _LOGGER = logging.getLogger(__name__)
 PHASE_RESTORE_SETTLE_DELAY_S = 15.0
+STARTUP_PHASE_RESTORE_1P_GRACE_S = 20.0
 
 
 class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
@@ -131,6 +132,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._integration_managed_phase_switch_active = False
         self._startup_phase_restore_checked = False
         self._startup_phase_restore_session_restart_attempted = False
+        self._startup_phase_restore_1p_since: float | None = None
         self._last_phase_switch_monotonic = 0.0
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
@@ -367,6 +369,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pending_phase_switch_normalization_step = None
                 self._integration_managed_phase_switch_active = False
                 self._startup_phase_restore_session_restart_attempted = False
+                self._startup_phase_restore_1p_since = None
                 self._phase_switch_up_condition_since = None
             if not self._last_vehicle_connected and wallbox.vehicle_connected:
                 self._phase_switch_count_this_session = 0
@@ -564,6 +567,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 "_startup_phase_restore_session_restart_attempted",
                 False,
             ),
+            "startup_phase_restore_1p_since": getattr(self, "_startup_phase_restore_1p_since", None),
             "pending_phase_switch_target": getattr(self, "_pending_phase_switch_target", None),
             "pending_phase_switch_reason": getattr(self, "_pending_phase_switch_reason", None),
             "pending_phase_switch_3p_written": getattr(self, "_pending_phase_switch_3p_written", False),
@@ -680,15 +684,40 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             return
         configured_phases = self._configured_phase_count()
         if not self._phase_switch_needs_active_session_restart(wallbox, configured_phases):
+            self._startup_phase_restore_1p_since = None
             self._log_phase_debug(
                 "startup phase session restart skipped: no active session mismatch",
                 wallbox,
                 target_phases=configured_phases,
             )
             return
+        now = monotonic()
+        one_phase_since = getattr(self, "_startup_phase_restore_1p_since", None)
+        if one_phase_since is None:
+            self._startup_phase_restore_1p_since = now
+            self._phase_switch_decision = "startup_phase_restore_waiting_for_1p_session"
+            self._log_phase_info(
+                "startup phase restore waiting for active 1p session before switching",
+                wallbox,
+                target_phases=configured_phases,
+                grace_s=STARTUP_PHASE_RESTORE_1P_GRACE_S,
+            )
+            return
+        elapsed_s = now - one_phase_since
+        if elapsed_s < STARTUP_PHASE_RESTORE_1P_GRACE_S:
+            self._phase_switch_decision = "startup_phase_restore_waiting_for_1p_session"
+            self._log_phase_debug(
+                "startup phase restore still waiting for active 1p session grace",
+                wallbox,
+                target_phases=configured_phases,
+                elapsed_s=round(elapsed_s, 1),
+                required_s=STARTUP_PHASE_RESTORE_1P_GRACE_S,
+            )
+            return
         self._startup_phase_restore_session_restart_attempted = True
         self._set_pending_phase_switch(configured_phases, "startup_phase_restore")
         self._phase_switch_up_condition_since = None
+        self._startup_phase_restore_1p_since = None
         self._phase_switch_decision = self._phase_switch_decision_for("waiting_for_ev")
         self._log_phase_info(
             "startup phase session restart scheduled",
