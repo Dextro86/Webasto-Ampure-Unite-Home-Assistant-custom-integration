@@ -300,6 +300,13 @@ class RuntimeSnapshot:
     pv_surplus_w: Optional[float] = None
     phase_switch_decision: Optional[str] = None
     phase_switch_count: int = 0
+    configured_installed_phases: Optional[str] = None
+    configured_phase_count: Optional[int] = None
+    startup_phase_restore_allowed: bool = False
+    startup_phase_restore_retry_used: bool = False
+    pending_phase_switch_target: Optional[int] = None
+    pending_phase_switch_reason: Optional[str] = None
+    integration_managed_phase_switch_active: bool = False
     dominant_limit_reason: Optional[str] = None
     fallback_active: bool = False
     last_client_error: str | None = None
@@ -333,6 +340,13 @@ class RuntimeSnapshot:
             "pv_surplus_w": self.pv_surplus_w,
             "phase_switch_decision": self.phase_switch_decision,
             "phase_switch_count": self.phase_switch_count,
+            "configured_installed_phases": self.configured_installed_phases,
+            "configured_phase_count": self.configured_phase_count,
+            "startup_phase_restore_allowed": self.startup_phase_restore_allowed,
+            "startup_phase_restore_retry_used": self.startup_phase_restore_retry_used,
+            "pending_phase_switch_target": self.pending_phase_switch_target,
+            "pending_phase_switch_reason": self.pending_phase_switch_reason,
+            "integration_managed_phase_switch_active": self.integration_managed_phase_switch_active,
             "dominant_limit_reason": self.dominant_limit_reason,
             "fallback_active": self.fallback_active,
             "last_client_error": self.last_client_error,

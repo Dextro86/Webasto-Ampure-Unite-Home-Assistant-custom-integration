@@ -279,6 +279,17 @@ def test_startup_phase_restore_schedules_configured_phase_restore():
     assert coordinator._phase_switch_decision == "startup_phase_restore_requested"
 
 
+def test_configured_phase_count_prefers_options_over_initial_entry_data():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(
+        data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "1p"},
+        options={"installed_phases": "3p"},
+    )
+
+    assert coordinator._configured_installed_phases() == "3p"
+    assert coordinator._configured_phase_count() == 3
+
+
 def test_startup_phase_restore_schedules_restart_when_3p_mode_is_active_but_session_is_1p():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})

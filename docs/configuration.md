@@ -199,6 +199,7 @@ Useful phase-switching diagnostics:
 - `Phase Switch Decision`: current automatic phase-switching decision or block reason.
 - `Phase Switch Commands`: number of phase-switch commands in the current plug-in session. This can include automatic PV switching and integration-managed restore actions.
 - `Startup Phase Restore Waiting for EV`: the charger is configured for 3 phases, but the active EV session is still using 1 phase. The integration will pause and let charging restart so the EV can renegotiate phases.
+- `Configured Installed Phases`, `Startup Phase Restore Allowed`, `Pending Phase Switch Target` and `Pending Phase Switch Reason`: diagnostic values that help verify why a startup restore or phase switch did or did not run.
 
 ## Important entities
 
