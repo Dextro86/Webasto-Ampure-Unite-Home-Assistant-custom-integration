@@ -150,7 +150,7 @@ The `PV Until Unplug Strategy` can inherit the normal PV strategy or use a separ
 PV Phase Switching modes:
 
 - `Disabled`: do not expose or use phase switching through the integration.
-- `Manual Only`: expose `Manual Phase Switch`, but do not switch automatically.
+- `Manual Only`: expose `Manual Phase Switch`, but do not switch automatically. Manual switching is only available while charging is inactive.
 - `Automatic 1P/3P`: allow automatic phase switching in PV mode.
 
 `PV Phase Switching Hysteresis (W)` controls the extra margin around the automatic 1P/3P switching point. The default is `500 W`.
@@ -195,7 +195,7 @@ Useful phase-switching diagnostics:
 - `Effective Active Phases`: phases currently drawing measurable current.
 - `PV Surplus Input`: surplus value used by the PV logic.
 - `Phase Switch Decision`: current automatic phase-switching decision or block reason.
-- `Phase Switch Count`: number of automatic phase switches in the current plug-in session.
+- `Phase Switch Commands`: number of phase-switch commands in the current plug-in session. This can include automatic PV switching and integration-managed restore actions.
 
 ## Important entities
 
@@ -203,7 +203,7 @@ Daily-use entities:
 
 - `Charge Mode`: selected base charging mode.
 - `Charging On/Off`: user switch for whether charging is allowed.
-- `Manual Phase Switch`: manual 1P/3P phase selection when available.
+- `Manual Phase Switch`: manual 1P/3P phase selection when available. The entity is unavailable while charging is active because the charger should be paused before changing phases.
 - `PV Until Unplug`: temporary PV session override.
 - `Fixed Current Until Unplug`: temporary fixed-current session override.
 - `Current Limit`: normal target current.
@@ -225,7 +225,7 @@ Useful diagnostics:
 - `Effective Active Phases`
 - `PV Surplus Input`
 - `Phase Switch Decision`
-- `Phase Switch Count`
+- `Phase Switch Commands`
 
 ## Troubleshooting basics
 

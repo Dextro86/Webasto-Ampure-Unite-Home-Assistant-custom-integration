@@ -80,9 +80,13 @@ class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
+        data = self.coordinator.data
         return (
             super().available
             and self.coordinator.control_config.pv_phase_switching_mode != PvPhaseSwitchingMode.DISABLED
+            and data is not None
+            and data.wallbox.phase_switch_mode_raw in (0, 1)
+            and not data.wallbox.charging_active
         )
 
     @property

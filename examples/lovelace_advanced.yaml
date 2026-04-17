@@ -66,7 +66,7 @@ cards:
       - entity: sensor.webasto_unite_phase_switch_decision
         name: Phase Switch Decision
       - entity: sensor.webasto_unite_phase_switch_count
-        name: Phase Switch Count
+        name: Phase Switch Commands
 
   - type: entities
     title: Phase Details

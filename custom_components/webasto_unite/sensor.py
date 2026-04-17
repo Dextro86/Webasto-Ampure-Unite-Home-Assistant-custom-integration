@@ -53,7 +53,7 @@ SENSORS = (
     WebastoSensorDescription(key="final_target", name="Final Target", value_key="final_target_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
     WebastoSensorDescription(key="pv_surplus_input", name="PV Surplus Input", value_key="pv_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_decision", name="Phase Switch Decision", value_key="phase_switch_decision", entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="phase_switch_count", name="Phase Switch Count", value_key="phase_switch_count", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_count", name="Phase Switch Commands", value_key="phase_switch_count", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="queue_depth", name="Write Queue Depth", value_key="queue_depth", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="keepalive_age", name="Keepalive Age", value_key="keepalive_age_s", native_unit_of_measurement=UnitOfTime.SECONDS, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="keepalive_sent_count", name="Keepalive Sent Count", value_key="keepalive_sent_count", entity_category=EntityCategory.DIAGNOSTIC),
