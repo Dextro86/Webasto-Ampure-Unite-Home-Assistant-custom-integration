@@ -17,7 +17,7 @@
     "step": {
       "init": {
         "title": "Connection and Control",
-        "description": "Configure the charger connection, polling, safety limits and whether the integration may actively control charging. Changes are saved only after completing all settings screens.",
+        "description": "Configure connection, startup behavior and safety limits. Start with Read-only + Keepalive; use Managed Charging Control only when you want this integration to write current limits or phase changes. Changes are saved only after completing all settings screens.",
         "data": {
           "host": "Charger IP address",
           "port": "Port",
@@ -27,6 +27,7 @@
           "timeout": "Modbus Timeout",
           "retries": "Modbus Retries",
           "control_mode": "Control Mode",
+          "startup_charge_mode": "Startup Charge Mode",
           "keepalive_mode": "Keepalive Mode",
           "keepalive_interval": "Keepalive Interval",
           "safe_current": "Safe Current on Failure",
@@ -37,7 +38,7 @@
       },
       "dlb": {
         "title": "Dynamic Load Balancing",
-        "description": "Configure Dynamic Load Balancing (DLB). DLB reduces the charger current when your house load gets close to the configured main fuse limit. Continue through all settings screens to save changes.",
+        "description": "Configure Dynamic Load Balancing (DLB). Choose Disabled unless you have suitable house load sensors. If your sensors include the charger load, select the matching sensor scope so the charger does not limit itself unnecessarily.",
         "data": {
           "dlb_input_model": "DLB Measurement Source",
           "dlb_sensor_scope": "DLB Sensor Scope",
@@ -51,7 +52,7 @@
       },
       "pv": {
         "title": "PV and Fixed Current Charging",
-        "description": "Configure optional PV charging behavior, PV Phase Switching and the Fixed Current target. Choose Disabled for PV Control Strategy if you do not want to use PV charging. Use the signed grid power option only with a net grid power sensor where negative values mean export to the grid. Submit this final screen to save changes.",
+        "description": "Configure PV charging, PV phase switching and Fixed Current. Use a surplus power sensor when possible. Use signed grid power only with a net power sensor where negative values mean export. Hysteresis and switch intervals prevent rapid 1P/3P switching.",
         "data": {
           "pv_input_model": "PV Measurement Source",
           "pv_control_strategy": "PV Control Strategy",

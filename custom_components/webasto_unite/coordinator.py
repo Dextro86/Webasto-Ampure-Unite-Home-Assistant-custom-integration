@@ -46,6 +46,7 @@ from .const import (
     CONF_RETRIES,
     CONF_SAFE_CURRENT,
     CONF_SAFETY_MARGIN,
+    CONF_STARTUP_CHARGE_MODE,
     CONF_TIMEOUT,
     CONF_UNIT_ID,
     CONF_USER_LIMIT,
@@ -69,6 +70,7 @@ from .const import (
     DEFAULT_RETRIES,
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
+    DEFAULT_STARTUP_CHARGE_MODE,
     DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
     DEFAULT_USER_LIMIT_A,
@@ -174,6 +176,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             fixed_current_a=float(merged.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)),
             communication_timeout_s=float(merged.get(CONF_COMM_TIMEOUT, 30.0)),
         )
+        self._mode = self._resolve_startup_mode(merged)
         self.controller = WallboxController(self.control_config)
         self.client = WebastoModbusClient(
             ModbusClientConfig(
@@ -193,6 +196,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             name=DOMAIN,
             update_interval=timedelta(seconds=self.control_config.polling_interval_s),
         )
+
+    def _resolve_startup_mode(self, merged_options: dict) -> ChargeMode:
+        try:
+            mode = ChargeMode(merged_options.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE))
+        except ValueError:
+            return ChargeMode.NORMAL
+        if mode == ChargeMode.PV and self.control_config.pv_control_strategy == PvControlStrategy.DISABLED:
+            return ChargeMode.NORMAL
+        return mode
 
     async def async_setup(self) -> None:
         self._setup_sensor_listeners()

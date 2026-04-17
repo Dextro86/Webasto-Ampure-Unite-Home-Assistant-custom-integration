@@ -26,6 +26,7 @@ Main settings:
 - `Refresh Interval`: how often the integration refreshes charger state.
 - `Modbus Timeout` and `Modbus Retries`: connection resilience settings.
 - `Control Mode`: whether the integration may actively control charging.
+- `Startup Charge Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
 
 When changing settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
 
@@ -34,6 +35,8 @@ Recommended first setup:
 1. Use `Read-only + Keepalive`.
 2. Confirm that monitoring, connection state, currents, power and firmware values look correct.
 3. Switch to `Managed Charging Control` only after the read-only values are plausible.
+
+If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
 
 ## Current Limits
 
@@ -56,8 +59,12 @@ DLB is disabled by default. Enable it only after selecting suitable Home Assista
 DLB measurement sources:
 
 - `Disabled`: do not use DLB.
-- `Phase Current Sensors (Recommended)`: use separate L1, L2 and L3 current sensors.
-- `Grid Power Sensor`: calculate available current from a power sensor.
+- `Phase Current Sensors (Recommended)`: use separate L1, L2 and L3 current sensors from your smart meter or energy meter. This is the preferred DLB input because it matches how main fuses are normally loaded per phase. Use current sensors in `A` or `mA`; the integration normalizes them internally.
+- `Grid Power Sensor`: calculate available current from a single live power sensor in `W` or `kW`. This is less precise because the integration converts watts to amps using a nominal `230 V` per phase.
+
+For a 1-phase charger setup, only the L1 current sensor is required. For a 3-phase charger setup, select L1, L2 and L3 sensors.
+
+Use live measurement sensors, not energy counters. Current sensors should report `A` or `mA`. Power sensors should report `W` or `kW`. Energy sensors such as `Wh` or `kWh` are not suitable for DLB because they represent accumulated energy, not current load.
 
 DLB Sensor Scope:
 
@@ -65,6 +72,8 @@ DLB Sensor Scope:
 - `Total House Current Charger Included`: sensors measure total house load including the charger.
 
 If your sensors include the charger load, select `Total House Current Charger Included`. The integration then compensates for the charger's own measured current before calculating the DLB Limit. This prevents the charger from immediately reducing itself just because its own load appears in the house-current sensors.
+
+If your sensors exclude the charger load, select `Total House Current Charger Excluded`. In that case the integration assumes the house load sensors already represent non-charger load only.
 
 Example:
 
@@ -88,10 +97,12 @@ PV charging is disabled by default. Enable it only after selecting a suitable su
 
 PV surplus can be provided in two ways:
 
-- A dedicated surplus power sensor.
-- A signed net grid power sensor where negative values mean export to the grid.
+- `Use a Surplus Power Sensor`: select a Home Assistant sensor that directly represents available PV surplus as current power in `W` or `kW`.
+- `Use Signed Grid Power Sensor`: select a net grid power sensor where negative values mean export to the grid. For example, `-1800 W` means roughly `1800 W` export.
 
-Do not use separate production and consumption sensors directly unless you first combine them into one surplus sensor.
+The surplus sensor must represent power that is available now. Do not select a daily energy production sensor or energy import/export counter.
+
+Do not use separate production and consumption sensors directly unless you first combine them into one surplus sensor. If your smart meter provides separate live production and consumption power sensors, create a helper/template sensor that outputs the actual surplus power.
 
 If your consumption sensor includes the charger, calculate surplus like this:
 
@@ -101,7 +112,19 @@ surplus = PV production - total consumption + charger power
 
 This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
 
-There is no separate PV maximum-current setting. PV charging is still capped by `Default Current Limit`, `Maximum Current`, DLB, safety behavior and charger/session limits.
+Use current power sensors, not energy counters. `W` and `kW` are valid. `Wh` and `kWh` are not suitable for PV control because they represent accumulated energy, not current surplus.
+
+PV thresholds:
+
+- `PV Start Threshold (W)`: surplus must reach this value before `Surplus Only` starts charging.
+- `PV Stop Threshold (W)`: if surplus stays below this value while charging, the integration may pause after the configured stop delay and minimum runtime.
+- `PV Start Delay`: surplus must stay above the start threshold for this long before charging starts.
+- `PV Stop Delay`: surplus must stay below the stop threshold for this long before charging stops.
+- `PV Minimum Runtime`: once PV charging starts, keep it running for at least this long.
+- `PV Minimum Pause`: after PV charging stops, wait this long before starting again.
+- `PV Minimum Current`: lowest current target used when PV charging is allowed to run.
+
+`PV Minimum Current` is not a PV maximum. There is no separate PV maximum-current setting. PV charging is capped by `Default Current Limit`, `Maximum Current`, DLB, safety behavior and charger/session limits.
 
 ## PV Until Unplug
 
@@ -121,11 +144,15 @@ PV Phase Switching modes:
 
 `PV Phase Switching Hysteresis (W)` controls the extra margin around the automatic 1P/3P switching point. The default is `500 W`.
 
-`Minimum Phase Switch Interval` limits how quickly automatic phase switching may happen again after a successful switch. The default is `300` seconds.
+`Minimum Phase Switch Interval` is used as a stability guard for automatic 1P->3P switching. Surplus must remain high for this long before the integration requests 3-phase mode. It also rate-limits repeated 1P->3P attempts. The default is `300` seconds.
 
-`Maximum Phase Switches per Session` limits the number of automatic phase switches during one plug-in session. The default is `6`.
+`Maximum Phase Switches per Session` limits automatic 1P->3P attempts during one plug-in session. The default is `6`. Returning to 1-phase is treated as a fallback path and may still happen when 3-phase charging is no longer realistic.
+
+Hysteresis prevents rapid switching around the 1P/3P boundary. A larger hysteresis waits longer before switching to 3-phase and switches back to 1-phase sooner when surplus drops. This can be useful with fast-moving clouds. A smaller hysteresis follows surplus more aggressively but may switch more often.
 
 The integration distinguishes between the requested phase-switch mode and the phases that are actually drawing current. `Phase Switch Mode Code` reports register `405`; `Effective Active Phases` is derived from the measured charger currents. PV current calculation uses the effective active phases while charging, because some vehicles or firmware states may report 3-phase mode while still drawing current mostly on one phase.
+
+This distinction is important. Register `405` tells the charger which phase mode was requested. It does not always prove that the vehicle is physically charging on all three phases at that moment. The measured currents are the best practical signal for active phase count while charging.
 
 With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 
@@ -138,6 +165,8 @@ Manual phase switching uses register `405` and is only available when phase swit
 Automatic phase switching only runs in `PV` mode or `PV Until Unplug`. It does not run in `Normal`, `Fixed Current` or `Off`.
 
 Automatic 1P->3P switching is deliberately conservative. Surplus must remain high for the configured `Minimum Phase Switch Interval` before the integration requests 3-phase mode. Returning from 3P to 1P is treated as a fallback path and is allowed even when the normal 1P->3P switch budget has been reached.
+
+If surplus drops again while a pending 1P->3P switch is waiting, the pending switch is cancelled. This avoids switching to 3-phase based on a short cloud gap or a brief surplus spike.
 
 The integration performs phase switching conservatively:
 

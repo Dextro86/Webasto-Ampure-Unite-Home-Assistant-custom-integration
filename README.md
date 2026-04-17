@@ -6,19 +6,18 @@
 
 Home Assistant custom integration for Webasto Unite and Ampure Unite EV chargers over local Modbus/TCP.
 
-This is a community project developed with significant AI assistance. It has been tested on one charger so far, so verify behavior on your own hardware before relying on automated charging control.
+This is a community project developed with significant AI assistance. Active charging control and phase switching should be verified on your own charger, vehicle and firmware before relying on automation.
 
 ## Features
 
-| Feature | Status |
-| --- | --- |
-| Local Modbus monitoring | Validated on one charger |
-| Keepalive handling | Validated on one charger |
-| Current control through register `5004` | Validated on one charger |
-| Dynamic Load Balancing (DLB) | Validated on one charger |
-| Manual 1P/3P phase switching through register `405` | Partially validated |
-| PV charging | Partially validated |
-| Automatic PV 1P/3P phase switching | Experimental |
+- Local Modbus/TCP monitoring
+- Keepalive handling
+- Current control through register `5004`
+- Dynamic Load Balancing (DLB)
+- PV surplus charging
+- Manual 1P/3P phase switching through register `405`
+- Experimental automatic PV 1P/3P phase switching
+- Optional Lovelace dashboard and automation examples
 
 Supported charge modes:
 
@@ -32,33 +31,14 @@ Temporary session overrides:
 - `PV Until Unplug`
 - `Fixed Current Until Unplug`
 
-## Documentation
-
-- [Configuration guide](docs/configuration.md): setup screens, DLB, PV charging, phase switching and important Home Assistant entities.
-- [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
-
-## Compatibility
-
-| Charger / firmware | Status in this project | Notes |
-| --- | --- | --- |
-| Webasto/Ampure Unite firmware `3.187` | Tested | Main development and validation firmware. |
-| UNITE HMI `3.156` | Not tested | Listed by NeLeSo as the latest stable Webasto/Ampure UNITE firmware. |
-| UNITE HMI `3.166` | Not tested | Listed by NeLeSo for specific larger dynamic load-management clusters. |
-| Other UNITE firmware versions | Unknown | Register behavior may differ and should be verified carefully. |
-
-Firmware background: see the NeLeSo Webasto/Ampure UNITE firmware page: <https://www.neleso.com/unite-downloads>.
-
 ## Requirements
-
-Before installing:
 
 - Home Assistant is already running.
 - HACS is installed if you want to install through HACS.
 - The charger has network connectivity and a fixed IP address.
 - `Modbus/TCP` is enabled in the charger's web interface.
-- No other system keeps an active `Modbus/TCP` connection open to the charger. The charger appears to accept only one active Modbus client at a time.
+- No other system keeps an active `Modbus/TCP` connection open to the charger.
 - DLB and PV control require suitable Home Assistant sensors.
-- DLB and PV charging are disabled by default and should be enabled only after selecting suitable sensors.
 
 ## Installation
 
@@ -81,68 +61,24 @@ Before installing:
 
 Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unite`, restart Home Assistant, and add the integration through `Settings` -> `Devices & Services` -> `Add Integration`.
 
-## Home Assistant entities
+## Documentation
 
-Important entities for daily use:
+- [Configuration guide](docs/configuration.md): settings, sensor choices, DLB, PV charging, phase switching and troubleshooting.
+- [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
 
-- `Charge Mode`
-- `Charging On/Off`
-- `Manual Phase Switch`
-- `PV Until Unplug`
-- `Fixed Current Until Unplug`
-- `Current Limit`
-- `Fixed Current`
-- `Active Mode`
-- `Charging Behavior`
-- `Final Target`
-- `DLB Limit`
+Start conservatively: first confirm monitoring works, then enable `Managed Charging Control`, and only then enable DLB, PV charging or automatic phase switching.
 
-Useful diagnostics:
+## Notes
 
-- `Connected`
-- `Client Error`
-- `Control Reason`
-- `Dominant Limit`
-- `Sensor Invalid Reason`
-- `Write Queue Depth`
-- `Phase Switch Mode Code`
-- `Effective Active Phases`
-- `PV Surplus Input`
-- `Phase Switch Decision`
-- `Phase Switch Count`
-
-`Charge Mode` is the selected base mode. `Active Mode` shows what the integration is actually doing after overrides and PV behavior are applied. `Charging Behavior` is a short dashboard-friendly status summary.
-
-When changing integration settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
-
-## Known limitations
-
-- Register `405` is used for phase switching and has been validated on firmware `3.187` with one tested charger. Other firmware versions may behave differently.
-- Automatic PV phase switching is implemented but still experimental until validated with more charging sessions, vehicles and firmware versions.
-- Manual switching back to 3-phase may require a pause/resume cycle before the charger applies the new phase mode.
-- Automatic phase switching uses guardrails: stable surplus before switching to 3-phase, minimum time between 1P->3P switches and a maximum switch budget for 1P->3P attempts.
+- Automatic PV 1P/3P phase switching is experimental.
+- Register `405` has been validated on one charger with firmware `3.187`; other firmware versions may behave differently.
+- DLB and PV charging are disabled by default and should be enabled only after selecting suitable sensors.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
-- Power-based DLB and PV calculations use a practical nominal `230 V` conversion.
-
-## Examples
-
-Dashboard examples:
-
-- [`examples/lovelace_dashboard.yaml`](examples/lovelace_dashboard.yaml)
-- [`examples/lovelace_basic.yaml`](examples/lovelace_basic.yaml)
-- [`examples/lovelace_advanced.yaml`](examples/lovelace_advanced.yaml)
-- [`examples/lovelace_troubleshooting.yaml`](examples/lovelace_troubleshooting.yaml)
-
-Automation examples:
-
-- [`examples/automation_enable_pv_until_unplug.yaml`](examples/automation_enable_pv_until_unplug.yaml)
-- [`examples/automation_disable_pv_until_unplug.yaml`](examples/automation_disable_pv_until_unplug.yaml)
-- [`examples/automation_enable_fixed_current_until_unplug.yaml`](examples/automation_enable_fixed_current_until_unplug.yaml)
-- [`examples/automation_disable_fixed_current_until_unplug.yaml`](examples/automation_disable_fixed_current_until_unplug.yaml)
 
 ## Repository contents
 
 - [`custom_components/webasto_unite`](custom_components/webasto_unite): integration code
+- [`docs`](docs): configuration documentation
 - [`examples`](examples): dashboard and automation examples
 - [`tests`](tests): unit tests
 - [`hacs.json`](hacs.json): HACS metadata

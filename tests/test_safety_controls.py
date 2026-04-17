@@ -56,6 +56,7 @@ def default_init_input(**overrides):
         "user_limit": 16.0,
         "safe_current": 6.0,
         "control_mode": "keepalive_only",
+        "startup_charge_mode": "normal",
         "keepalive_mode": "auto",
         "keepalive_interval": 10.0,
         "polling_interval": 2.0,
@@ -213,11 +214,34 @@ def test_options_flow_saves_connection_and_disabled_dlb_pv_at_final_step():
         assert result["data"]["port"] == 1502
         assert result["data"]["unit_id"] == 42
         assert result["data"]["installed_phases"] == "1p"
+        assert result["data"]["startup_charge_mode"] == "normal"
         assert result["data"]["dlb_input_model"] == "disabled"
         assert result["data"]["pv_control_strategy"] == "disabled"
         assert result["data"]["pv_phase_switching_mode"] == "manual_only"
 
     asyncio.run(_run())
+
+
+def test_startup_charge_mode_can_be_configured():
+    result = _validate_init_options(
+        default_init_input(startup_charge_mode="pv")
+    )
+
+    assert result["startup_charge_mode"] == "pv"
+
+
+def test_startup_charge_mode_falls_back_when_pv_is_disabled():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.control_config = ControlConfig(pv_control_strategy="disabled")
+
+    assert coordinator._resolve_startup_mode({"startup_charge_mode": "pv"}) == ChargeMode.NORMAL
+
+
+def test_startup_charge_mode_accepts_pv_when_pv_is_enabled():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.control_config = ControlConfig(pv_control_strategy="surplus")
+
+    assert coordinator._resolve_startup_mode({"startup_charge_mode": "pv"}) == ChargeMode.PV
 
 
 def test_options_flow_dlb_phase_current_3p_requires_all_phase_sensors():
