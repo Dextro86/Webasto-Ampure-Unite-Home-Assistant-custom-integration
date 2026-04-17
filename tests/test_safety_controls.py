@@ -1268,6 +1268,45 @@ def test_pending_startup_phase_restore_reasserts_3p_after_session_pause():
     asyncio.run(_run())
 
 
+def test_pending_startup_phase_restore_holds_current_during_settle_delay():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            pv_phase_switching_mode=PvPhaseSwitchingMode.MANUAL_ONLY,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._pending_phase_switch_target = 3
+        coordinator._pending_phase_switch_is_integration_managed = True
+        coordinator._pending_phase_switch_reason = "startup_phase_restore"
+        coordinator._pending_phase_switch_reassert_written = True
+        coordinator._pending_phase_switch_settle_until = monotonic() + 30.0
+        coordinator._phase_switch_up_condition_since = None
+        coordinator._phase_switch_decision = "writing_startup_phase_restore"
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+        wallbox = WallboxState(
+            charging_active=False,
+            phase_switch_mode_raw=1,
+            phases_in_use=0,
+        )
+
+        handled = await coordinator._enqueue_pending_phase_switch_if_needed(wallbox)
+
+        assert handled is True
+        assert coordinator._pending_phase_switch_target == 3
+        assert coordinator._phase_switch_decision == "startup_phase_restore_settling"
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
+
+
 def test_startup_phase_restore_completes_after_session_pause_when_3p_mode_is_already_set():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
