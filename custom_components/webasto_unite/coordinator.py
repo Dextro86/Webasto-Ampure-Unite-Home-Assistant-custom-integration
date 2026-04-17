@@ -124,6 +124,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._pending_phase_switch_target: int | None = None
         self._pending_phase_switch_is_integration_managed = False
         self._pending_phase_switch_reason: str | None = None
+        self._pending_phase_switch_reassert_written = False
         self._integration_managed_phase_switch_active = False
         self._startup_phase_restore_checked = False
         self._startup_phase_restore_session_restart_attempted = False
@@ -327,6 +328,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._pending_phase_switch_target = None
         self._pending_phase_switch_is_integration_managed = False
         self._pending_phase_switch_reason = None
+        self._pending_phase_switch_reassert_written = False
         self._integration_managed_phase_switch_active = False
         await self.write_queue.enqueue(
             QueuedWrite("phase_switch_mode", PHASE_SWITCH_MODE, 0 if phases == 1 else 1, WritePriority.CONTROL)
@@ -355,6 +357,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pending_phase_switch_target = None
                 self._pending_phase_switch_is_integration_managed = False
                 self._pending_phase_switch_reason = None
+                self._pending_phase_switch_reassert_written = False
                 self._integration_managed_phase_switch_active = False
                 self._startup_phase_restore_session_restart_attempted = False
                 self._phase_switch_up_condition_since = None
@@ -556,6 +559,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             ),
             "pending_phase_switch_target": getattr(self, "_pending_phase_switch_target", None),
             "pending_phase_switch_reason": getattr(self, "_pending_phase_switch_reason", None),
+            "pending_phase_switch_reassert_written": getattr(self, "_pending_phase_switch_reassert_written", False),
             "phase_switch_decision": getattr(self, "_phase_switch_decision", None),
             "integration_managed_phase_switch_active": getattr(
                 self,
@@ -688,11 +692,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._pending_phase_switch_target = target_phases
         self._pending_phase_switch_is_integration_managed = True
         self._pending_phase_switch_reason = reason
+        self._pending_phase_switch_reassert_written = False
 
     def _clear_pending_phase_switch(self) -> None:
         self._pending_phase_switch_target = None
         self._pending_phase_switch_is_integration_managed = False
         self._pending_phase_switch_reason = None
+        self._pending_phase_switch_reassert_written = False
 
     def _phase_switch_decision_for(self, action: str) -> str:
         reason = getattr(self, "_pending_phase_switch_reason", None)
@@ -726,6 +732,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and wallbox.phase_switch_mode_raw == 1
             and wallbox.charging_active
             and wallbox.phases_in_use == 1
+        )
+
+    def _pending_phase_switch_needs_reassert_write(self, wallbox, current_phases: int, target_phases: int) -> bool:
+        return (
+            self._pending_phase_switch_reason in ("startup_phase_restore", "phase_restore")
+            and target_phases == 3
+            and current_phases == target_phases
+            and not wallbox.charging_active
+            and wallbox.phases_in_use == 0
+            and not getattr(self, "_pending_phase_switch_reassert_written", False)
         )
 
     async def _enqueue_keepalive_if_needed(self) -> None:
@@ -774,6 +790,25 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
         target_phases = self._pending_phase_switch_target
         if current_phases == target_phases and not self._phase_switch_needs_active_session_restart(wallbox, target_phases):
+            if self._pending_phase_switch_needs_reassert_write(wallbox, current_phases, target_phases):
+                self._phase_switch_decision = self._phase_switch_decision_for("writing")
+                self._pending_phase_switch_reassert_written = True
+                self._log_phase_info(
+                    "pending phase switch reasserting phase switch mode after pause",
+                    wallbox,
+                    current_phases=current_phases,
+                    target_phases=target_phases,
+                    register_value=1,
+                )
+                await self.write_queue.enqueue(
+                    QueuedWrite(
+                        "phase_switch_mode",
+                        PHASE_SWITCH_MODE,
+                        1,
+                        WritePriority.CONTROL,
+                    )
+                )
+                return True
             self._phase_switch_decision = self._phase_switch_decision_for("complete")
             self._log_phase_info(
                 "pending phase switch completed",
@@ -838,6 +873,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._pending_phase_switch_target = None
             self._pending_phase_switch_is_integration_managed = False
             self._pending_phase_switch_reason = None
+            self._pending_phase_switch_reassert_written = False
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = "phase_switch_register_unavailable"
             self._log_phase_info("pv phase switch cancelled: phase switch register unavailable", wallbox)
@@ -857,6 +893,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._pending_phase_switch_target = None
             self._pending_phase_switch_is_integration_managed = False
             self._pending_phase_switch_reason = None
+            self._pending_phase_switch_reassert_written = False
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = (
                 "outside_pv_mode"
