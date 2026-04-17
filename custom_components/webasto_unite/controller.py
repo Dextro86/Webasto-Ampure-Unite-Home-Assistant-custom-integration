@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from time import monotonic
 
 from .dlb import DlbEngine
+from .electrical import voltage_sum_for_phases
 from .models import (
     ChargeMode,
     ControlConfig,
@@ -79,6 +80,9 @@ class WallboxController:
             installed_phases,
             wallbox.phase_currents,
             wallbox.active_power_w,
+            wallbox.voltage_l1_v,
+            wallbox.voltage_l2_v,
+            wallbox.voltage_l3_v,
         )
 
         mode_target, reason = self._mode_target(
@@ -86,6 +90,7 @@ class WallboxController:
             sensors,
             pv_phase_count,
             effective_pv_strategy,
+            wallbox,
         )
 
         final_target, dominant_limit_reason = self._combine_limits(
@@ -163,13 +168,14 @@ class WallboxController:
         sensors: HaSensorSnapshot,
         installed_phases: int,
         pv_strategy: PvControlStrategy,
+        wallbox: WallboxState,
     ) -> tuple[float | None, ControlReason]:
         if mode == ChargeMode.NORMAL:
             return self.config.user_limit_a, ControlReason.NORMAL_MODE
         if mode == ChargeMode.FIXED_CURRENT:
             return self.config.fixed_current_a, ControlReason.FIXED_CURRENT_MODE
         if mode == ChargeMode.PV:
-            pv_result = self._evaluate_pv_mode(sensors, installed_phases, pv_strategy)
+            pv_result = self._evaluate_pv_mode(sensors, installed_phases, pv_strategy, wallbox)
             return pv_result.target_current_a, pv_result.reason
         return self.config.user_limit_a, ControlReason.NORMAL_MODE
 
@@ -178,6 +184,7 @@ class WallboxController:
         sensors: HaSensorSnapshot,
         installed_phases: int,
         pv_strategy: PvControlStrategy,
+        wallbox: WallboxState,
     ) -> PvResult:
         if pv_strategy == PvControlStrategy.DISABLED:
             return PvResult(
@@ -196,8 +203,13 @@ class WallboxController:
                     reason=ControlReason.SENSOR_UNAVAILABLE,
                 )
 
-            nominal_voltage = 230.0
-            surplus_target = surplus_w / (installed_phases * nominal_voltage)
+            voltage_sum_v = voltage_sum_for_phases(
+                installed_phases,
+                wallbox.voltage_l1_v,
+                wallbox.voltage_l2_v,
+                wallbox.voltage_l3_v,
+            )
+            surplus_target = surplus_w / voltage_sum_v
             return PvResult(
                 target_current_a=max(self.config.pv_min_current_a, surplus_target),
                 valid=True,
@@ -205,7 +217,7 @@ class WallboxController:
             )
 
         if pv_strategy == PvControlStrategy.SURPLUS:
-            return self._evaluate_surplus_pv_mode(sensors, installed_phases, surplus_w)
+            return self._evaluate_surplus_pv_mode(sensors, installed_phases, surplus_w, wallbox)
         return PvResult(
             target_current_a=None,
             valid=True,
@@ -217,6 +229,7 @@ class WallboxController:
         sensors: HaSensorSnapshot,
         installed_phases: int,
         surplus_w: float | None,
+        wallbox: WallboxState,
     ) -> PvResult:
         now = monotonic()
 
@@ -229,8 +242,13 @@ class WallboxController:
                 reason=ControlReason.SENSOR_UNAVAILABLE,
             )
 
-        nominal_voltage = 230.0
-        target_current = surplus_w / (installed_phases * nominal_voltage)
+        voltage_sum_v = voltage_sum_for_phases(
+            installed_phases,
+            wallbox.voltage_l1_v,
+            wallbox.voltage_l2_v,
+            wallbox.voltage_l3_v,
+        )
+        target_current = surplus_w / voltage_sum_v
 
         if self.pv_state.active:
             self.pv_state.start_condition_since = None
@@ -333,9 +351,18 @@ class WallboxController:
             return None
 
         current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
-        nominal_voltage = 230.0
-        min_1p_w = self.config.pv_min_current_a * nominal_voltage
-        min_3p_w = self.config.pv_min_current_a * 3 * nominal_voltage
+        min_1p_w = self.config.pv_min_current_a * voltage_sum_for_phases(
+            1,
+            wallbox.voltage_l1_v,
+            wallbox.voltage_l2_v,
+            wallbox.voltage_l3_v,
+        )
+        min_3p_w = self.config.pv_min_current_a * voltage_sum_for_phases(
+            3,
+            wallbox.voltage_l1_v,
+            wallbox.voltage_l2_v,
+            wallbox.voltage_l3_v,
+        )
         hysteresis_w = self.config.pv_phase_switching_hysteresis_w
         switch_up_w = min_3p_w + hysteresis_w
         switch_down_w = max(min_1p_w, min_3p_w - hysteresis_w)

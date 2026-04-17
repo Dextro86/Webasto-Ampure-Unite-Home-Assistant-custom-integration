@@ -67,7 +67,7 @@ DLB measurement sources:
 
 - `Disabled`: do not use DLB.
 - `Phase Current Sensors (Recommended)`: use separate L1, L2 and L3 current sensors from your smart meter or energy meter. This is the preferred DLB input because it matches how main fuses are normally loaded per phase. Use current sensors in `A` or `mA`; the integration normalizes them internally.
-- `Grid Power Sensor`: calculate available current from a single live power sensor in `W` or `kW`. This is less precise because the integration converts watts to amps using a nominal `230 V` per phase.
+- `Grid Power Sensor`: calculate available current from a single live power sensor in `W` or `kW`. This is less precise than phase-current sensors. The integration uses charger-reported phase voltages when they are plausible and falls back to `230 V` per phase when voltage data is missing or invalid.
 
 For a 1-phase charger setup, only the L1 current sensor is required. For a 3-phase charger setup, select L1, L2 and L3 sensors.
 
@@ -122,6 +122,8 @@ surplus = PV production - total consumption + charger power
 This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
 
 Use current power sensors, not energy counters. `W` and `kW` are valid. `Wh` and `kWh` are not suitable for PV control because they represent accumulated energy, not current surplus.
+
+When PV power is converted to charging current, the integration uses the charger-reported phase voltages when they are plausible. If voltage data is missing or invalid, it falls back to `230 V` per phase.
 
 PV thresholds:
 

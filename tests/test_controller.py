@@ -52,6 +52,22 @@ def test_dlb_total_load_including_charger_adds_back_charger_current():
     assert decision.dominant_limit_reason is None
 
 
+def test_dlb_grid_power_uses_measured_phase_voltage_when_available():
+    controller = make_controller(dlb_input_model="grid_power", main_fuse_a=25.0, safety_margin_a=2.0)
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        voltage_l1_v=250.0,
+        voltage_l2_v=250.0,
+        voltage_l3_v=250.0,
+    )
+    sensors = HaSensorSnapshot(grid_power_w=3000.0, valid=True)
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.dlb_limit_a == 19.0
+
+
 def test_pv_mode_without_grid_assist_can_disable_when_below_minimum():
     controller = make_controller(pv_start_threshold_w=1800.0, pv_stop_threshold_w=1200.0)
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
@@ -107,6 +123,34 @@ def test_pv_mode_min_plus_surplus_scales_above_minimum_when_surplus_is_high():
     assert decision.reason == ControlReason.PV_MODE
     assert decision.mode_target_a == 10.0
     assert decision.final_target_a == 10.0
+
+
+def test_pv_mode_min_plus_surplus_uses_measured_phase_voltage_when_available():
+    controller = make_controller(pv_control_strategy="min_plus_surplus", pv_min_current_a=6.0)
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        voltage_l1_v=232.0,
+        voltage_l2_v=236.0,
+        voltage_l3_v=238.0,
+    )
+    sensors = HaSensorSnapshot(surplus_power_w=7060.0, valid=True)
+
+    decision = controller.evaluate(ChargeMode.PV, wallbox, sensors)
+
+    assert decision.charging_enabled is True
+    assert decision.mode_target_a == 10.0
+    assert decision.final_target_a == 10.0
+
+
+def test_pv_mode_falls_back_to_nominal_voltage_for_implausible_voltage():
+    controller = make_controller(pv_control_strategy="min_plus_surplus", pv_min_current_a=6.0)
+    wallbox = WallboxState(installed_phases=1, vehicle_connected=True, voltage_l1_v=400.0)
+    sensors = HaSensorSnapshot(surplus_power_w=2300.0, valid=True)
+
+    decision = controller.evaluate(ChargeMode.PV, wallbox, sensors)
+
+    assert decision.mode_target_a == 10.0
 
 
 def test_pv_mode_uses_effective_active_phases_while_charging():
@@ -254,6 +298,32 @@ def test_pv_phase_switching_hysteresis_is_configurable():
         ChargeMode.PV,
         WallboxState(installed_phases=1, phase_switch_mode_raw=0),
         HaSensorSnapshot(surplus_power_w=5200.0, valid=True),
+    ) == 3
+
+
+def test_pv_phase_switching_threshold_uses_measured_phase_voltage():
+    controller = make_controller(
+        pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P,
+        pv_min_current_a=6.0,
+        pv_phase_switching_hysteresis_w=500.0,
+    )
+    wallbox = WallboxState(
+        installed_phases=1,
+        phase_switch_mode_raw=0,
+        voltage_l1_v=250.0,
+        voltage_l2_v=250.0,
+        voltage_l3_v=250.0,
+    )
+
+    assert controller.resolve_pv_phase_target(
+        ChargeMode.PV,
+        wallbox,
+        HaSensorSnapshot(surplus_power_w=4900.0, valid=True),
+    ) is None
+    assert controller.resolve_pv_phase_target(
+        ChargeMode.PV,
+        wallbox,
+        HaSensorSnapshot(surplus_power_w=5000.0, valid=True),
     ) == 3
 
 
