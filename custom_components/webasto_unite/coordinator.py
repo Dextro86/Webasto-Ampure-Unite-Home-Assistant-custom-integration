@@ -110,6 +110,9 @@ _LOGGER = logging.getLogger(__name__)
 
 PHASE_MISMATCH_MAX_RETRIES_PER_SESSION = 2
 PHASE_MISMATCH_RETRY_COOLDOWN_S = 120.0
+STARTUP_STABILIZATION_MIN_POLLS = 3
+STARTUP_STABILIZATION_MIN_SECONDS = 20.0
+STARTUP_MISMATCH_STABLE_POLLS = 2
 
 
 class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
@@ -127,6 +130,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._last_phase_mismatch_retry_monotonic = 0.0
         self._phase_mismatch_target: int | None = None
         self._phase_mismatch_unverified = False
+        self._startup_started_monotonic = monotonic()
+        self._startup_refresh_count = 0
+        self._startup_consistency_checked = False
+        self._startup_mismatch_observations: list[tuple[int, int, int | None]] = []
         self._last_phase_switch_monotonic = 0.0
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
@@ -359,8 +366,11 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pv_until_unplug_active,
             )
             decision = self.controller.evaluate(self.effective_mode, wallbox, sensors, pv_strategy)
-            phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
-            if not phase_switch_handled:
+            startup_phase_handled = await self._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
+            phase_switch_handled = False
+            if not startup_phase_handled and self._startup_consistency_checked:
+                phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+            if not startup_phase_handled and not phase_switch_handled:
                 await self._enqueue_decision(decision)
             await self._flush_write_queue()
             keepalive_age_s = self._keepalive_age_seconds()
@@ -511,6 +521,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     def _configured_installed_phases(self) -> str:
         return self.entry.data.get(CONF_INSTALLED_PHASES, "3p")
 
+    def _configured_phase_count(self) -> int:
+        return 1 if self._configured_installed_phases() == "1p" else 3
+
     def _reset_pv_runtime_state(self) -> None:
         controller = getattr(self, "controller", None)
         if controller is not None:
@@ -521,6 +534,89 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._last_phase_mismatch_retry_monotonic = 0.0
         self._phase_mismatch_target = None
         self._phase_mismatch_unverified = False
+
+    def _requested_phase_mode(self, wallbox) -> int | None:
+        if wallbox.phase_switch_mode_raw == 0:
+            return 1
+        if wallbox.phase_switch_mode_raw == 1:
+            return 3
+        return None
+
+    def _observed_active_phases(self, wallbox) -> int | None:
+        if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
+            return wallbox.phases_in_use
+        return None
+
+    def _startup_stabilization_ready(self) -> bool:
+        poll_count = getattr(self, "_startup_refresh_count", 0)
+        started = getattr(self, "_startup_started_monotonic", monotonic())
+        return (
+            poll_count >= STARTUP_STABILIZATION_MIN_POLLS
+            and (monotonic() - started) >= STARTUP_STABILIZATION_MIN_SECONDS
+        )
+
+    def _startup_expected_phase_target(self, wallbox, sensors) -> int | None:
+        if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
+            return None
+        if self.effective_mode == ChargeMode.PV:
+            return self.controller.resolve_pv_phase_target(
+                self.effective_mode,
+                wallbox,
+                sensors,
+            )
+        if self.effective_mode in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
+            configured_phases = self._configured_phase_count()
+            return configured_phases if configured_phases in (1, 3) else None
+        return None
+
+    async def _enqueue_startup_consistency_recovery_if_needed(self, wallbox, sensors) -> bool:
+        if getattr(self, "_startup_consistency_checked", True):
+            return False
+
+        self._startup_refresh_count = getattr(self, "_startup_refresh_count", 0) + 1
+        if not self._allows_control_writes():
+            self._startup_consistency_checked = True
+            return False
+
+        requested_phases = self._requested_phase_mode(wallbox)
+        observed_phases = self._observed_active_phases(wallbox)
+        target_phases = self._startup_expected_phase_target(wallbox, sensors)
+
+        if not self._startup_stabilization_ready():
+            if target_phases in (1, 3) and observed_phases is not None and observed_phases != target_phases:
+                self._phase_switch_decision = "startup_stabilizing"
+            return False
+
+        if requested_phases not in (1, 3) or target_phases not in (1, 3) or observed_phases is None:
+            self._startup_consistency_checked = True
+            self._startup_mismatch_observations.clear()
+            return False
+
+        if observed_phases == target_phases:
+            self._startup_consistency_checked = True
+            self._startup_mismatch_observations.clear()
+            self._reset_phase_mismatch_state()
+            return False
+
+        observation = (target_phases, observed_phases, requested_phases)
+        observations = getattr(self, "_startup_mismatch_observations", [])
+        if observations and observations[-1] != observation:
+            observations.clear()
+        observations.append(observation)
+        self._startup_mismatch_observations = observations[-STARTUP_MISMATCH_STABLE_POLLS:]
+        self._phase_switch_decision = "startup_consistency_observing"
+
+        if len(self._startup_mismatch_observations) < STARTUP_MISMATCH_STABLE_POLLS:
+            return False
+
+        self._startup_consistency_checked = True
+        self._startup_mismatch_observations.clear()
+        return await self._handle_phase_mismatch_recovery(
+            wallbox=wallbox,
+            requested_phases=requested_phases or target_phases,
+            observed_phases=observed_phases,
+            target_phases=target_phases,
+        )
 
     async def _enqueue_keepalive_if_needed(self) -> None:
         if not self._allows_keepalive():
@@ -587,8 +683,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if not self._allows_control_writes():
             self._phase_switch_decision = "control_writes_disabled"
             return False
-        requested_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3 if wallbox.phase_switch_mode_raw == 1 else None
-        observed_phases = wallbox.phases_in_use if wallbox.charging_active and wallbox.phases_in_use in (1, 3) else None
+        requested_phases = self._requested_phase_mode(wallbox)
+        observed_phases = self._observed_active_phases(wallbox)
         if requested_phases is None:
             self._pending_phase_switch_target = None
             self._pending_phase_switch_force_write = False

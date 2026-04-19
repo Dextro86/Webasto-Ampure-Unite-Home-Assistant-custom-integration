@@ -137,6 +137,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "phase_switch_retry": "Phase Switch Retry",
                 "phase_switch_unverified": "Phase Switch Unverified",
                 "phase_switch_success": "Phase Switch Success",
+                "startup_stabilizing": "Startup Stabilizing",
+                "startup_consistency_observing": "Startup Consistency Observing",
                 "phase_switch_rate_limited": "Phase Switch Rate Limited",
                 "phase_switch_session_limit_reached": "Phase Switch Session Limit Reached",
                 "phase_switch_cancelled": "Phase Switch Cancelled",
