@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
+from enum import StrEnum
 from time import monotonic
 from datetime import timedelta
 
@@ -110,9 +112,71 @@ _LOGGER = logging.getLogger(__name__)
 
 PHASE_MISMATCH_MAX_RETRIES_PER_SESSION = 2
 PHASE_MISMATCH_RETRY_COOLDOWN_S = 120.0
+PHASE_MISMATCH_BOUNCE_STABLE_POLLS = 2
+PHASE_MISMATCH_BOUNCE_COOLDOWN_S = 120.0
 STARTUP_STABILIZATION_MIN_POLLS = 3
 STARTUP_STABILIZATION_MIN_SECONDS = 20.0
 STARTUP_MISMATCH_STABLE_POLLS = 2
+
+
+class PhaseActionReason(StrEnum):
+    PV_AUTOMATIC_SWITCH = "pv_automatic_switch"
+    NON_PV_RECONCILE = "non_pv_reconcile"
+    STARTUP_RESTORE = "startup_restore"
+    MISMATCH_RETRY = "mismatch_retry"
+    MISMATCH_BOUNCE_RECOVERY = "mismatch_bounce_recovery"
+
+
+class PhaseBounceStage(StrEnum):
+    WRITE_1P = "write_1p"
+    WAIT_1P = "wait_1p"
+    WRITE_TARGET = "write_target"
+    VERIFY = "verify"
+
+
+@dataclass(slots=True)
+class PendingPhaseAction:
+    target: int | None = None
+    force_write: bool = False
+    reason: str | None = None
+
+    def clear(self) -> None:
+        self.target = None
+        self.force_write = False
+        self.reason = None
+
+    def start(self, target: int, *, force_write: bool, reason: PhaseActionReason | str) -> None:
+        self.target = target
+        self.force_write = force_write
+        self.reason = str(reason)
+
+
+@dataclass(slots=True)
+class PhaseRecoveryState:
+    retry_count: int = 0
+    last_retry_monotonic: float = 0.0
+    target: int | None = None
+    unverified: bool = False
+    observation_key: tuple[int, int, int] | None = None
+    observation_count: int = 0
+    bounce_used: bool = False
+    bounce_stage: str | None = None
+    bounce_target: int | None = None
+    bounce_verify_count: int = 0
+    last_bounce_monotonic: float = 0.0
+
+    def reset(self) -> None:
+        self.retry_count = 0
+        self.last_retry_monotonic = 0.0
+        self.target = None
+        self.unverified = False
+        self.observation_key = None
+        self.observation_count = 0
+        self.bounce_used = False
+        self.bounce_stage = None
+        self.bounce_target = None
+        self.bounce_verify_count = 0
+        self.last_bounce_monotonic = 0.0
 
 
 class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
@@ -124,12 +188,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._pv_until_unplug_active = False
         self._fixed_current_until_unplug_active = False
         self._last_vehicle_connected = False
-        self._pending_phase_switch_target: int | None = None
-        self._pending_phase_switch_force_write = False
-        self._phase_mismatch_retry_count = 0
-        self._last_phase_mismatch_retry_monotonic = 0.0
-        self._phase_mismatch_target: int | None = None
-        self._phase_mismatch_unverified = False
+        self._pending_phase_action = PendingPhaseAction()
+        self._phase_recovery = PhaseRecoveryState()
         self._startup_started_monotonic = monotonic()
         self._startup_refresh_count = 0
         self._startup_consistency_checked = False
@@ -267,13 +327,158 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     def charging_paused(self) -> bool:
         return self._charging_paused
 
+    def _ensure_phase_runtime_state(self) -> None:
+        if not hasattr(self, "_pending_phase_action"):
+            self._pending_phase_action = PendingPhaseAction()
+        if not hasattr(self, "_phase_recovery"):
+            self._phase_recovery = PhaseRecoveryState()
+
+    @property
+    def _pending_phase_switch_target(self) -> int | None:
+        self._ensure_phase_runtime_state()
+        return self._pending_phase_action.target
+
+    @_pending_phase_switch_target.setter
+    def _pending_phase_switch_target(self, value: int | None) -> None:
+        self._ensure_phase_runtime_state()
+        self._pending_phase_action.target = value
+
+    @property
+    def _pending_phase_switch_force_write(self) -> bool:
+        self._ensure_phase_runtime_state()
+        return self._pending_phase_action.force_write
+
+    @_pending_phase_switch_force_write.setter
+    def _pending_phase_switch_force_write(self, value: bool) -> None:
+        self._ensure_phase_runtime_state()
+        self._pending_phase_action.force_write = bool(value)
+
+    @property
+    def _pending_phase_switch_reason(self) -> str | None:
+        self._ensure_phase_runtime_state()
+        return self._pending_phase_action.reason
+
+    @_pending_phase_switch_reason.setter
+    def _pending_phase_switch_reason(self, value: str | None) -> None:
+        self._ensure_phase_runtime_state()
+        self._pending_phase_action.reason = value
+
+    @property
+    def _phase_mismatch_retry_count(self) -> int:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.retry_count
+
+    @_phase_mismatch_retry_count.setter
+    def _phase_mismatch_retry_count(self, value: int) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.retry_count = value
+
+    @property
+    def _last_phase_mismatch_retry_monotonic(self) -> float:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.last_retry_monotonic
+
+    @_last_phase_mismatch_retry_monotonic.setter
+    def _last_phase_mismatch_retry_monotonic(self, value: float) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.last_retry_monotonic = value
+
+    @property
+    def _phase_mismatch_target(self) -> int | None:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.target
+
+    @_phase_mismatch_target.setter
+    def _phase_mismatch_target(self, value: int | None) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.target = value
+
+    @property
+    def _phase_mismatch_unverified(self) -> bool:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.unverified
+
+    @_phase_mismatch_unverified.setter
+    def _phase_mismatch_unverified(self, value: bool) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.unverified = bool(value)
+
+    @property
+    def _phase_mismatch_observation_key(self) -> tuple[int, int, int] | None:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.observation_key
+
+    @_phase_mismatch_observation_key.setter
+    def _phase_mismatch_observation_key(self, value: tuple[int, int, int] | None) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.observation_key = value
+
+    @property
+    def _phase_mismatch_observation_count(self) -> int:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.observation_count
+
+    @_phase_mismatch_observation_count.setter
+    def _phase_mismatch_observation_count(self, value: int) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.observation_count = value
+
+    @property
+    def _phase_mismatch_bounce_used(self) -> bool:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.bounce_used
+
+    @_phase_mismatch_bounce_used.setter
+    def _phase_mismatch_bounce_used(self, value: bool) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.bounce_used = bool(value)
+
+    @property
+    def _phase_mismatch_bounce_stage(self) -> str | None:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.bounce_stage
+
+    @_phase_mismatch_bounce_stage.setter
+    def _phase_mismatch_bounce_stage(self, value: str | None) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.bounce_stage = value
+
+    @property
+    def _phase_mismatch_bounce_target(self) -> int | None:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.bounce_target
+
+    @_phase_mismatch_bounce_target.setter
+    def _phase_mismatch_bounce_target(self, value: int | None) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.bounce_target = value
+
+    @property
+    def _phase_mismatch_bounce_verify_count(self) -> int:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.bounce_verify_count
+
+    @_phase_mismatch_bounce_verify_count.setter
+    def _phase_mismatch_bounce_verify_count(self, value: int) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.bounce_verify_count = value
+
+    @property
+    def _last_phase_mismatch_bounce_monotonic(self) -> float:
+        self._ensure_phase_runtime_state()
+        return self._phase_recovery.last_bounce_monotonic
+
+    @_last_phase_mismatch_bounce_monotonic.setter
+    def _last_phase_mismatch_bounce_monotonic(self, value: float) -> None:
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.last_bounce_monotonic = value
+
     def set_mode(self, mode: ChargeMode) -> None:
         self._mode = mode
         self._pv_until_unplug_active = False
         self._fixed_current_until_unplug_active = False
         if mode != ChargeMode.PV:
             self._reset_pv_runtime_state()
-            self._reset_phase_mismatch_state()
         if mode == ChargeMode.OFF:
             self._charging_paused = False
 
@@ -289,16 +494,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if enabled:
             self._fixed_current_until_unplug_active = False
         self._reset_pv_runtime_state()
-        if not enabled and self.effective_mode != ChargeMode.PV:
-            self._reset_phase_mismatch_state()
 
     def set_fixed_current_until_unplug(self, enabled: bool) -> None:
         self._fixed_current_until_unplug_active = enabled
         if enabled:
             self._pv_until_unplug_active = False
         self._reset_pv_runtime_state()
-        if self.effective_mode != ChargeMode.PV:
-            self._reset_phase_mismatch_state()
 
     def set_user_limit(self, current_a: float) -> None:
         self.control_config.user_limit_a = self._validate_runtime_current(current_a, "Current Limit")
@@ -350,13 +551,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._fixed_current_until_unplug_active = False
                 self._reset_pv_runtime_state()
                 self._phase_switch_count_this_session = 0
-                self._pending_phase_switch_target = None
-                self._pending_phase_switch_force_write = False
+                self._clear_pending_phase_action()
                 self._phase_switch_up_condition_since = None
-                self._reset_phase_mismatch_state()
             if not self._last_vehicle_connected and wallbox.vehicle_connected:
                 self._phase_switch_count_this_session = 0
                 self._phase_switch_up_condition_since = None
+                self._clear_pending_phase_action()
+                self._reset_phase_mismatch_state()
             self._last_vehicle_connected = wallbox.vehicle_connected
             sensors = self._read_sensor_snapshot()
             pv_surplus_w = self.controller._resolve_surplus_power(sensors)
@@ -368,8 +569,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             decision = self.controller.evaluate(self.effective_mode, wallbox, sensors, pv_strategy)
             startup_phase_handled = await self._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
             phase_switch_handled = False
-            if not startup_phase_handled and self._startup_consistency_checked:
-                phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
+            if not startup_phase_handled:
+                if self.effective_mode in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
+                    reconcile_required = self._non_pv_phase_reconcile_required(wallbox)
+                    if reconcile_required:
+                        phase_switch_handled = await self._enqueue_non_pv_phase_reconcile_if_needed(wallbox)
+                    if reconcile_required:
+                        phase_switch_handled = True
+                elif self._startup_consistency_checked:
+                    phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
             if not startup_phase_handled and not phase_switch_handled:
                 await self._enqueue_decision(decision)
             await self._flush_write_queue()
@@ -519,7 +727,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return snapshot
 
     def _configured_installed_phases(self) -> str:
-        return self.entry.data.get(CONF_INSTALLED_PHASES, "3p")
+        entry = getattr(self, "entry", None)
+        return getattr(entry, "data", {}).get(CONF_INSTALLED_PHASES, "3p")
 
     def _configured_phase_count(self) -> int:
         return 1 if self._configured_installed_phases() == "1p" else 3
@@ -530,10 +739,35 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             controller.reset_pv_state()
 
     def _reset_phase_mismatch_state(self) -> None:
-        self._phase_mismatch_retry_count = 0
-        self._last_phase_mismatch_retry_monotonic = 0.0
-        self._phase_mismatch_target = None
-        self._phase_mismatch_unverified = False
+        self._ensure_phase_runtime_state()
+        self._phase_recovery.reset()
+
+    def _clear_pending_phase_action(self) -> None:
+        self._ensure_phase_runtime_state()
+        self._pending_phase_action.clear()
+
+    def _start_pending_phase_action(
+        self,
+        target: int,
+        *,
+        force_write: bool,
+        reason: PhaseActionReason | str,
+    ) -> None:
+        self._ensure_phase_runtime_state()
+        self._pending_phase_action.start(target, force_write=force_write, reason=reason)
+
+    def _has_active_phase_recovery_for_target(self, target_phases: int) -> bool:
+        observation_key = getattr(self, "_phase_mismatch_observation_key", None)
+        return (
+            getattr(self, "_phase_mismatch_target", None) == target_phases
+            or getattr(self, "_pending_phase_switch_target", None) == target_phases
+            or (
+                observation_key is not None
+                and observation_key[0] == target_phases
+                and getattr(self, "_phase_mismatch_observation_count", 0) > 0
+            )
+            or getattr(self, "_phase_mismatch_bounce_stage", None) is not None
+        )
 
     def _requested_phase_mode(self, wallbox) -> int | None:
         if wallbox.phase_switch_mode_raw == 0:
@@ -546,6 +780,28 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
             return wallbox.phases_in_use
         return None
+
+    def _non_pv_phase_reconcile_required(self, wallbox) -> bool:
+        if self.effective_mode not in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
+            return False
+        if getattr(self, "_phase_mismatch_unverified", False):
+            return False
+
+        target_phases = self._configured_phase_count()
+        if target_phases not in (1, 3):
+            return False
+
+        requested_phases = self._requested_phase_mode(wallbox)
+        observed_phases = self._observed_active_phases(wallbox)
+        active_recovery = self._has_active_phase_recovery_for_target(target_phases)
+
+        if requested_phases is None:
+            return active_recovery
+        if observed_phases == target_phases:
+            return False
+        if observed_phases is not None:
+            return True
+        return requested_phases != target_phases or active_recovery
 
     def _startup_stabilization_ready(self) -> bool:
         poll_count = getattr(self, "_startup_refresh_count", 0)
@@ -612,6 +868,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
         self._startup_consistency_checked = True
         self._startup_mismatch_observations.clear()
+        self._pending_phase_switch_reason = PhaseActionReason.STARTUP_RESTORE
         return await self._handle_phase_mismatch_recovery(
             wallbox=wallbox,
             requested_phases=requested_phases or target_phases,
@@ -687,8 +944,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         requested_phases = self._requested_phase_mode(wallbox)
         observed_phases = self._observed_active_phases(wallbox)
         if requested_phases is None:
-            self._pending_phase_switch_target = None
-            self._pending_phase_switch_force_write = False
+            self._clear_pending_phase_action()
             self._phase_switch_up_condition_since = None
             self._phase_switch_decision = "phase_switch_register_unavailable"
             return False
@@ -699,10 +955,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.AUTOMATIC_1P3P
         )
         if not automatic_pv_phase_switching:
-            self._pending_phase_switch_target = None
-            self._pending_phase_switch_force_write = False
+            self._clear_pending_phase_action()
             self._phase_switch_up_condition_since = None
-            self._reset_phase_mismatch_state()
+            if self.effective_mode != ChargeMode.PV:
+                self._reset_phase_mismatch_state()
             self._phase_switch_decision = (
                 "outside_pv_mode"
                 if self.effective_mode != ChargeMode.PV
@@ -753,7 +1009,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and current_phases == self._pending_phase_switch_target
             and not getattr(self, "_pending_phase_switch_force_write", False)
         ):
-            self._pending_phase_switch_target = None
+            self._clear_pending_phase_action()
             self._phase_switch_decision = "phase_switch_complete"
             return False
         if (
@@ -762,8 +1018,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and target != self._pending_phase_switch_target
             and not getattr(self, "_pending_phase_switch_force_write", False)
         ):
-            self._pending_phase_switch_target = None
-            self._pending_phase_switch_force_write = False
+            self._clear_pending_phase_action()
             if target is None:
                 self._phase_switch_up_condition_since = None
                 self._phase_switch_decision = "phase_switch_cancelled"
@@ -794,18 +1049,70 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             if target == 3 and elapsed is not None and elapsed < self.control_config.pv_phase_switching_min_interval_s:
                 self._phase_switch_decision = "phase_switch_rate_limited"
                 return False
-            self._pending_phase_switch_target = target
-            self._pending_phase_switch_force_write = (
-                observed_phases is not None
-                and observed_phases != requested_phases
-                and target == requested_phases
+            self._start_pending_phase_action(
+                target,
+                force_write=(
+                    observed_phases is not None
+                    and observed_phases != requested_phases
+                    and target == requested_phases
+                ),
+                reason=PhaseActionReason.PV_AUTOMATIC_SWITCH,
             )
             self._phase_switch_decision = "phase_switch_requested"
 
         target_phases = self._pending_phase_switch_target
         if target_phases is None:
+            self._clear_pending_phase_action()
             self._phase_switch_decision = "no_phase_switch_needed"
             return False
+        await self.write_queue.clear()
+        await self._enqueue_keepalive_if_needed()
+        if wallbox.charging_active:
+            self._phase_switch_decision = "pausing_before_phase_switch"
+            await self.write_queue.enqueue(
+                QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
+            )
+            return True
+
+        if getattr(self, "_pending_phase_switch_force_write", False):
+            retry_count = getattr(self, "_phase_mismatch_retry_count", 0)
+            self._phase_mismatch_retry_count = retry_count + 1
+            self._last_phase_mismatch_retry_monotonic = monotonic()
+            self._pending_phase_switch_reason = PhaseActionReason.MISMATCH_RETRY
+            self._phase_switch_decision = "phase_switch_retry"
+            _LOGGER.debug(
+                "Webasto Unite phase switch retry; register_405=%s phases_in_use=%s target_phases=%s charging_active=%s retry=%s",
+                requested_phases,
+                observed_phases,
+                target_phases,
+                wallbox.charging_active,
+                self._phase_mismatch_retry_count,
+            )
+        else:
+            self._phase_switch_decision = "writing_phase_switch_mode"
+        self._pending_phase_switch_force_write = False
+        await self.write_queue.enqueue(
+            QueuedWrite(
+                "phase_switch_mode",
+                PHASE_SWITCH_MODE,
+                0 if target_phases == 1 else 1,
+                WritePriority.CONTROL,
+            )
+        )
+        return True
+
+    async def _enqueue_pending_phase_switch_write(
+        self,
+        *,
+        wallbox,
+        requested_phases: int,
+        observed_phases: int | None,
+    ) -> bool:
+        target_phases = self._pending_phase_switch_target
+        if target_phases is None:
+            self._phase_switch_decision = "no_phase_switch_needed"
+            return False
+
         await self.write_queue.clear()
         await self._enqueue_keepalive_if_needed()
         if wallbox.charging_active:
@@ -841,6 +1148,262 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         )
         return True
 
+    async def _enqueue_non_pv_phase_reconcile_if_needed(self, wallbox) -> bool:
+        if not self._allows_control_writes():
+            self._phase_switch_decision = "control_writes_disabled"
+            return False
+
+        requested_phases = self._requested_phase_mode(wallbox)
+        observed_phases = self._observed_active_phases(wallbox)
+        target_phases = self._configured_phase_count()
+        active_recovery = self._has_active_phase_recovery_for_target(target_phases)
+
+        if requested_phases is None or target_phases not in (1, 3):
+            self._phase_switch_decision = "phase_switch_register_unavailable"
+            return False
+
+        if getattr(self, "_phase_mismatch_bounce_stage", None) is not None:
+            return await self._advance_phase_mismatch_bounce(
+                wallbox=wallbox,
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target_phases,
+            )
+
+        if (
+            observed_phases is not None
+            and getattr(self, "_phase_mismatch_target", None) is not None
+            and observed_phases == self._phase_mismatch_target
+        ):
+            _LOGGER.debug(
+                "Webasto Unite phase switch success; register_405=%s phases_in_use=%s target_phases=%s charging_active=%s",
+                requested_phases,
+                observed_phases,
+                self._phase_mismatch_target,
+                wallbox.charging_active,
+            )
+            self._clear_pending_phase_action()
+            self._reset_phase_mismatch_state()
+            self._phase_switch_decision = "phase_switch_success"
+            return False
+
+        if (
+            self._pending_phase_switch_target is not None
+            and requested_phases == self._pending_phase_switch_target
+            and not getattr(self, "_pending_phase_switch_force_write", False)
+            and (
+                observed_phases == self._pending_phase_switch_target
+                or (
+                    observed_phases is None
+                    and not self._has_active_phase_recovery_for_target(self._pending_phase_switch_target)
+                )
+            )
+        ):
+            self._clear_pending_phase_action()
+            self._phase_switch_decision = "phase_switch_complete"
+            return False
+
+        if self._pending_phase_switch_target is not None:
+            if observed_phases is not None and observed_phases != self._pending_phase_switch_target:
+                self._pending_phase_switch_reason = self._pending_phase_switch_reason or "non_pv_reconcile"
+                return await self._handle_phase_mismatch_recovery(
+                    wallbox=wallbox,
+                    requested_phases=requested_phases,
+                    observed_phases=observed_phases,
+                    target_phases=self._pending_phase_switch_target,
+                )
+            return await self._enqueue_pending_phase_switch_write(
+                wallbox=wallbox,
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+            )
+
+        if observed_phases is None:
+            if requested_phases != target_phases:
+                self._start_pending_phase_action(
+                    target_phases,
+                    force_write=False,
+                    reason=PhaseActionReason.NON_PV_RECONCILE,
+                )
+                self._phase_switch_decision = "phase_switch_requested"
+                return await self._enqueue_pending_phase_switch_write(
+                    wallbox=wallbox,
+                    requested_phases=requested_phases,
+                    observed_phases=observed_phases,
+                )
+            if active_recovery:
+                self._start_pending_phase_action(
+                    target_phases,
+                    force_write=True,
+                    reason=PhaseActionReason.MISMATCH_RETRY,
+                )
+                self._phase_mismatch_target = target_phases
+                return await self._enqueue_pending_phase_switch_write(
+                    wallbox=wallbox,
+                    requested_phases=requested_phases,
+                    observed_phases=observed_phases,
+                )
+            self._phase_switch_decision = "no_phase_switch_needed"
+            return False
+
+        if observed_phases == target_phases:
+            self._reset_phase_mismatch_state()
+            self._phase_switch_decision = "no_phase_switch_needed"
+            return False
+
+        self._pending_phase_switch_reason = getattr(self, "_pending_phase_switch_reason", None) or "non_pv_reconcile"
+        return await self._handle_phase_mismatch_recovery(
+            wallbox=wallbox,
+            requested_phases=requested_phases,
+            observed_phases=observed_phases,
+            target_phases=target_phases,
+        )
+
+    def _record_phase_mismatch_observation(
+        self,
+        *,
+        requested_phases: int,
+        observed_phases: int,
+        target_phases: int,
+    ) -> int:
+        key = (target_phases, requested_phases, observed_phases)
+        if getattr(self, "_phase_mismatch_observation_key", None) == key:
+            self._phase_mismatch_observation_count = getattr(self, "_phase_mismatch_observation_count", 0) + 1
+        else:
+            self._phase_mismatch_observation_key = key
+            self._phase_mismatch_observation_count = 1
+        return self._phase_mismatch_observation_count
+
+    def _can_start_phase_bounce(
+        self,
+        *,
+        requested_phases: int,
+        target_phases: int,
+    ) -> bool:
+        if getattr(self, "_phase_mismatch_bounce_used", False):
+            return False
+        if getattr(self, "_phase_mismatch_bounce_stage", None) is not None:
+            return True
+        if self._configured_phase_count() != 3:
+            return False
+        if target_phases != 3:
+            return False
+        if requested_phases != target_phases:
+            return False
+        last_bounce = getattr(self, "_last_phase_mismatch_bounce_monotonic", 0.0)
+        return not last_bounce or (monotonic() - last_bounce) >= PHASE_MISMATCH_BOUNCE_COOLDOWN_S
+
+    async def _start_phase_mismatch_bounce(
+        self,
+        *,
+        wallbox,
+        requested_phases: int,
+        observed_phases: int,
+        target_phases: int,
+    ) -> bool:
+        self._phase_mismatch_bounce_used = True
+        self._phase_mismatch_bounce_stage = PhaseBounceStage.WRITE_1P
+        self._phase_mismatch_bounce_target = target_phases
+        self._phase_mismatch_bounce_verify_count = 0
+        self._pending_phase_switch_reason = PhaseActionReason.MISMATCH_BOUNCE_RECOVERY
+        self._phase_switch_decision = "phase_switch_bounce_recovery"
+        return await self._advance_phase_mismatch_bounce(
+            wallbox=wallbox,
+            requested_phases=requested_phases,
+            observed_phases=observed_phases,
+            target_phases=target_phases,
+        )
+
+    async def _advance_phase_mismatch_bounce(
+        self,
+        *,
+        wallbox,
+        requested_phases: int,
+        observed_phases: int | None,
+        target_phases: int,
+    ) -> bool:
+        stage = getattr(self, "_phase_mismatch_bounce_stage", None)
+        bounce_target = getattr(self, "_phase_mismatch_bounce_target", None) or target_phases
+        if stage is None:
+            return False
+
+        if bounce_target != 3 or self._configured_phase_count() != 3:
+            self._mark_phase_switch_unverified(
+                wallbox=wallbox,
+                requested_phases=requested_phases,
+                observed_phases=observed_phases or 0,
+                target_phases=target_phases,
+            )
+            return False
+
+        if stage == PhaseBounceStage.WRITE_1P:
+            await self.write_queue.clear()
+            await self._enqueue_keepalive_if_needed()
+            if wallbox.charging_active:
+                self._phase_switch_decision = "phase_switch_bounce_pausing"
+                await self.write_queue.enqueue(
+                    QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
+                )
+                return True
+            self._phase_mismatch_bounce_stage = PhaseBounceStage.WAIT_1P
+            self._last_phase_mismatch_bounce_monotonic = monotonic()
+            self._phase_switch_decision = "phase_switch_bounce_to_1p"
+            await self.write_queue.enqueue(
+                QueuedWrite("phase_switch_mode", PHASE_SWITCH_MODE, 0, WritePriority.CONTROL)
+            )
+            return True
+
+        if stage == PhaseBounceStage.WAIT_1P:
+            if requested_phases != 1:
+                self._phase_switch_decision = "phase_switch_bounce_waiting_1p"
+                return True
+            self._phase_mismatch_bounce_stage = PhaseBounceStage.WRITE_TARGET
+            self._phase_switch_decision = "phase_switch_bounce_settled_1p"
+            return True
+
+        if stage == PhaseBounceStage.WRITE_TARGET:
+            await self.write_queue.clear()
+            await self._enqueue_keepalive_if_needed()
+            if wallbox.charging_active:
+                self._phase_switch_decision = "phase_switch_bounce_pausing"
+                await self.write_queue.enqueue(
+                    QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
+                )
+                return True
+            self._phase_mismatch_bounce_stage = PhaseBounceStage.VERIFY
+            self._phase_switch_decision = "phase_switch_bounce_to_target"
+            await self.write_queue.enqueue(
+                QueuedWrite("phase_switch_mode", PHASE_SWITCH_MODE, 1, WritePriority.CONTROL)
+            )
+            return True
+
+        if stage == PhaseBounceStage.VERIFY:
+            if requested_phases == bounce_target and observed_phases == bounce_target:
+                self._clear_pending_phase_action()
+                self._reset_phase_mismatch_state()
+                self._phase_switch_decision = "phase_switch_success"
+                return False
+            if requested_phases == bounce_target and observed_phases is not None and observed_phases != bounce_target:
+                self._phase_mismatch_bounce_verify_count = getattr(self, "_phase_mismatch_bounce_verify_count", 0) + 1
+                if self._phase_mismatch_bounce_verify_count >= PHASE_MISMATCH_BOUNCE_STABLE_POLLS:
+                    self._mark_phase_switch_unverified(
+                        wallbox=wallbox,
+                        requested_phases=requested_phases,
+                        observed_phases=observed_phases,
+                        target_phases=bounce_target,
+                    )
+                    return False
+            self._phase_switch_decision = "phase_switch_bounce_verifying"
+            return False
+
+        self._mark_phase_switch_unverified(
+            wallbox=wallbox,
+            requested_phases=requested_phases,
+            observed_phases=observed_phases or 0,
+            target_phases=target_phases,
+        )
+        return False
+
     async def _handle_phase_mismatch_recovery(
         self,
         *,
@@ -851,11 +1414,52 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     ) -> bool:
         self._phase_switch_decision = "phase_switch_mismatch_detected"
 
+        stable_mismatch_count = self._record_phase_mismatch_observation(
+            requested_phases=requested_phases,
+            observed_phases=observed_phases,
+            target_phases=target_phases,
+        )
+
         if getattr(self, "_phase_mismatch_unverified", False):
             self._phase_switch_decision = "phase_switch_unverified"
             return False
 
+        if getattr(self, "_phase_mismatch_bounce_stage", None) is not None:
+            return await self._advance_phase_mismatch_bounce(
+                wallbox=wallbox,
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target_phases,
+            )
+
         retry_count = getattr(self, "_phase_mismatch_retry_count", 0)
+
+        bounce_candidate = (
+            retry_count >= 1
+            and stable_mismatch_count >= PHASE_MISMATCH_BOUNCE_STABLE_POLLS
+            and self._can_start_phase_bounce(
+                requested_phases=requested_phases,
+                target_phases=target_phases,
+            )
+        )
+        if bounce_candidate:
+            return await self._start_phase_mismatch_bounce(
+                wallbox=wallbox,
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target_phases,
+            )
+        if (
+            retry_count >= 1
+            and retry_count < PHASE_MISMATCH_MAX_RETRIES_PER_SESSION
+            and stable_mismatch_count < PHASE_MISMATCH_BOUNCE_STABLE_POLLS
+            and self._can_start_phase_bounce(
+                requested_phases=requested_phases,
+                target_phases=target_phases,
+            )
+        ):
+            return False
+
         if retry_count >= PHASE_MISMATCH_MAX_RETRIES_PER_SESSION:
             self._mark_phase_switch_unverified(
                 wallbox=wallbox,
@@ -870,8 +1474,11 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if last_retry and (now - last_retry) < PHASE_MISMATCH_RETRY_COOLDOWN_S:
             return False
 
-        self._pending_phase_switch_target = target_phases
-        self._pending_phase_switch_force_write = True
+        self._start_pending_phase_action(
+            target_phases,
+            force_write=True,
+            reason=PhaseActionReason.MISMATCH_RETRY,
+        )
         self._phase_mismatch_target = target_phases
         await self.write_queue.clear()
         await self._enqueue_keepalive_if_needed()
@@ -921,8 +1528,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         target_phases: int,
     ) -> None:
         self._phase_mismatch_unverified = True
-        self._pending_phase_switch_target = None
-        self._pending_phase_switch_force_write = False
+        self._clear_pending_phase_action()
+        self._phase_mismatch_bounce_stage = None
+        self._phase_mismatch_bounce_target = None
+        self._phase_mismatch_bounce_verify_count = 0
         self._phase_switch_decision = "phase_switch_unverified"
         _LOGGER.warning(
             "Webasto Unite phase switch unverified after mismatch retries; "
