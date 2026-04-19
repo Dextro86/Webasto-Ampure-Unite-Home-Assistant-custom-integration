@@ -801,7 +801,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             return False
         if observed_phases is not None:
             return True
-        return requested_phases != target_phases or active_recovery
+        return requested_phases != target_phases
 
     def _startup_stabilization_ready(self) -> bool:
         poll_count = getattr(self, "_startup_refresh_count", 0)
@@ -1212,6 +1212,17 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                     observed_phases=observed_phases,
                     target_phases=self._pending_phase_switch_target,
                 )
+            if (
+                observed_phases is None
+                and getattr(self, "_last_phase_switch_monotonic", 0.0)
+                and not getattr(self, "_pending_phase_switch_force_write", False)
+            ):
+                self._phase_switch_decision = (
+                    "waiting_for_phase_switch_feedback"
+                    if requested_phases != self._pending_phase_switch_target
+                    else "waiting_for_observed_phases"
+                )
+                return True
             return await self._enqueue_pending_phase_switch_write(
                 wallbox=wallbox,
                 requested_phases=requested_phases,
@@ -1232,6 +1243,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                     observed_phases=observed_phases,
                 )
             if active_recovery:
+                if requested_phases == target_phases:
+                    self._phase_switch_decision = "waiting_for_observed_phases"
+                    return True
                 self._start_pending_phase_action(
                     target_phases,
                     force_write=True,
