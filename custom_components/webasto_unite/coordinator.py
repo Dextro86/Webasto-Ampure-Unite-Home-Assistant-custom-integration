@@ -556,9 +556,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         )
 
     def _startup_expected_phase_target(self, wallbox, sensors) -> int | None:
-        if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
-            return None
         if self.effective_mode == ChargeMode.PV:
+            if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
+                return None
             return self.controller.resolve_pv_phase_target(
                 self.effective_mode,
                 wallbox,
