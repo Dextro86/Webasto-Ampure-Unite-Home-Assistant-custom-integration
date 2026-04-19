@@ -27,7 +27,6 @@ Main settings:
 - `Modbus Timeout` and `Modbus Retries`: connection resilience settings.
 - `Control Mode`: whether the integration may actively control charging.
 - `Startup Charge Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
-- `Startup Phase Restore`: optionally restore register `405` to `Charger Phase Configuration` after Home Assistant startup or integration reload. The default is `Disabled`.
 
 When changing settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
 
@@ -39,8 +38,6 @@ Recommended first setup:
 
 If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
 
-If you enable `Startup Phase Restore`, the integration may restore the charger phase mode to `Charger Phase Configuration` after startup/reload. Keep this disabled if you sometimes intentionally leave the charger in `1 Phase`. This restore only runs when `Control Mode` is `Managed Charging Control`, phase switching is not disabled and register `405` returns a supported value.
-
 ## Current Limits
 
 Important current settings:
@@ -48,14 +45,14 @@ Important current settings:
 - `Minimum Current`: lower current limit used by control logic.
 - `Maximum Current`: configured upper current limit.
 - `Default Current Limit`: normal target current for `Normal` mode.
-- `Safe Current on Failure`: fallback current used when control input is unavailable or invalid.
+- `Safe Current on Failure`: fallback current used when DLB input is unavailable or invalid.
 - `Fixed Current`: target used by `Fixed Current` mode.
 
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
 
 `Default Current Limit` is also a general user limit. This means `Fixed Current` and `Fixed Current Until Unplug` can still be capped by `Default Current Limit`, `Maximum Current`, DLB and charger/session limits. Example: if `Fixed Current` is `16 A` but `Default Current Limit` is `10 A`, the final target will not exceed `10 A`.
 
-If DLB or another required control input becomes unavailable, the integration falls back to `Safe Current on Failure`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured input sensors.
+If DLB input becomes unavailable, the integration falls back to `Safe Current on Failure`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured DLB sensors.
 
 ## Dynamic Load Balancing
 
@@ -67,7 +64,7 @@ DLB measurement sources:
 
 - `Disabled`: do not use DLB.
 - `Phase Current Sensors (Recommended)`: use separate L1, L2 and L3 current sensors from your smart meter or energy meter. This is the preferred DLB input because it matches how main fuses are normally loaded per phase. Use current sensors in `A` or `mA`; the integration normalizes them internally.
-- `Grid Power Sensor`: calculate available current from a single live power sensor in `W` or `kW`. This is less precise than phase-current sensors. The integration uses charger-reported phase voltages when they are plausible and falls back to `230 V` per phase when voltage data is missing or invalid.
+- `Grid Power Sensor`: calculate available current from a single live power sensor in `W` or `kW`. This is only supported for 1-phase charger configurations. It is not suitable as 3-phase fuse protection because one total power value cannot detect phase imbalance. For 3-phase DLB, use phase-current sensors.
 
 For a 1-phase charger setup, only the L1 current sensor is required. For a 3-phase charger setup, select L1, L2 and L3 sensors.
 
@@ -98,11 +95,14 @@ PV Control Strategy:
 
 - `Disabled`: do not use PV charging.
 - `Surplus Only`: charge only when enough surplus is available.
-- `Minimum + Surplus`: keep charging at minimum current and add surplus when available.
+- `Minimum + Surplus`: keep charging at minimum current and add surplus when available, but pause if the configured PV input is unavailable.
+- `Minimum Always + Surplus`: keep charging at minimum current and add surplus when available, even if the configured PV input is unavailable.
 
 PV charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
 
-`Minimum + Surplus` is not pure surplus-only charging. It may charge at `PV Minimum Current` even when little or no surplus is available. Use `Surplus Only` if you want PV charging to wait until enough surplus is present.
+`Minimum + Surplus` is not pure surplus-only charging. It may charge at `PV Minimum Current` when there is little or no surplus, as long as the PV input is valid. Use `Surplus Only` if you want PV charging to wait until enough surplus is present.
+
+If the configured PV input becomes unavailable, `Surplus Only` and `Minimum + Surplus` pause by writing `0 A`. `Minimum Always + Surplus` is the explicit grid-assisted comfort mode: it keeps charging at `PV Minimum Current` when it cannot determine current surplus.
 
 PV surplus can be provided in two ways:
 
@@ -165,6 +165,8 @@ The integration distinguishes between the requested phase-switch mode and the ph
 
 This distinction is important. Register `405` tells the charger which phase mode was requested. It does not always prove that the vehicle is physically charging on all three phases at that moment. The measured currents are the best practical signal for active phase count while charging.
 
+Automatic PV phase switching uses measured active phases while charging. If register `405` says `3 Phases` but measured current shows the vehicle is still effectively charging on one phase, the integration treats that as a mismatch and can reassert the requested phase mode through the normal pause-and-switch flow.
+
 With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 
 - switch from 1P to 3P at `4640 W` or more surplus
@@ -173,7 +175,7 @@ With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 
 Manual phase switching uses register `405` and is only available when phase switching is not disabled.
 
-Manual phase switching is persistent charger state. If you manually select `1 Phase`, the charger can remain in 1-phase mode for `Normal`, `Fixed Current` and later sessions until you manually select `3 Phases` again or automatic PV phase switching changes it. The integration only auto-restores the configured phase mode when it knows that automatic PV phase switching changed the phase mode.
+Manual phase switching is persistent charger state. If you manually select `1 Phase`, the charger can remain in 1-phase mode for `Normal`, `Fixed Current` and later sessions until you manually select `3 Phases` again or automatic PV phase switching changes it.
 
 Automatic phase switching only runs in `PV` mode or `PV Until Unplug`. It does not run in `Normal`, `Fixed Current` or `Off`.
 
@@ -195,7 +197,7 @@ Useful phase-switching diagnostics:
 - `Effective Active Phases`: phases currently drawing measurable current.
 - `PV Surplus Input`: surplus value used by the PV logic.
 - `Phase Switch Decision`: current automatic phase-switching decision or block reason.
-- `Phase Switch Commands`: number of phase-switch commands in the current plug-in session. This can include automatic PV switching and integration-managed restore actions.
+- `Phase Switch Commands`: number of automatic PV phase-switch commands in the current plug-in session.
 
 ## Important entities
 

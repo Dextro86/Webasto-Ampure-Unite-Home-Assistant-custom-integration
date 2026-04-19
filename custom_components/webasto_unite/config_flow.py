@@ -9,7 +9,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy, PvPhaseSwitchingMode, StartupPhaseRestoreMode
+from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy, PvPhaseSwitchingMode
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
@@ -26,10 +26,6 @@ STARTUP_CHARGE_MODE_SELECTOR_OPTIONS = [
     {"value": ChargeMode.NORMAL.value, "label": "Normal"},
     {"value": ChargeMode.PV.value, "label": "PV"},
     {"value": ChargeMode.FIXED_CURRENT.value, "label": "Fixed Current"},
-]
-STARTUP_PHASE_RESTORE_SELECTOR_OPTIONS = [
-    {"value": StartupPhaseRestoreMode.DISABLED.value, "label": "Disabled"},
-    {"value": StartupPhaseRestoreMode.RESTORE_CONFIGURED.value, "label": "Restore to Charger Configuration"},
 ]
 KEEPALIVE_MODE_SELECTOR_OPTIONS = [
     {"value": KeepaliveMode.AUTO.value, "label": "Auto (Recommended)"},
@@ -53,11 +49,13 @@ PV_CONTROL_STRATEGY_OPTIONS = [
     {"value": PvControlStrategy.DISABLED.value, "label": "Disabled"},
     {"value": PvControlStrategy.SURPLUS.value, "label": "Surplus Only"},
     {"value": PvControlStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + Surplus"},
+    {"value": PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, "label": "Minimum Always + Surplus"},
 ]
 PV_OVERRIDE_STRATEGY_OPTIONS = [
     {"value": PvOverrideStrategy.INHERIT.value, "label": "Same as PV Control Strategy"},
     {"value": PvOverrideStrategy.SURPLUS.value, "label": "Surplus Only"},
     {"value": PvOverrideStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + Surplus"},
+    {"value": PvOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, "label": "Minimum Always + Surplus"},
 ]
 PV_PHASE_SWITCHING_MODE_OPTIONS = [
     {"value": PvPhaseSwitchingMode.DISABLED.value, "label": "Disabled"},
@@ -151,10 +149,6 @@ def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     if startup_mode not in {mode.value for mode in ChargeMode}:
         raise vol.Invalid(f"{CONF_STARTUP_CHARGE_MODE} must be a supported charge mode")
     options[CONF_STARTUP_CHARGE_MODE] = startup_mode
-    startup_phase_restore = options.get(CONF_STARTUP_PHASE_RESTORE_MODE, DEFAULT_STARTUP_PHASE_RESTORE_MODE)
-    if startup_phase_restore not in {mode.value for mode in StartupPhaseRestoreMode}:
-        raise vol.Invalid(f"{CONF_STARTUP_PHASE_RESTORE_MODE} must be a supported startup phase restore mode")
-    options[CONF_STARTUP_PHASE_RESTORE_MODE] = startup_phase_restore
     return options
 
 
@@ -187,8 +181,11 @@ def _validate_dlb_options(options: dict[str, Any], installed_phases: str) -> dic
             missing = [key for key in (CONF_DLB_L1_SENSOR, CONF_DLB_L2_SENSOR, CONF_DLB_L3_SENSOR) if not options.get(key)]
             if missing:
                 raise vol.Invalid("DLB L1, L2 and L3 phase current sensors are required for 3p phase_currents mode")
-    if model == DlbInputModel.GRID_POWER.value and not options.get(CONF_DLB_GRID_POWER_SENSOR):
-        raise vol.Invalid("A DLB grid power sensor is required for grid_power mode")
+    if model == DlbInputModel.GRID_POWER.value:
+        if installed_phases == PHASE_MODE_3P:
+            raise vol.Invalid("DLB grid power mode is only supported for 1p charger configurations")
+        if not options.get(CONF_DLB_GRID_POWER_SENSOR):
+            raise vol.Invalid("A DLB grid power sensor is required for grid_power mode")
     return options
 
 
@@ -209,7 +206,11 @@ def _validate_pv_options(options: dict[str, Any]) -> dict[str, Any]:
         raise vol.Invalid(f"{CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION} must be between 1 and {MAX_PHASE_SWITCHING_PER_SESSION}")
 
     strategy = options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
-    if strategy in (PvControlStrategy.SURPLUS.value, PvControlStrategy.MIN_PLUS_SURPLUS.value):
+    if strategy in (
+        PvControlStrategy.SURPLUS.value,
+        PvControlStrategy.MIN_PLUS_SURPLUS.value,
+        PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value,
+    ):
         model = options[CONF_PV_INPUT_MODEL]
         if model == PvInputModel.SURPLUS_SENSOR.value and not options.get(CONF_PV_SURPLUS_SENSOR):
             raise vol.Invalid("A PV surplus sensor is required for surplus_sensor mode")
@@ -244,6 +245,8 @@ def _validation_error_key(err: Exception) -> str:
         return "dlb_phase_sensor_required"
     if "DLB grid power sensor is required for grid_power mode" in message:
         return "dlb_grid_sensor_required"
+    if "DLB grid power mode is only supported for 1p" in message:
+        return "dlb_grid_power_3p_not_supported"
     if CONF_PV_STOP_THRESHOLD in message and CONF_PV_START_THRESHOLD in message:
         return "pv_threshold_order"
     if "PV surplus sensor is required" in message:
@@ -263,9 +266,13 @@ class WebastoUniteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
         if user_input is not None:
-            await self.async_set_unique_id(f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}")
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=f"Webasto Unite ({user_input[CONF_HOST]})", data=user_input)
+            try:
+                data = _validate_connection_data(user_input)
+                await self.async_set_unique_id(f"{data[CONF_HOST]}:{data[CONF_PORT]}")
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=f"Webasto Unite ({data[CONF_HOST]})", data=data)
+            except vol.Invalid as err:
+                errors["base"] = _validation_error_key(err)
         schema = vol.Schema({
             vol.Required(CONF_HOST): str,
             vol.Optional(CONF_PORT, default=DEFAULT_PORT): _int_selector(1, 65535),
@@ -321,7 +328,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_SAFE_CURRENT, default=self.options.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
             vol.Optional(CONF_CONTROL_MODE, default=self.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_STARTUP_CHARGE_MODE, default=self.options.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_CHARGE_MODE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_STARTUP_PHASE_RESTORE_MODE, default=self.options.get(CONF_STARTUP_PHASE_RESTORE_MODE, DEFAULT_STARTUP_PHASE_RESTORE_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_PHASE_RESTORE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_MODE, default=self.options.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
             vol.Optional(CONF_KEEPALIVE_INTERVAL, default=self.options.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
             vol.Optional(CONF_POLLING_INTERVAL, default=self.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),

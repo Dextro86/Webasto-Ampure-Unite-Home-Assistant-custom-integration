@@ -55,17 +55,15 @@ def test_dlb_total_load_including_charger_adds_back_charger_current():
 def test_dlb_grid_power_uses_measured_phase_voltage_when_available():
     controller = make_controller(dlb_input_model="grid_power", main_fuse_a=25.0, safety_margin_a=2.0)
     wallbox = WallboxState(
-        installed_phases=3,
+        installed_phases=1,
         vehicle_connected=True,
         voltage_l1_v=250.0,
-        voltage_l2_v=250.0,
-        voltage_l3_v=250.0,
     )
     sensors = HaSensorSnapshot(grid_power_w=3000.0, valid=True)
 
     decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
 
-    assert decision.dlb_limit_a == 19.0
+    assert decision.dlb_limit_a == 11.0
 
 
 def test_pv_mode_without_grid_assist_can_disable_when_below_minimum():
@@ -171,8 +169,21 @@ def test_pv_mode_uses_effective_active_phases_while_charging():
     assert decision.final_target_a == 10.0
 
 
-def test_pv_mode_min_plus_surplus_keeps_minimum_current_when_sensor_is_unavailable():
+def test_pv_mode_min_plus_surplus_pauses_when_sensor_is_unavailable():
     controller = make_controller(pv_control_strategy="min_plus_surplus", pv_min_current_a=6.0)
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+
+    decision = controller.evaluate(ChargeMode.PV, wallbox, sensors)
+
+    assert decision.charging_enabled is False
+    assert decision.reason == ControlReason.SENSOR_UNAVAILABLE
+    assert decision.mode_target_a is None
+    assert decision.final_target_a is None
+
+
+def test_pv_mode_min_always_plus_surplus_keeps_minimum_when_sensor_is_unavailable():
+    controller = make_controller(pv_control_strategy="min_always_plus_surplus", pv_min_current_a=6.0)
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
     sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
 
@@ -192,6 +203,16 @@ def test_pv_until_unplug_strategy_can_override_base_pv_strategy():
     )
 
     assert strategy == PvControlStrategy.MIN_PLUS_SURPLUS
+
+
+def test_pv_until_unplug_strategy_can_override_to_min_always_plus_surplus():
+    strategy = WallboxController.resolve_effective_pv_strategy(
+        PvControlStrategy.SURPLUS,
+        PvOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS,
+        True,
+    )
+
+    assert strategy == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS
 
 
 def test_pv_until_unplug_strategy_can_inherit_base_pv_strategy():
@@ -275,6 +296,19 @@ def test_pv_phase_switching_requests_3p_when_surplus_is_high():
     assert controller.resolve_pv_phase_target(ChargeMode.PV, wallbox, sensors) == 3
 
 
+def test_pv_phase_switching_uses_measured_phases_when_register_mismatches():
+    controller = make_controller(pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P)
+    wallbox = WallboxState(
+        installed_phases=3,
+        phase_switch_mode_raw=1,
+        phases_in_use=1,
+        charging_active=True,
+    )
+    sensors = HaSensorSnapshot(surplus_power_w=6000.0, valid=True)
+
+    assert controller.resolve_pv_phase_target(ChargeMode.PV, wallbox, sensors) == 3
+
+
 def test_pv_phase_switching_requests_1p_when_surplus_is_below_3p_range():
     controller = make_controller(pv_phase_switching_mode=PvPhaseSwitchingMode.AUTOMATIC_1P3P)
     wallbox = WallboxState(installed_phases=3, phase_switch_mode_raw=1)
@@ -347,6 +381,25 @@ def test_invalid_sensors_fall_back_to_safe_current():
     assert decision.reason == ControlReason.SAFE_CURRENT_FALLBACK
     assert decision.fallback_active is True
     assert decision.sensor_invalid_reason == "missing sensors"
+
+
+def test_safety_reduction_bypasses_write_debounce():
+    controller = make_controller(
+        dlb_input_model="phase_currents",
+        stable_cycles_before_write=3,
+        min_seconds_between_writes=300.0,
+    )
+    controller.mark_current_written(16.0)
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
+    sensors = HaSensorSnapshot(
+        phase_currents=PhaseCurrents(l1=16.0, l2=10.0, l3=10.0),
+        valid=True,
+    )
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.final_target_a == 7.0
+    assert decision.should_write is True
 
 
 def test_unvalidated_hardware_limit_does_not_cap_target_current():

@@ -26,6 +26,12 @@ Supported charge modes:
 - `PV`
 - `Fixed Current`
 
+PV strategies:
+
+- `Surplus Only`
+- `Minimum + Surplus`
+- `Minimum Always + Surplus`
+
 Temporary session overrides:
 
 - `PV Until Unplug`
@@ -73,6 +79,7 @@ Start conservatively: first confirm monitoring works, then enable `Managed Charg
 - Automatic PV 1P/3P phase switching is experimental.
 - Register `405` has been validated on one charger with firmware `3.187`; other firmware versions may behave differently.
 - DLB and PV charging are disabled by default and should be enabled only after selecting suitable sensors.
+- For 3-phase DLB, use per-phase current sensors. Grid-power DLB is only suitable as a 1-phase approximation.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
 
 ## Repository contents

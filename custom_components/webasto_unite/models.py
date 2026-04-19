@@ -33,23 +33,20 @@ class PvControlStrategy(str, Enum):
     DISABLED = "disabled"
     SURPLUS = "surplus"
     MIN_PLUS_SURPLUS = "min_plus_surplus"
+    MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
 class PvOverrideStrategy(str, Enum):
     INHERIT = "inherit"
     SURPLUS = "surplus"
     MIN_PLUS_SURPLUS = "min_plus_surplus"
+    MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
 class PvPhaseSwitchingMode(str, Enum):
     DISABLED = "disabled"
     MANUAL_ONLY = "manual_only"
     AUTOMATIC_1P3P = "automatic_1p3p"
-
-
-class StartupPhaseRestoreMode(str, Enum):
-    DISABLED = "disabled"
-    RESTORE_CONFIGURED = "restore_configured"
 
 
 class KeepaliveMode(str, Enum):
@@ -203,7 +200,6 @@ class ControlConfig:
     timeout_s: float = 3.0
     retries: int = 3
     control_mode: ControlMode = ControlMode.KEEPALIVE_ONLY
-    startup_phase_restore_mode: StartupPhaseRestoreMode = StartupPhaseRestoreMode.DISABLED
     keepalive_mode: KeepaliveMode = KeepaliveMode.AUTO
     keepalive_interval_s: float = 10.0
     safe_current_a: float = 6.0

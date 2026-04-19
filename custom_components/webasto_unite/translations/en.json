@@ -28,7 +28,6 @@
           "retries": "Modbus Retries",
           "control_mode": "Control Mode",
           "startup_charge_mode": "Startup Charge Mode",
-          "startup_phase_restore_mode": "Startup Phase Restore",
           "keepalive_mode": "Keepalive Mode",
           "keepalive_interval": "Keepalive Interval",
           "safe_current": "Safe Current on Failure",
@@ -53,7 +52,7 @@
       },
       "pv": {
         "title": "PV and Fixed Current Charging",
-        "description": "Configure PV charging, PV phase switching and Fixed Current. Use a surplus power sensor when possible. Use signed grid power only with a net power sensor where negative values mean export. Minimum + Surplus may charge at PV Minimum Current even without surplus. Hysteresis and switch intervals prevent rapid 1P/3P switching.",
+        "description": "Configure PV charging, PV phase switching and Fixed Current. Use a surplus power sensor when possible. Use signed grid power only with a net power sensor where negative values mean export. Minimum + Surplus pauses when PV input is unavailable. Minimum Always + Surplus keeps charging at PV Minimum Current even without valid surplus input. Hysteresis and switch intervals prevent rapid 1P/3P switching.",
         "data": {
           "pv_input_model": "PV Measurement Source",
           "pv_control_strategy": "PV Control Strategy",
@@ -85,6 +84,7 @@
       "installed_phases_invalid": "Installed phases must be 1p or 3p.",
       "dlb_phase_sensor_required": "Select the required DLB phase current sensors for the configured 1p or 3p installation.",
       "dlb_grid_sensor_required": "Select a grid power sensor for the grid-power DLB model.",
+      "dlb_grid_power_3p_not_supported": "Grid-power DLB is only supported for 1-phase charger configurations. Use phase-current sensors for 3-phase DLB.",
       "pv_threshold_order": "The PV stop threshold must be less than or equal to the PV start threshold.",
       "pv_surplus_sensor_required": "Select a PV surplus sensor for the surplus-sensor PV model.",
       "pv_grid_sensor_required": "Select a grid power sensor when PV surplus is derived from grid power.",

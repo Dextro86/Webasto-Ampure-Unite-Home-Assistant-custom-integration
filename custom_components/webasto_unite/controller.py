@@ -108,10 +108,15 @@ class WallboxController:
             primary_reason = reason
 
         if final_target is None:
+            final_none_reason = (
+                ControlReason.SENSOR_UNAVAILABLE
+                if reason == ControlReason.SENSOR_UNAVAILABLE
+                else ControlReason.BELOW_MIN_CURRENT
+            )
             return ControlDecision(
                 charging_enabled=False,
                 target_current_a=None,
-                reason=ControlReason.BELOW_MIN_CURRENT,
+                reason=final_none_reason,
                 dlb_limit_a=dlb_result.available_current_a,
                 mode_target_a=mode_target,
                 final_target_a=None,
@@ -121,7 +126,18 @@ class WallboxController:
                 should_write=False,
             )
 
-        should_write = self._should_write_current(final_target)
+        should_write = self._should_write_current(
+            final_target,
+            immediate_if_lower=(
+                fallback_active
+                or dominant_limit_reason
+                in {
+                    ControlReason.DLB_LIMITED,
+                    ControlReason.CABLE_LIMITED,
+                    ControlReason.EV_LIMITED,
+                }
+            ),
+        )
 
         return ControlDecision(
             charging_enabled=True,
@@ -195,10 +211,19 @@ class WallboxController:
 
         surplus_w = self._resolve_surplus_power(sensors)
 
-        if pv_strategy == PvControlStrategy.MIN_PLUS_SURPLUS:
+        if pv_strategy in (
+            PvControlStrategy.MIN_PLUS_SURPLUS,
+            PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS,
+        ):
             if surplus_w is None:
+                if pv_strategy == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS:
+                    return PvResult(
+                        target_current_a=self.config.pv_min_current_a,
+                        valid=False,
+                        reason=ControlReason.SENSOR_UNAVAILABLE,
+                    )
                 return PvResult(
-                    target_current_a=self.config.pv_min_current_a,
+                    target_current_a=None,
                     valid=False,
                     reason=ControlReason.SENSOR_UNAVAILABLE,
                 )
@@ -350,7 +375,13 @@ class WallboxController:
         if surplus_w is None:
             return None
 
-        current_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
+        current_phases = self._resolve_requested_phase_mode(wallbox)
+        if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
+            current_phases = wallbox.phases_in_use
+
+        if current_phases is None:
+            return None
+
         min_1p_w = self.config.pv_min_current_a * voltage_sum_for_phases(
             1,
             wallbox.voltage_l1_v,
@@ -418,7 +449,15 @@ class WallboxController:
 
         return round(final_target, 1), dominant_limit_reason
 
-    def _should_write_current(self, target_current_a: float) -> bool:
+    @staticmethod
+    def _resolve_requested_phase_mode(wallbox: WallboxState) -> int | None:
+        if wallbox.phase_switch_mode_raw == 0:
+            return 1
+        if wallbox.phase_switch_mode_raw == 1:
+            return 3
+        return None
+
+    def _should_write_current(self, target_current_a: float, *, immediate_if_lower: bool = False) -> bool:
         now = monotonic()
         last = self.write_state.last_written_current_a
 
@@ -426,6 +465,11 @@ class WallboxController:
             self.write_state.pending_target_a = target_current_a
             self.write_state.pending_stable_cycles += 1
         else:
+            if immediate_if_lower and target_current_a < last:
+                self.write_state.pending_target_a = target_current_a
+                self.write_state.pending_stable_cycles = self.config.stable_cycles_before_write
+                return True
+
             delta = abs(target_current_a - last)
             if delta < self.config.min_current_change_a:
                 self.write_state.pending_stable_cycles = 0
