@@ -556,15 +556,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         )
 
     def _startup_expected_phase_target(self, wallbox, sensors) -> int | None:
-        if self.effective_mode == ChargeMode.PV:
+        mode = self.effective_mode
+        if mode == ChargeMode.PV:
             if self.control_config.pv_phase_switching_mode == PvPhaseSwitchingMode.DISABLED:
                 return None
             return self.controller.resolve_pv_phase_target(
-                self.effective_mode,
+                mode,
                 wallbox,
                 sensors,
             )
-        if self.effective_mode in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
+        if mode in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
             configured_phases = self._configured_phase_count()
             return configured_phases if configured_phases in (1, 3) else None
         return None
