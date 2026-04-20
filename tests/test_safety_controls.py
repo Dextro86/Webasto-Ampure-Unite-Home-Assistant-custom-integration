@@ -1610,6 +1610,61 @@ def test_non_pv_reconcile_runs_before_startup_consistency_is_checked():
     asyncio.run(_run())
 
 
+def test_vehicle_reconnect_rewrites_normal_target_when_charger_starts_at_safe_current():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = SimpleNamespace(
+            data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"},
+            options={},
+            title="Webasto Unite",
+        )
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            stable_cycles_before_write=1,
+            min_seconds_between_writes=0.0,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.controller.mark_current_written(16.0)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                return_value=WallboxState(
+                    charging_active=True,
+                    vehicle_connected=True,
+                    current_limit_a=6.0,
+                    phase_switch_mode_raw=1,
+                    phases_in_use=3,
+                )
+            )
+        )
+        coordinator.client = SimpleNamespace(stats=SimpleNamespace(last_error=None))
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._last_vehicle_connected = False
+        coordinator._startup_consistency_checked = True
+        coordinator._phase_switch_count_this_session = 0
+        coordinator._phase_switch_decision = None
+        coordinator._keepalive_sent_count = 0
+        coordinator._keepalive_write_failures = 0
+        coordinator._read_sensor_snapshot = lambda: HaSensorSnapshot(valid=True)
+        coordinator._keepalive_age_seconds = lambda: 0.0
+        coordinator._allows_keepalive = lambda: False
+        coordinator._is_keepalive_overdue = lambda age: False
+        coordinator._enqueue_startup_consistency_recovery_if_needed = AsyncMock(return_value=False)
+        coordinator._enqueue_pv_phase_switch_if_needed = AsyncMock(return_value=False)
+        coordinator._flush_write_queue = AsyncMock()
+
+        await coordinator._async_update_data()
+        item = await coordinator.write_queue.peek_next()
+
+        assert item.key == "current_limit"
+        assert item.value == 16
+
+    asyncio.run(_run())
+
+
 def test_non_pv_reconcile_suppresses_decision_when_reconcile_returns_false_but_mismatch_exists():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)

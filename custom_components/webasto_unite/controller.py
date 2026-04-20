@@ -161,6 +161,11 @@ class WallboxController:
         self.write_state.pending_stable_cycles = 0
         self.write_state.pending_target_a = None
 
+    def reset_current_write_state(self) -> None:
+        self.write_state.last_written_current_a = None
+        self.write_state.last_write_monotonic = 0.0
+        self.reset_pending_write_state()
+
     def reset_pv_state(self) -> None:
         self.pv_state.active = False
         self.pv_state.start_condition_since = None

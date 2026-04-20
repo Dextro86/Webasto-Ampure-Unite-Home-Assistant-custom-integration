@@ -558,6 +558,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._phase_switch_up_condition_since = None
                 self._clear_pending_phase_action()
                 self._reset_phase_mismatch_state()
+                self.controller.reset_current_write_state()
             self._last_vehicle_connected = wallbox.vehicle_connected
             sensors = self._read_sensor_snapshot()
             pv_surplus_w = self.controller._resolve_surplus_power(sensors)
