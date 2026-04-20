@@ -128,6 +128,7 @@ class WallboxController:
 
         should_write = self._should_write_current(
             final_target,
+            reported_current_limit_a=wallbox.current_limit_a,
             immediate_if_lower=(
                 fallback_active
                 or dominant_limit_reason
@@ -462,9 +463,23 @@ class WallboxController:
             return 3
         return None
 
-    def _should_write_current(self, target_current_a: float, *, immediate_if_lower: bool = False) -> bool:
+    def _should_write_current(
+        self,
+        target_current_a: float,
+        *,
+        reported_current_limit_a: float | None = None,
+        immediate_if_lower: bool = False,
+    ) -> bool:
         now = monotonic()
         last = self.write_state.last_written_current_a
+        reported_mismatch = False
+        if reported_current_limit_a is not None:
+            reported_delta = abs(target_current_a - reported_current_limit_a)
+            if reported_delta < self.config.min_current_change_a:
+                self.write_state.pending_stable_cycles = 0
+                self.write_state.pending_target_a = None
+                return False
+            reported_mismatch = True
 
         if last is None:
             self.write_state.pending_target_a = target_current_a
@@ -476,7 +491,7 @@ class WallboxController:
                 return True
 
             delta = abs(target_current_a - last)
-            if delta < self.config.min_current_change_a:
+            if delta < self.config.min_current_change_a and not reported_mismatch:
                 self.write_state.pending_stable_cycles = 0
                 self.write_state.pending_target_a = None
                 return False

@@ -120,6 +120,64 @@ def test_off_mode_writes_zero_current_when_vehicle_is_connected():
     assert follow_up.should_write is True
 
 
+def test_reported_current_mismatch_overrides_stale_internal_write_state():
+    controller = make_controller()
+    controller.mark_current_written(16.0)
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        charging_active=True,
+        current_limit_a=6.0,
+    )
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.target_current_a == 16.0
+    assert decision.should_write is True
+
+
+def test_reported_current_matching_target_suppresses_unnecessary_write():
+    controller = make_controller()
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        charging_active=True,
+        current_limit_a=16.0,
+    )
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.target_current_a == 16.0
+    assert decision.should_write is False
+
+
+def test_reported_current_mismatch_respects_write_throttle_after_recent_write():
+    controller = WallboxController(
+        ControlConfig(
+            user_limit_a=16.0,
+            max_current_a=16.0,
+            min_current_a=6.0,
+            stable_cycles_before_write=1,
+            min_seconds_between_writes=60.0,
+        )
+    )
+    controller.mark_current_written(16.0)
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        charging_active=True,
+        current_limit_a=6.0,
+    )
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.target_current_a == 16.0
+    assert decision.should_write is False
+
+
 def test_current_validator_rejects_out_of_range_values():
     validator = _bounded_float(6.0, 32.0, "current")
 
@@ -1643,6 +1701,61 @@ def test_vehicle_reconnect_rewrites_normal_target_when_charger_starts_at_safe_cu
         coordinator._pv_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._last_vehicle_connected = False
+        coordinator._startup_consistency_checked = True
+        coordinator._phase_switch_count_this_session = 0
+        coordinator._phase_switch_decision = None
+        coordinator._keepalive_sent_count = 0
+        coordinator._keepalive_write_failures = 0
+        coordinator._read_sensor_snapshot = lambda: HaSensorSnapshot(valid=True)
+        coordinator._keepalive_age_seconds = lambda: 0.0
+        coordinator._allows_keepalive = lambda: False
+        coordinator._is_keepalive_overdue = lambda age: False
+        coordinator._enqueue_startup_consistency_recovery_if_needed = AsyncMock(return_value=False)
+        coordinator._enqueue_pv_phase_switch_if_needed = AsyncMock(return_value=False)
+        coordinator._flush_write_queue = AsyncMock()
+
+        await coordinator._async_update_data()
+        item = await coordinator.write_queue.peek_next()
+
+        assert item.key == "current_limit"
+        assert item.value == 16
+
+    asyncio.run(_run())
+
+
+def test_running_integration_rewrites_normal_target_when_wallbox_reports_safe_current():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = SimpleNamespace(
+            data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"},
+            options={},
+            title="Webasto Unite",
+        )
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            stable_cycles_before_write=1,
+            min_seconds_between_writes=0.0,
+        )
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.controller.mark_current_written(16.0)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                return_value=WallboxState(
+                    charging_active=True,
+                    vehicle_connected=True,
+                    current_limit_a=6.0,
+                    phase_switch_mode_raw=1,
+                    phases_in_use=3,
+                )
+            )
+        )
+        coordinator.client = SimpleNamespace(stats=SimpleNamespace(last_error=None))
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._last_vehicle_connected = True
         coordinator._startup_consistency_checked = True
         coordinator._phase_switch_count_this_session = 0
         coordinator._phase_switch_decision = None
