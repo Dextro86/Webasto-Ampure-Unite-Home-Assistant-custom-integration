@@ -74,6 +74,7 @@ CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION = "pv_phase_switching_max_per_session"
 CONF_FIXED_CURRENT = "fixed_current"
 CONF_COMM_TIMEOUT = "communication_timeout"
 CONF_CHARGE_MODE = "charge_mode"
+STORAGE_KEY_CHARGING_STATE = "charging_state"
 
 SERVICE_SET_MODE = "set_mode"
 SERVICE_SET_USER_LIMIT = "set_user_limit"

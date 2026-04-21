@@ -15,6 +15,7 @@ from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, HaSensorSnapshot, PhaseCurrents, PvPhaseSwitchingMode, WallboxState
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
+from custom_components.webasto_unite.switch import WebastoChargingSwitch
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
 from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE
@@ -34,6 +35,8 @@ def make_controller(**kwargs):
 
 def make_config_entry(data=None, options=None):
     return SimpleNamespace(
+        entry_id="test-entry",
+        title="Webasto Unite",
         data=data
         or {
             "host": "192.168.1.10",
@@ -832,6 +835,112 @@ def test_set_fixed_current_until_unplug_updates_override_state():
     assert coordinator.fixed_current_until_unplug_active is False
 
 
+def test_set_mode_off_does_not_clear_charging_pause_state():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._mode = ChargeMode.NORMAL
+    coordinator._charging_paused = True
+    coordinator._pv_until_unplug_active = False
+    coordinator._fixed_current_until_unplug_active = False
+    coordinator.controller = make_controller()
+
+    coordinator.set_mode(ChargeMode.OFF)
+
+    assert coordinator.mode == ChargeMode.OFF
+    assert coordinator.charging_enabled is False
+
+
+def test_charging_on_restart_restores_default_mode_and_allows_charging():
+    hass = SimpleNamespace(_storage_data={})
+    entry = make_config_entry(options={"startup_charge_mode": "normal"})
+
+    first = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(first.async_set_charging_enabled(True))
+
+    restarted = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(restarted._async_restore_charging_enabled_state())
+
+    wallbox = WallboxState(vehicle_connected=True, charging_active=True)
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+    decision = restarted.controller.evaluate(restarted.effective_mode, wallbox, sensors)
+
+    assert restarted.mode == ChargeMode.NORMAL
+    assert restarted.charging_enabled is True
+    assert decision.charging_enabled is True
+
+
+def test_charging_off_stays_off_after_restart_with_vehicle_connected():
+    hass = SimpleNamespace(_storage_data={})
+    entry = make_config_entry(options={"startup_charge_mode": "normal"})
+
+    first = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(first.async_set_charging_enabled(False))
+
+    restarted = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(restarted._async_restore_charging_enabled_state())
+
+    wallbox = WallboxState(vehicle_connected=True, charging_active=True)
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+    decision = restarted.controller.evaluate(restarted.effective_mode, wallbox, sensors)
+
+    assert restarted.mode == ChargeMode.NORMAL
+    assert restarted.charging_enabled is False
+    assert restarted.effective_mode == ChargeMode.OFF
+    assert decision.charging_enabled is False
+
+
+def test_charging_off_stays_off_after_restart_without_vehicle_connected():
+    hass = SimpleNamespace(_storage_data={})
+    entry = make_config_entry(options={"startup_charge_mode": "normal"})
+
+    first = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(first.async_set_charging_enabled(False))
+
+    restarted = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(restarted._async_restore_charging_enabled_state())
+    charging_switch = WebastoChargingSwitch(restarted)
+
+    assert restarted.mode == ChargeMode.NORMAL
+    assert restarted.charging_enabled is False
+    assert charging_switch.is_on is False
+
+
+def test_reenabling_charging_after_restart_resumes_default_mode_behavior():
+    hass = SimpleNamespace(_storage_data={})
+    entry = make_config_entry(options={"startup_charge_mode": "normal"})
+
+    first = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(first.async_set_charging_enabled(False))
+
+    restarted = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(restarted._async_restore_charging_enabled_state())
+    asyncio.run(restarted.async_set_charging_enabled(True))
+
+    wallbox = WallboxState(vehicle_connected=True, charging_active=True)
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+    decision = restarted.controller.evaluate(restarted.effective_mode, wallbox, sensors)
+
+    assert restarted.mode == ChargeMode.NORMAL
+    assert restarted.charging_enabled is True
+    assert restarted.effective_mode == ChargeMode.NORMAL
+    assert decision.charging_enabled is True
+
+
+def test_only_charging_on_off_is_persistent_not_runtime_mode():
+    hass = SimpleNamespace(_storage_data={})
+    entry = make_config_entry(options={"startup_charge_mode": "normal"})
+
+    first = WebastoUniteCoordinator(hass, entry)
+    first.set_mode(ChargeMode.PV)
+    asyncio.run(first.async_set_charging_enabled(False))
+
+    restarted = WebastoUniteCoordinator(hass, entry)
+    asyncio.run(restarted._async_restore_charging_enabled_state())
+
+    assert restarted.mode == ChargeMode.NORMAL
+    assert restarted.charging_enabled is False
+    assert restarted.effective_mode == ChargeMode.OFF
+
+
 def test_mode_and_override_changes_do_not_reset_phase_recovery_state():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.control_config = ControlConfig()
@@ -1189,6 +1298,72 @@ def test_startup_consistency_waits_during_stabilization_window():
     asyncio.run(_run())
 
 
+def test_startup_consistency_waits_for_stable_charging_before_recovery():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._startup_started_monotonic = monotonic() - 31.0
+        coordinator._startup_refresh_count = 3
+        coordinator._startup_consistency_checked = False
+        coordinator._startup_mismatch_observations = []
+        coordinator._startup_charging_active_since_monotonic = None
+        coordinator._startup_charging_active_polls = 0
+        coordinator._phase_switch_decision = None
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=1, phases_in_use=1)
+        sensors = HaSensorSnapshot(valid=True)
+
+        handled = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
+
+        assert handled is False
+        assert coordinator._startup_consistency_checked is False
+        assert coordinator._phase_switch_decision == "startup_waiting_for_stable_charging"
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
+
+
+def test_startup_consistency_waits_for_observed_phases_after_restart():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._startup_started_monotonic = monotonic() - 31.0
+        coordinator._startup_refresh_count = 3
+        coordinator._startup_consistency_checked = False
+        coordinator._startup_mismatch_observations = []
+        coordinator._startup_charging_active_since_monotonic = monotonic() - 11.0
+        coordinator._startup_charging_active_polls = 1
+        coordinator._phase_switch_decision = None
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._allows_control_writes = lambda: True
+
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=1, phases_in_use=0)
+        sensors = HaSensorSnapshot(valid=True)
+
+        handled = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
+
+        assert handled is False
+        assert coordinator._startup_consistency_checked is False
+        assert coordinator._phase_switch_decision == "startup_waiting_for_observed_phases"
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
+
+
 def test_startup_consistency_requires_stable_mismatch_before_recovery():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -1200,6 +1375,8 @@ def test_startup_consistency_requires_stable_mismatch_before_recovery():
         coordinator._startup_refresh_count = 3
         coordinator._startup_consistency_checked = False
         coordinator._startup_mismatch_observations = []
+        coordinator._startup_charging_active_since_monotonic = monotonic() - 11.0
+        coordinator._startup_charging_active_polls = 1
         coordinator._pending_phase_switch_target = None
         coordinator._pending_phase_switch_force_write = False
         coordinator._phase_mismatch_retry_count = 0
@@ -1225,9 +1402,15 @@ def test_startup_consistency_requires_stable_mismatch_before_recovery():
         assert await coordinator.write_queue.size() == 0
 
         second = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
+        assert second is False
+        assert coordinator._startup_consistency_checked is False
+        assert coordinator._phase_switch_decision == "startup_consistency_observing"
+        assert await coordinator.write_queue.size() == 0
+
+        third = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
         item = await coordinator.write_queue.peek_next()
 
-        assert second is True
+        assert third is True
         assert coordinator._startup_consistency_checked is True
         assert coordinator._pending_phase_switch_target == 3
         assert coordinator._pending_phase_switch_force_write is True
@@ -1270,6 +1453,8 @@ def test_startup_consistency_in_normal_mode_ignores_pv_phase_switch_disabled():
         coordinator._startup_refresh_count = 3
         coordinator._startup_consistency_checked = False
         coordinator._startup_mismatch_observations = []
+        coordinator._startup_charging_active_since_monotonic = monotonic() - 11.0
+        coordinator._startup_charging_active_polls = 1
         coordinator._pending_phase_switch_target = None
         coordinator._pending_phase_switch_force_write = False
         coordinator._phase_mismatch_retry_count = 0
@@ -1289,10 +1474,12 @@ def test_startup_consistency_in_normal_mode_ignores_pv_phase_switch_disabled():
 
         first = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
         second = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
+        third = await coordinator._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
         item = await coordinator.write_queue.peek_next()
 
         assert first is False
-        assert second is True
+        assert second is False
+        assert third is True
         assert coordinator._pending_phase_switch_target == 3
         assert coordinator._phase_switch_decision == "phase_switch_mismatch_detected"
         assert item.key == "current_limit"
@@ -1315,6 +1502,8 @@ def test_startup_consistency_in_pv_uses_normal_pv_phase_target_only():
         coordinator._startup_refresh_count = 3
         coordinator._startup_consistency_checked = False
         coordinator._startup_mismatch_observations = []
+        coordinator._startup_charging_active_since_monotonic = monotonic() - 11.0
+        coordinator._startup_charging_active_polls = 1
         coordinator._phase_switch_decision = None
         coordinator._mode = ChargeMode.PV
         coordinator._charging_paused = False
@@ -1477,6 +1666,42 @@ def test_non_pv_reconcile_starts_when_normal_mode_observes_1p_but_target_is_3p()
     asyncio.run(_run())
 
 
+def test_non_pv_reconcile_does_not_pause_immediately_during_startup_mismatch():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._startup_consistency_checked = False
+        coordinator._startup_charging_active_since_monotonic = None
+        coordinator._startup_charging_active_polls = 0
+        coordinator._pending_phase_switch_target = None
+        coordinator._pending_phase_switch_force_write = False
+        coordinator._phase_mismatch_retry_count = 0
+        coordinator._last_phase_mismatch_retry_monotonic = 0.0
+        coordinator._phase_mismatch_target = None
+        coordinator._phase_mismatch_unverified = False
+        coordinator._phase_switch_decision = None
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=1, phases_in_use=1)
+
+        handled = await coordinator._enqueue_non_pv_phase_reconcile_if_needed(wallbox)
+
+        assert handled is False
+        assert coordinator._pending_phase_switch_target is None
+        assert coordinator._phase_switch_decision == "startup_waiting_for_stable_charging"
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
+
+
 def test_pending_non_pv_restore_is_not_cleared_outside_pv_mode():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -1617,7 +1842,7 @@ def test_active_recovery_with_unknown_observed_phases_waits_instead_of_rewriting
     asyncio.run(_run())
 
 
-def test_non_pv_reconcile_runs_before_startup_consistency_is_checked():
+def test_non_pv_reconcile_is_deferred_during_startup_until_charging_is_settled():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
         coordinator.entry = SimpleNamespace(
@@ -1661,9 +1886,9 @@ def test_non_pv_reconcile_runs_before_startup_consistency_is_checked():
 
         await coordinator._async_update_data()
 
-        coordinator._enqueue_non_pv_phase_reconcile_if_needed.assert_awaited_once()
+        coordinator._enqueue_non_pv_phase_reconcile_if_needed.assert_not_called()
         coordinator._enqueue_pv_phase_switch_if_needed.assert_not_called()
-        coordinator._enqueue_decision.assert_not_called()
+        coordinator._enqueue_decision.assert_awaited_once()
 
     asyncio.run(_run())
 

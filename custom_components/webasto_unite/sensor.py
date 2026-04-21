@@ -24,9 +24,13 @@ SENSORS = (
     WebastoSensorDescription(key="effective_mode", name="Active Mode", value_key="effective_mode"),
     WebastoSensorDescription(key="capability_summary", name="Capability Summary", value_key="capability_summary", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="firmware_version", name="Firmware Version", value_key="firmware_version", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="charge_point_state_text", name="Charge Point State", value_key="charge_point_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="charge_point_state_raw", name="Charge Point State Code", value_key="charge_point_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="charging_state_text", name="Charging State", value_key="charge_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="charging_state_raw", name="Charging State Code", value_key="charge_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="equipment_state_text", name="Equipment State", value_key="evse_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="equipment_state_raw", name="Equipment State Code", value_key="evse_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="cable_state_text", name="Cable State", value_key="cable_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="cable_state_raw", name="Cable State Code", value_key="cable_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="evse_fault_code", name="EVSE Fault Code", value_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="charge_point_phase_count", name="Charger Configured Phases", value_key="charge_point_phase_count", entity_category=EntityCategory.DIAGNOSTIC),
@@ -83,11 +87,65 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
         data = self.coordinator.data
         if data is None:
             return None
+        if self.entity_description.key == "charge_point_state_text":
+            return self._format_charge_point_state(data.wallbox.charge_point_state_raw)
+        if self.entity_description.key == "charging_state_text":
+            return self._format_charge_state(data.wallbox.charge_state_raw)
+        if self.entity_description.key == "equipment_state_text":
+            return self._format_equipment_state(data.wallbox.evse_state_raw)
+        if self.entity_description.key == "cable_state_text":
+            return self._format_cable_state(data.wallbox.cable_state_raw)
         if hasattr(data, self.entity_description.value_key):
             return self._present_value(getattr(data, self.entity_description.value_key))
         if hasattr(data.wallbox, self.entity_description.value_key):
             return self._present_value(getattr(data.wallbox, self.entity_description.value_key))
         return None
+
+    @staticmethod
+    def _format_charge_point_state(raw_value):
+        mapping = {
+            0: "No Vehicle",
+            1: "Preparing",
+            3: "Charging",
+            4: "Paused",
+            7: "Error",
+            8: "Reserved",
+        }
+        return WebastoSensor._format_raw_state_label(raw_value, mapping)
+
+    @staticmethod
+    def _format_charge_state(raw_value):
+        mapping = {
+            0: "Idle",
+            1: "Charging",
+        }
+        return WebastoSensor._format_raw_state_label(raw_value, mapping)
+
+    @staticmethod
+    def _format_equipment_state(raw_value):
+        mapping = {
+            0: "Starting",
+            1: "Running",
+            2: "Error",
+        }
+        return WebastoSensor._format_raw_state_label(raw_value, mapping)
+
+    @staticmethod
+    def _format_cable_state(raw_value):
+        mapping = {
+            0: "No Cable",
+            1: "Cable Attached",
+            2: "Vehicle Connected",
+            3: "Vehicle Connected Locked",
+        }
+        return WebastoSensor._format_raw_state_label(raw_value, mapping)
+
+    @staticmethod
+    def _format_raw_state_label(raw_value, mapping):
+        if raw_value is None:
+            return None
+        raw_int = int(raw_value)
+        return mapping.get(raw_int, f"Unknown ({raw_int})")
 
     @staticmethod
     def _present_value(value):

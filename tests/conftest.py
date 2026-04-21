@@ -1,6 +1,7 @@
 import sys
 import types
 from pathlib import Path
+from dataclasses import dataclass
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +59,24 @@ sys.modules.setdefault("homeassistant.config_entries", config_entries)
 const = types.ModuleType("homeassistant.const")
 const.CONF_HOST = "host"
 const.CONF_PORT = "port"
+class _EntityCategory:
+    DIAGNOSTIC = "diagnostic"
+class _UnitOfElectricCurrent:
+    AMPERE = "A"
+class _UnitOfEnergy:
+    KILO_WATT_HOUR = "kWh"
+class _UnitOfPower:
+    WATT = "W"
+class _UnitOfTime:
+    SECONDS = "s"
+class _UnitOfElectricPotential:
+    VOLT = "V"
+const.EntityCategory = _EntityCategory
+const.UnitOfElectricCurrent = _UnitOfElectricCurrent
+const.UnitOfEnergy = _UnitOfEnergy
+const.UnitOfPower = _UnitOfPower
+const.UnitOfTime = _UnitOfTime
+const.UnitOfElectricPotential = _UnitOfElectricPotential
 sys.modules.setdefault("homeassistant.const", const)
 
 core = types.ModuleType("homeassistant.core")
@@ -112,6 +131,22 @@ event = types.ModuleType("homeassistant.helpers.event")
 event.async_track_state_change_event = lambda *args, **kwargs: (lambda: None)
 sys.modules.setdefault("homeassistant.helpers.event", event)
 
+storage = types.ModuleType("homeassistant.helpers.storage")
+class _Store:
+    def __init__(self, hass, version, key):
+        self.hass = hass
+        self.version = version
+        self.key = key
+    async def async_load(self):
+        return getattr(self.hass, "_storage_data", {}).get(self.key)
+    async def async_save(self, data):
+        if not hasattr(self.hass, "_storage_data"):
+            self.hass._storage_data = {}
+        self.hass._storage_data[self.key] = data
+storage.Store = _Store
+sys.modules.setdefault("homeassistant.helpers.storage", storage)
+helpers.storage = storage
+
 update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
 class _DataUpdateCoordinator:
     def __class_getitem__(cls, item):
@@ -124,9 +159,43 @@ class _DataUpdateCoordinator:
         self.data = data
 class _UpdateFailed(Exception):
     pass
+class _CoordinatorEntity:
+    def __init__(self, coordinator):
+        self.coordinator = coordinator
 update_coordinator.DataUpdateCoordinator = _DataUpdateCoordinator
 update_coordinator.UpdateFailed = _UpdateFailed
+update_coordinator.CoordinatorEntity = _CoordinatorEntity
 sys.modules.setdefault("homeassistant.helpers.update_coordinator", update_coordinator)
+
+switch = types.ModuleType("homeassistant.components.switch")
+class _SwitchEntity:
+    pass
+switch.SwitchEntity = _SwitchEntity
+sys.modules.setdefault("homeassistant.components.switch", switch)
+
+sensor = types.ModuleType("homeassistant.components.sensor")
+class _SensorEntity:
+    pass
+@dataclass(frozen=True)
+class _SensorEntityDescription:
+    key: str | None = None
+    name: str | None = None
+    entity_category: str | None = None
+    native_unit_of_measurement: str | None = None
+sensor.SensorEntity = _SensorEntity
+sensor.SensorEntityDescription = _SensorEntityDescription
+sys.modules.setdefault("homeassistant.components.sensor", sensor)
+
+entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
+entity_platform.AddEntitiesCallback = object
+sys.modules.setdefault("homeassistant.helpers.entity_platform", entity_platform)
+
+device_registry = types.ModuleType("homeassistant.helpers.device_registry")
+class _DeviceInfo(dict):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+device_registry.DeviceInfo = _DeviceInfo
+sys.modules.setdefault("homeassistant.helpers.device_registry", device_registry)
 
 pymodbus = types.ModuleType("pymodbus")
 sys.modules.setdefault("pymodbus", pymodbus)

@@ -20,6 +20,7 @@ from custom_components.webasto_unite.registers import (
     ValueType,
 )
 from custom_components.webasto_unite.models import ChargingState, PhaseCurrents, WallboxState
+from custom_components.webasto_unite.sensor import WebastoSensor
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 
 
@@ -99,3 +100,32 @@ def test_charging_active_uses_charging_state_register_with_measurement_fallback(
     wallbox = WallboxState(charge_state_raw=0, active_power_w=0.0, phase_currents=PhaseCurrents(l1=0.0))
     wallbox.update_charging_active()
     assert wallbox.charging_active is False
+
+
+def test_human_readable_charge_point_state_mapping_uses_conservative_labels():
+    assert WebastoSensor._format_charge_point_state(0) == "No Vehicle"
+    assert WebastoSensor._format_charge_point_state(1) == "Preparing"
+    assert WebastoSensor._format_charge_point_state(3) == "Charging"
+    assert WebastoSensor._format_charge_point_state(4) == "Paused"
+    assert WebastoSensor._format_charge_point_state(7) == "Error"
+    assert WebastoSensor._format_charge_point_state(8) == "Reserved"
+    assert WebastoSensor._format_charge_point_state(99) == "Unknown (99)"
+
+
+def test_human_readable_charge_state_mapping_uses_known_values():
+    assert WebastoSensor._format_charge_state(0) == "Idle"
+    assert WebastoSensor._format_charge_state(1) == "Charging"
+    assert WebastoSensor._format_charge_state(5) == "Unknown (5)"
+
+
+def test_human_readable_equipment_and_cable_state_mappings_use_fallback_for_unknown():
+    assert WebastoSensor._format_equipment_state(0) == "Starting"
+    assert WebastoSensor._format_equipment_state(1) == "Running"
+    assert WebastoSensor._format_equipment_state(2) == "Error"
+    assert WebastoSensor._format_equipment_state(9) == "Unknown (9)"
+
+    assert WebastoSensor._format_cable_state(0) == "No Cable"
+    assert WebastoSensor._format_cable_state(1) == "Cable Attached"
+    assert WebastoSensor._format_cable_state(2) == "Vehicle Connected"
+    assert WebastoSensor._format_cable_state(3) == "Vehicle Connected Locked"
+    assert WebastoSensor._format_cable_state(9) == "Unknown (9)"

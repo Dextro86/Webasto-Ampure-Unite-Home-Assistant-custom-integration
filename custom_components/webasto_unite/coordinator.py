@@ -11,6 +11,7 @@ from datetime import timedelta
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -77,6 +78,7 @@ from .const import (
     DEFAULT_UNIT_ID,
     DEFAULT_USER_LIMIT_A,
     DOMAIN,
+    STORAGE_KEY_CHARGING_STATE,
 )
 from .controller import WallboxController
 from .modbus_client import ModbusClientConfig, WebastoModbusClient
@@ -115,8 +117,10 @@ PHASE_MISMATCH_RETRY_COOLDOWN_S = 120.0
 PHASE_MISMATCH_BOUNCE_STABLE_POLLS = 2
 PHASE_MISMATCH_BOUNCE_COOLDOWN_S = 120.0
 STARTUP_STABILIZATION_MIN_POLLS = 3
-STARTUP_STABILIZATION_MIN_SECONDS = 20.0
-STARTUP_MISMATCH_STABLE_POLLS = 2
+STARTUP_STABILIZATION_MIN_SECONDS = 30.0
+STARTUP_MISMATCH_STABLE_POLLS = 3
+STARTUP_CHARGING_SETTLE_MIN_POLLS = 2
+STARTUP_CHARGING_SETTLE_MIN_SECONDS = 10.0
 
 
 class PhaseActionReason(StrEnum):
@@ -194,6 +198,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._startup_refresh_count = 0
         self._startup_consistency_checked = False
         self._startup_mismatch_observations: list[tuple[int, int, int | None]] = []
+        self._startup_charging_active_since_monotonic: float | None = None
+        self._startup_charging_active_polls = 0
         self._last_phase_switch_monotonic = 0.0
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
@@ -205,6 +211,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._keepalive_write_failures = 0
         self._keepalive_task: asyncio.Task | None = None
         self._flush_lock = asyncio.Lock()
+        entry_id = getattr(entry, "entry_id", "default")
+        self._charging_state_store = Store(hass, 1, f"{DOMAIN}.{entry_id}.{STORAGE_KEY_CHARGING_STATE}")
 
         merged = {**entry.data, **entry.options}
         self.control_config = ControlConfig(
@@ -282,6 +290,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return mode
 
     async def async_setup(self) -> None:
+        await self._async_restore_charging_enabled_state()
         self._setup_sensor_listeners()
         await self.client.connect()
         await self._sync_static_registers()
@@ -326,6 +335,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     @property
     def charging_paused(self) -> bool:
         return self._charging_paused
+
+    @property
+    def charging_enabled(self) -> bool:
+        return not self._charging_paused
 
     def _ensure_phase_runtime_state(self) -> None:
         if not hasattr(self, "_pending_phase_action"):
@@ -479,8 +492,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._fixed_current_until_unplug_active = False
         if mode != ChargeMode.PV:
             self._reset_pv_runtime_state()
-        if mode == ChargeMode.OFF:
-            self._charging_paused = False
 
     def pause_charging(self) -> None:
         self._charging_paused = True
@@ -488,6 +499,20 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
     def resume_charging(self) -> None:
         self._charging_paused = False
+
+    async def async_set_charging_enabled(self, enabled: bool) -> None:
+        if enabled:
+            self.resume_charging()
+        else:
+            self.pause_charging()
+        await self._charging_state_store.async_save({"charging_enabled": enabled})
+
+    async def _async_restore_charging_enabled_state(self) -> None:
+        stored = await self._charging_state_store.async_load()
+        charging_enabled = True
+        if isinstance(stored, dict):
+            charging_enabled = bool(stored.get("charging_enabled", True))
+        self._charging_paused = not charging_enabled
 
     def set_pv_until_unplug(self, enabled: bool) -> None:
         self._pv_until_unplug_active = enabled
@@ -796,6 +821,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         observed_phases = self._observed_active_phases(wallbox)
         active_recovery = self._has_active_phase_recovery_for_target(target_phases)
 
+        if not getattr(self, "_startup_consistency_checked", True) and not active_recovery and wallbox.charging_active:
+            if observed_phases is None:
+                return False
+            if not self._startup_charging_settled(wallbox):
+                return False
+
         if requested_phases is None:
             return active_recovery
         if observed_phases == target_phases:
@@ -810,6 +841,25 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return (
             poll_count >= STARTUP_STABILIZATION_MIN_POLLS
             and (monotonic() - started) >= STARTUP_STABILIZATION_MIN_SECONDS
+        )
+
+    def _startup_charging_settled(self, wallbox) -> bool:
+        if not wallbox.charging_active:
+            self._startup_charging_active_since_monotonic = None
+            self._startup_charging_active_polls = 0
+            return False
+
+        now = monotonic()
+        active_since = getattr(self, "_startup_charging_active_since_monotonic", None)
+        if active_since is None:
+            self._startup_charging_active_since_monotonic = now
+            self._startup_charging_active_polls = 1
+            return False
+
+        self._startup_charging_active_polls = getattr(self, "_startup_charging_active_polls", 0) + 1
+        return (
+            self._startup_charging_active_polls >= STARTUP_CHARGING_SETTLE_MIN_POLLS
+            and (now - active_since) >= STARTUP_CHARGING_SETTLE_MIN_SECONDS
         )
 
     def _startup_expected_phase_target(self, wallbox, sensors) -> int | None:
@@ -843,6 +893,14 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if not self._startup_stabilization_ready():
             if target_phases in (1, 3) and observed_phases is not None and observed_phases != target_phases:
                 self._phase_switch_decision = "startup_stabilizing"
+            return False
+
+        if wallbox.charging_active and not self._startup_charging_settled(wallbox):
+            self._phase_switch_decision = "startup_waiting_for_stable_charging"
+            return False
+
+        if observed_phases is None and wallbox.charging_active:
+            self._phase_switch_decision = "startup_waiting_for_observed_phases"
             return False
 
         if requested_phases not in (1, 3) or target_phases not in (1, 3) or observed_phases is None:
@@ -1158,6 +1216,14 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         observed_phases = self._observed_active_phases(wallbox)
         target_phases = self._configured_phase_count()
         active_recovery = self._has_active_phase_recovery_for_target(target_phases)
+
+        if not getattr(self, "_startup_consistency_checked", True) and not active_recovery and wallbox.charging_active:
+            if observed_phases is None:
+                self._phase_switch_decision = "startup_waiting_for_observed_phases"
+                return False
+            if not self._startup_charging_settled(wallbox):
+                self._phase_switch_decision = "startup_waiting_for_stable_charging"
+                return False
 
         if requested_phases is None or target_phases not in (1, 3):
             self._phase_switch_decision = "phase_switch_register_unavailable"

@@ -27,19 +27,14 @@ class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
 
     @property
     def is_on(self):
-        data = self.coordinator.data
-        if data is None:
-            return False
-        return not data.charging_paused and data.mode != ChargeMode.OFF
+        return self.coordinator.charging_enabled
 
     async def async_turn_on(self, **kwargs):
-        if self.coordinator.mode == ChargeMode.OFF:
-            self.coordinator.set_mode(ChargeMode.NORMAL)
-        self.coordinator.resume_charging()
+        await self.coordinator.async_set_charging_enabled(True)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
-        self.coordinator.pause_charging()
+        await self.coordinator.async_set_charging_enabled(False)
         await self.coordinator.async_request_refresh()
 
 
