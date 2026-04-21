@@ -123,6 +123,7 @@ STARTUP_STABILIZATION_MIN_SECONDS = 30.0
 STARTUP_MISMATCH_STABLE_POLLS = 3
 STARTUP_CHARGING_SETTLE_MIN_POLLS = 2
 STARTUP_CHARGING_SETTLE_MIN_SECONDS = 10.0
+MIN_PHASE_SWITCH_FIRMWARE = (3, 187, 0)
 
 
 class PhaseActionReason(StrEnum):
@@ -138,6 +139,12 @@ class PhaseBounceStage(StrEnum):
     WAIT_1P = "wait_1p"
     WRITE_TARGET = "write_target"
     VERIFY = "verify"
+
+
+class PhaseRecoveryOwner(StrEnum):
+    STARTUP = "startup"
+    NON_PV = "non_pv"
+    PV = "pv"
 
 
 @dataclass(slots=True)
@@ -206,6 +213,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_switch_up_condition_since: float | None = None
         self._phase_switch_count_this_session = 0
         self._phase_switch_decision: str | None = None
+        self._phase_switch_firmware_warning_emitted = False
         self._sensor_unsubscribers = []
         self._last_keepalive_sent_monotonic = 0.0
         self._keepalive_started_monotonic = monotonic()
@@ -552,6 +560,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             raise ValueError("Phase switching is disabled in the integration settings")
         if self.data is None:
             raise ValueError("Phase switching is only allowed after charger state is available")
+        if not self._phase_switch_runtime_allowed(self.data.wallbox):
+            raise ValueError("Phase switching is not supported by the detected charger firmware")
         if self.data.wallbox.phase_switch_mode_raw not in (0, 1):
             raise ValueError("Phase switch register 405 is unavailable or returned an unsupported value")
         if self.data.wallbox.charging_active:
@@ -597,16 +607,23 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._pv_until_unplug_active,
             )
             decision = self.controller.evaluate(self.effective_mode, wallbox, sensors, pv_strategy)
+            if self._should_defer_startup_safe_current_fallback_write(
+                wallbox=wallbox,
+                sensors=sensors,
+                decision=decision,
+            ):
+                decision.should_write = False
+            recovery_owner = self._phase_recovery_owner()
             startup_phase_handled = await self._enqueue_startup_consistency_recovery_if_needed(wallbox, sensors)
             phase_switch_handled = False
             if not startup_phase_handled:
-                if self.effective_mode in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
+                if recovery_owner == PhaseRecoveryOwner.NON_PV:
                     reconcile_required = self._non_pv_phase_reconcile_required(wallbox)
                     if reconcile_required:
                         phase_switch_handled = await self._enqueue_non_pv_phase_reconcile_if_needed(wallbox)
                     if reconcile_required:
                         phase_switch_handled = True
-                elif self._startup_consistency_checked:
+                elif recovery_owner == PhaseRecoveryOwner.PV:
                     phase_switch_handled = await self._enqueue_pv_phase_switch_if_needed(wallbox, sensors)
             if not startup_phase_handled and not phase_switch_handled:
                 await self._enqueue_decision(decision)
@@ -646,6 +663,71 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(str(err)) from err
+
+    def _should_defer_startup_safe_current_fallback_write(self, *, wallbox, sensors, decision) -> bool:
+        if self.control_config.dlb_input_model == DlbInputModel.DISABLED:
+            return False
+        if self._startup_stabilization_ready():
+            return False
+        if not wallbox.charging_active:
+            return False
+        if sensors.valid:
+            return False
+        if not decision.fallback_active or decision.reason != ControlReason.SAFE_CURRENT_FALLBACK:
+            return False
+        if decision.target_current_a is None:
+            return False
+        if abs(decision.target_current_a - self.control_config.safe_current_a) > 0.01:
+            return False
+        if wallbox.current_limit_a is None:
+            return False
+        return wallbox.current_limit_a > (self.control_config.safe_current_a + 0.01)
+
+    def _phase_recovery_owner(self) -> PhaseRecoveryOwner | None:
+        if not getattr(self, "_startup_consistency_checked", True):
+            return PhaseRecoveryOwner.STARTUP
+        if self.effective_mode in (ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT):
+            return PhaseRecoveryOwner.NON_PV
+        if self.effective_mode == ChargeMode.PV:
+            return PhaseRecoveryOwner.PV
+        return None
+
+    def _normalized_phase_switch_firmware(self, wallbox) -> tuple[int, int, int] | tuple[()] | None:
+        raw = (getattr(wallbox, "firmware_version", None) or "").strip()
+        if not raw:
+            return None
+        primary = raw.split("-", 1)[0].strip().lstrip("vV")
+        parts = primary.split(".")
+        if len(parts) != 3:
+            return ()
+        try:
+            return tuple(int(part) for part in parts)  # type: ignore[return-value]
+        except ValueError:
+            return ()
+
+    def _phase_switch_firmware_supported(self, wallbox) -> bool:
+        version = self._normalized_phase_switch_firmware(wallbox)
+        if version is None:
+            return True
+        if version == ():
+            return False
+        return version >= MIN_PHASE_SWITCH_FIRMWARE
+
+    def _phase_switch_runtime_allowed(self, wallbox) -> bool:
+        return self._phase_switch_firmware_supported(wallbox)
+
+    def _mark_phase_switch_firmware_unsupported(self, wallbox) -> None:
+        self._clear_pending_phase_action()
+        self._reset_phase_mismatch_state()
+        self._phase_switch_up_condition_since = None
+        self._phase_switch_decision = "phase_switch_firmware_unsupported"
+        if not getattr(self, "_phase_switch_firmware_warning_emitted", False):
+            firmware = getattr(wallbox, "firmware_version", None) or "unknown"
+            _LOGGER.warning(
+                "Webasto Unite phase switching is disabled at runtime because firmware %s does not support reliable Modbus phase switching",
+                firmware,
+            )
+            self._phase_switch_firmware_warning_emitted = True
 
     def _build_capabilities(self, wallbox: WallboxState) -> dict[str, str]:
         ev_max_state = CapabilityState.CONFIRMED if wallbox.ev_max_current_a is not None else CapabilityState.OPTIONAL_ABSENT
@@ -833,6 +915,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if observed_phases == target_phases:
             return False
         if observed_phases is not None:
+            if (
+                not active_recovery
+                and self._is_non_pv_observed_only_phase_mismatch(
+                    requested_phases=requested_phases,
+                    observed_phases=observed_phases,
+                    target_phases=target_phases,
+                )
+            ):
+                return False
             return True
         return requested_phases != target_phases
 
@@ -873,6 +964,36 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return (
             not getattr(self, "_startup_consistency_checked", True)
             and requested_phases in (1, 3)
+            and observed_phases in (1, 3)
+            and target_phases in (1, 3)
+            and requested_phases == target_phases
+            and observed_phases != target_phases
+        )
+
+    def _is_non_pv_observed_only_phase_mismatch(
+        self,
+        *,
+        requested_phases: int | None,
+        observed_phases: int | None,
+        target_phases: int | None,
+    ) -> bool:
+        return (
+            requested_phases in (1, 3)
+            and observed_phases in (1, 3)
+            and target_phases in (1, 3)
+            and requested_phases == target_phases
+            and observed_phases != target_phases
+        )
+
+    def _is_pv_observed_only_phase_mismatch(
+        self,
+        *,
+        requested_phases: int | None,
+        observed_phases: int | None,
+        target_phases: int | None,
+    ) -> bool:
+        return (
+            requested_phases in (1, 3)
             and observed_phases in (1, 3)
             and target_phases in (1, 3)
             and requested_phases == target_phases
@@ -940,6 +1061,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_switch_decision = "startup_consistency_observing"
 
         if len(self._startup_mismatch_observations) < STARTUP_MISMATCH_STABLE_POLLS:
+            return False
+
+        if not self._phase_switch_runtime_allowed(wallbox):
+            self._startup_consistency_checked = True
+            self._startup_mismatch_observations.clear()
+            self._mark_phase_switch_firmware_unsupported(wallbox)
             return False
 
         self._startup_consistency_checked = True
@@ -1017,6 +1144,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if not self._allows_control_writes():
             self._phase_switch_decision = "control_writes_disabled"
             return False
+        if not self._phase_switch_runtime_allowed(wallbox):
+            self._mark_phase_switch_firmware_unsupported(wallbox)
+            return False
         requested_phases = self._requested_phase_mode(wallbox)
         observed_phases = self._observed_active_phases(wallbox)
         if requested_phases is None:
@@ -1049,6 +1179,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 wallbox,
                 sensors,
             )
+        active_recovery = self._has_active_phase_recovery_for_target(target) if target in (1, 3) else False
 
         if (
             observed_phases is not None
@@ -1072,6 +1203,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and observed_phases is not None
             and observed_phases != target
         )
+        if (
+            mismatch_detected
+            and not active_recovery
+            and self._pending_phase_switch_target is None
+            and self._is_pv_observed_only_phase_mismatch(
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target,
+            )
+        ):
+            self._phase_switch_decision = "pv_observed_phases_differ_but_requested_matches"
+            return False
         if mismatch_detected:
             return await self._handle_phase_mismatch_recovery(
                 wallbox=wallbox,
@@ -1228,6 +1371,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if not self._allows_control_writes():
             self._phase_switch_decision = "control_writes_disabled"
             return False
+        if not self._phase_switch_runtime_allowed(wallbox):
+            self._mark_phase_switch_firmware_unsupported(wallbox)
+            return False
 
         requested_phases = self._requested_phase_mode(wallbox)
         observed_phases = self._observed_active_phases(wallbox)
@@ -1251,6 +1397,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
         if requested_phases is None or target_phases not in (1, 3):
             self._phase_switch_decision = "phase_switch_register_unavailable"
+            return False
+
+        if (
+            not active_recovery
+            and self._pending_phase_switch_target is None
+            and self._is_non_pv_observed_only_phase_mismatch(
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target_phases,
+            )
+        ):
+            self._phase_switch_decision = "observed_phases_differ_but_requested_matches"
             return False
 
         if getattr(self, "_phase_mismatch_bounce_stage", None) is not None:
@@ -1517,6 +1675,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         observed_phases: int,
         target_phases: int,
     ) -> bool:
+        if not self._phase_switch_runtime_allowed(wallbox):
+            self._mark_phase_switch_firmware_unsupported(wallbox)
+            return False
         self._phase_switch_decision = "phase_switch_mismatch_detected"
 
         stable_mismatch_count = self._record_phase_mismatch_observation(

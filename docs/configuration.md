@@ -25,6 +25,7 @@ The integration uses one options screen with the settings grouped in logical sec
 - `Dynamic Load Balancing`
 - `PV Charging`
 - `Phase Switching`
+- `Advanced`
 
 This keeps the full configuration in one place. The validation rules remain the same: invalid sensor combinations, unsupported DLB modes or invalid PV thresholds are still rejected before the options are saved.
 
@@ -89,9 +90,6 @@ DLB is disabled by default. Enable it only after selecting suitable Home Assista
 Main settings:
 
 - `Dynamic Load Balancing Mode`
-
-Additional DLB settings only appear after DLB is enabled:
-
 - `Dynamic Load Balancing Sensor Scope`
 - `Main Fuse Limit`
 - `Safety Margin`
@@ -134,9 +132,6 @@ available current estimate = 25 - 2 - (18 - 15) = 20 A
 Main settings:
 
 - `PV Charging Strategy`
-
-Additional PV settings only appear after PV charging is enabled:
-
 - `PV Measurement Source`
 - `PV Surplus Sensor`
 - `Start Surplus Threshold (W)`
@@ -202,7 +197,7 @@ The `PV Until Unplug Strategy` can inherit the normal PV strategy or use a separ
 
 ## Phase Switching
 
-This section is only shown for `3 Phases` installations with PV charging enabled.
+This section is shown for `3 Phases` installations.
 
 PV Phase Switching modes:
 
@@ -222,7 +217,7 @@ The integration distinguishes between the requested phase-switch mode and the ph
 
 This distinction is important. Register `405` tells the charger which phase mode was requested. It does not always prove that the vehicle is physically charging on all three phases at that moment. The measured currents are the best practical signal for active phase count while charging.
 
-Automatic PV phase switching uses measured active phases while charging. If register `405` says `3 Phases` but measured current shows the vehicle is still effectively charging on one phase, the integration treats that as a mismatch and can reassert the requested phase mode through the normal pause-and-switch flow.
+Automatic PV phase switching uses measured active phases while charging. If register `405` says `3 Phases` but measured current shows the vehicle is still effectively charging on one phase, the integration first treats that conservatively as observed mismatch. Fresh runtime recovery is now primarily reserved for cases where the requested charger phase mode still differs from the intended target, or where startup recovery is still responsible after a restart.
 
 With `PV Minimum Current = 6 A`, the default thresholds are approximately:
 
@@ -248,6 +243,27 @@ The integration performs phase switching conservatively:
 4. It resumes charging after the charger reports the requested phase mode.
 
 Register `405` has been validated on one charger with firmware `3.187`. Other firmware versions may behave differently.
+
+Runtime support for phase switching is treated conservatively:
+
+- firmware `3.187.0` or newer: phase switching is allowed
+- firmware strings such as `v3.187.0-1.0.156.0`: the integration uses the leading charger firmware part, so this example is treated as `3.187.0`
+- older or unrecognized firmware: the integration keeps monitoring, current control, DLB, PV charging and keepalive active, but it does not start manual phase switching, automatic PV phase switching or phase-switch mismatch recovery
+
+This is deliberate. Older firmware may expose register `405` without reliably applying the actual phase change. Blocking runtime phase-switch attempts on unsupported firmware avoids unnecessary pause-and-switch attempts during charging.
+
+## Advanced
+
+This section groups lower-level communication settings that most users should leave at their defaults.
+
+Main settings:
+
+- `Keepalive Mode`
+- `Keepalive Interval`
+- `Communication Timeout`
+- `Communication Retries`
+
+These values are mainly useful for charger-specific troubleshooting or communication tuning. They do not change the high-level charging strategy.
 
 Useful phase-switching diagnostics:
 

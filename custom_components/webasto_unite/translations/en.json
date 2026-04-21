@@ -131,6 +131,22 @@
               "pv_phase_switching_min_interval": "Minimum waiting time before another automatic phase switch is allowed.",
               "pv_phase_switching_max_per_session": "Maximum number of automatic 1P to 3P switch attempts in one plug-in session."
             }
+          },
+          "advanced": {
+            "name": "Advanced",
+            "description": "Communication and keepalive settings that usually do not need to be changed for normal use.",
+            "data": {
+              "keepalive_mode": "Keepalive Mode",
+              "keepalive_interval": "Keepalive Interval",
+              "timeout": "Communication Timeout",
+              "retries": "Communication Retries"
+            },
+            "data_description": {
+              "keepalive_mode": "Controls whether keepalive writes are automatic, always on or disabled.",
+              "keepalive_interval": "How often keepalive writes are sent when keepalive is active.",
+              "timeout": "Modbus communication timeout per request.",
+              "retries": "Number of Modbus retry attempts before a request is treated as failed."
+            }
           }
         }
       }
