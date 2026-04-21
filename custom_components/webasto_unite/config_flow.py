@@ -325,6 +325,12 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         dlb_model = current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)
         pv_strategy = current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
         pv_phase_mode = current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)
+        connection_defaults = {
+            CONF_HOST: current.get(CONF_HOST, ""),
+            CONF_PORT: current.get(CONF_PORT, DEFAULT_PORT),
+            CONF_UNIT_ID: current.get(CONF_UNIT_ID, DEFAULT_UNIT_ID),
+            CONF_POLLING_INTERVAL: current.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S),
+        }
         connection_schema = vol.Schema(
             {
                 vol.Optional(CONF_HOST, default=current.get(CONF_HOST, "")): str,
@@ -333,6 +339,13 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_POLLING_INTERVAL, default=current.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             }
         )
+        general_defaults = {
+            CONF_INSTALLED_PHASES: current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P),
+            CONF_CONTROL_MODE: current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE),
+            CONF_STARTUP_CHARGE_MODE: current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE),
+            CONF_USER_LIMIT: current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A),
+            CONF_SAFE_CURRENT: current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A),
+        }
         general_schema = vol.Schema(
             {
                 vol.Optional(CONF_INSTALLED_PHASES, default=current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
@@ -343,7 +356,12 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             }
         )
         session_override_fields: dict[Any, Any] = {}
+        session_override_defaults: dict[str, Any] = {}
         if managed_control:
+            session_override_defaults = {
+                CONF_FIXED_CURRENT: current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A),
+                CONF_PV_UNTIL_UNPLUG_STRATEGY: current.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value),
+            }
             session_override_fields = {
                 vol.Optional(CONF_FIXED_CURRENT, default=current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
                 vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=current.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
@@ -352,23 +370,53 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         dlb_fields: dict[Any, Any] = {
             vol.Optional(CONF_DLB_INPUT_MODEL, default=current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
         }
+        dlb_defaults: dict[str, Any] = {
+            CONF_DLB_INPUT_MODEL: current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value),
+        }
         if dlb_model != DlbInputModel.DISABLED.value:
+            dlb_defaults.update(
+                {
+                    CONF_DLB_SENSOR_SCOPE: current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value),
+                    CONF_MAIN_FUSE: current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A),
+                    CONF_SAFETY_MARGIN: current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A),
+                }
+            )
             dlb_fields[vol.Optional(CONF_DLB_SENSOR_SCOPE, default=current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value))] = selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS))
             dlb_fields[vol.Optional(CONF_MAIN_FUSE, default=current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A))] = _float_selector(MIN_CURRENT_A, 200.0, 0.1)
             dlb_fields[vol.Optional(CONF_SAFETY_MARGIN, default=current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A))] = _float_selector(0.0, 50.0, 0.1)
             if dlb_model == DlbInputModel.PHASE_CURRENTS.value:
+                dlb_defaults[CONF_DLB_L1_SENSOR] = current.get(CONF_DLB_L1_SENSOR)
                 dlb_fields[_optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), current.get(CONF_DLB_L1_SENSOR))] = _entity_selector()
                 if installed_phases == PHASE_MODE_3P:
+                    dlb_defaults[CONF_DLB_L2_SENSOR] = current.get(CONF_DLB_L2_SENSOR)
+                    dlb_defaults[CONF_DLB_L3_SENSOR] = current.get(CONF_DLB_L3_SENSOR)
                     dlb_fields[_optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), current.get(CONF_DLB_L2_SENSOR))] = _entity_selector()
                     dlb_fields[_optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), current.get(CONF_DLB_L3_SENSOR))] = _entity_selector()
             if dlb_model == DlbInputModel.GRID_POWER.value:
+                dlb_defaults[CONF_DLB_GRID_POWER_SENSOR] = current.get(CONF_DLB_GRID_POWER_SENSOR)
                 dlb_fields[_optional_field(CONF_DLB_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_DLB_GRID_POWER_SENSOR))] = _entity_selector()
         pv_fields: dict[Any, Any] = {
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
         }
+        pv_defaults: dict[str, Any] = {
+            CONF_PV_CONTROL_STRATEGY: current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value),
+        }
         if pv_strategy != PvControlStrategy.DISABLED.value:
+            pv_defaults.update(
+                {
+                    CONF_PV_INPUT_MODEL: current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value),
+                    CONF_PV_START_THRESHOLD: current.get(CONF_PV_START_THRESHOLD, 1800.0),
+                    CONF_PV_STOP_THRESHOLD: current.get(CONF_PV_STOP_THRESHOLD, 1200.0),
+                    CONF_PV_START_DELAY: current.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S),
+                    CONF_PV_STOP_DELAY: current.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S),
+                    CONF_PV_MIN_RUNTIME: current.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S),
+                    CONF_PV_MIN_PAUSE: current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S),
+                    CONF_PV_MIN_CURRENT: current.get(CONF_PV_MIN_CURRENT, 6.0),
+                }
+            )
             pv_fields[vol.Optional(CONF_PV_INPUT_MODEL, default=current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value))] = selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS))
             if current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value) == PvInputModel.SURPLUS_SENSOR.value:
+                pv_defaults[CONF_PV_SURPLUS_SENSOR] = current.get(CONF_PV_SURPLUS_SENSOR)
                 pv_fields[_optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_PV_SURPLUS_SENSOR))] = _entity_selector()
             pv_fields[vol.Optional(CONF_PV_START_THRESHOLD, default=current.get(CONF_PV_START_THRESHOLD, 1800.0))] = _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0)
             pv_fields[vol.Optional(CONF_PV_STOP_THRESHOLD, default=current.get(CONF_PV_STOP_THRESHOLD, 1200.0))] = _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0)
@@ -378,25 +426,36 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             pv_fields[vol.Optional(CONF_PV_MIN_PAUSE, default=current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S))] = _float_selector(0.0, 3600.0, 0.1)
             pv_fields[vol.Optional(CONF_PV_MIN_CURRENT, default=current.get(CONF_PV_MIN_CURRENT, 6.0))] = _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1)
         phase_fields: dict[Any, Any] = {}
+        phase_defaults: dict[str, Any] = {}
         if installed_phases == PHASE_MODE_3P and pv_strategy != PvControlStrategy.DISABLED.value:
+            phase_defaults = {
+                CONF_PV_PHASE_SWITCHING_MODE: current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE),
+            }
             phase_fields = {
                 vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
             }
             if pv_phase_mode == PvPhaseSwitchingMode.AUTOMATIC_1P3P.value:
+                phase_defaults.update(
+                    {
+                        CONF_PV_PHASE_SWITCHING_HYSTERESIS: current.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W),
+                        CONF_PV_PHASE_SWITCHING_MIN_INTERVAL: current.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S),
+                        CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION: current.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION),
+                    }
+                )
                 phase_fields[vol.Optional(CONF_PV_PHASE_SWITCHING_HYSTERESIS, default=current.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W))] = _float_selector(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, 1.0)
                 phase_fields[vol.Optional(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, default=current.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S))] = _float_selector(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, 1.0)
                 phase_fields[vol.Optional(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, default=current.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION))] = _int_selector(1, MAX_PHASE_SWITCHING_PER_SESSION)
 
         schema: dict[Any, Any] = {
-            vol.Optional("connection", default={}): section(connection_schema, {"collapsed": False}),
-            vol.Optional("general_charging", default={}): section(general_schema, {"collapsed": False}),
-            vol.Optional("dynamic_load_balancing", default={}): section(vol.Schema(dlb_fields), {"collapsed": True}),
-            vol.Optional("pv_charging", default={}): section(vol.Schema(pv_fields), {"collapsed": True}),
+            vol.Optional("connection", default=connection_defaults): section(connection_schema, {"collapsed": False}),
+            vol.Optional("general_charging", default=general_defaults): section(general_schema, {"collapsed": False}),
+            vol.Optional("dynamic_load_balancing", default=dlb_defaults): section(vol.Schema(dlb_fields), {"collapsed": True}),
+            vol.Optional("pv_charging", default=pv_defaults): section(vol.Schema(pv_fields), {"collapsed": True}),
         }
         if session_override_fields:
-            schema[vol.Optional("session_overrides", default={})] = section(vol.Schema(session_override_fields), {"collapsed": True})
+            schema[vol.Optional("session_overrides", default=session_override_defaults)] = section(vol.Schema(session_override_fields), {"collapsed": True})
         if phase_fields:
-            schema[vol.Optional("phase_switching", default={})] = section(vol.Schema(phase_fields), {"collapsed": True})
+            schema[vol.Optional("phase_switching", default=phase_defaults)] = section(vol.Schema(phase_fields), {"collapsed": True})
         return vol.Schema(schema)
 
     def _validate_all_options(self, user_input: dict[str, Any]) -> dict[str, Any]:
