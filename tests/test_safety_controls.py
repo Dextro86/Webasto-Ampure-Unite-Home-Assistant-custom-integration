@@ -1839,6 +1839,74 @@ def test_non_pv_reconcile_does_not_pause_immediately_during_startup_mismatch():
     asyncio.run(_run())
 
 
+def test_startup_observed_only_mismatch_does_not_pause_after_settle_window():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._startup_consistency_checked = False
+        coordinator._startup_charging_active_since_monotonic = monotonic() - 20.0
+        coordinator._startup_charging_active_polls = 3
+        coordinator._phase_mismatch_retry_count = 0
+        coordinator._last_phase_mismatch_retry_monotonic = 0.0
+        coordinator._phase_mismatch_target = None
+        coordinator._phase_mismatch_unverified = False
+        coordinator._phase_switch_decision = None
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=1, phases_in_use=1)
+
+        handled = await coordinator._enqueue_non_pv_phase_reconcile_if_needed(wallbox)
+
+        assert handled is False
+        assert coordinator._phase_switch_decision == "startup_consistency_observing"
+        assert await coordinator.write_queue.size() == 0
+
+    asyncio.run(_run())
+
+
+def test_startup_requested_mismatch_can_still_trigger_non_pv_recovery():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "port": 502, "unit_id": 255, "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._pv_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._startup_consistency_checked = False
+        coordinator._startup_charging_active_since_monotonic = monotonic() - 20.0
+        coordinator._startup_charging_active_polls = 3
+        coordinator._phase_mismatch_retry_count = 0
+        coordinator._last_phase_mismatch_retry_monotonic = 0.0
+        coordinator._phase_mismatch_target = None
+        coordinator._phase_mismatch_unverified = False
+        coordinator._phase_switch_decision = None
+        coordinator._allows_control_writes = lambda: True
+        coordinator._enqueue_keepalive_if_needed = AsyncMock()
+
+        wallbox = WallboxState(charging_active=True, phase_switch_mode_raw=0, phases_in_use=1)
+
+        handled = await coordinator._enqueue_non_pv_phase_reconcile_if_needed(wallbox)
+        item = await coordinator.write_queue.peek_next()
+
+        assert handled is True
+        assert coordinator._phase_switch_decision == "phase_switch_mismatch_detected"
+        assert item.key == "current_limit"
+        assert item.value == 0
+
+    asyncio.run(_run())
+
+
 def test_pending_non_pv_restore_is_not_cleared_outside_pv_mode():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)

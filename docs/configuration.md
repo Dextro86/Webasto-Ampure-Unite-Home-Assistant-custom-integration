@@ -42,22 +42,22 @@ Main settings:
 Main settings:
 
 - `Installed Phases`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
-- `Managed Charging Control`: whether the integration may actively control charging.
+- `Charging Control`: whether the integration may actively control charging.
 - `Startup / Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
 - `Default Current Limit`: normal target current for `Normal` mode.
 - `Safe Current`: fallback current used when DLB input is unavailable or invalid.
 
 Recommended first setup:
 
-1. Use `Read-only + Keepalive`.
+1. Set `Charging Control` to `Off`.
 2. Confirm that monitoring, connection state, currents, power and firmware values look correct.
-3. Switch to `Managed Charging Control` only after the read-only values are plausible.
+3. Switch `Charging Control` to `On` only after the monitored values are plausible.
 
 If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
 
 ## Session Overrides
 
-This section is only shown when `Managed Charging Control` is enabled.
+This section is only shown when `Charging Control` is set to `On`.
 
 Main settings:
 
@@ -293,5 +293,5 @@ If setup or updates fail:
 - Confirm that no other Modbus client is connected to the charger.
 - Confirm that the charger IP address is fixed and reachable.
 - Confirm that `Modbus/TCP` is enabled in the charger web interface.
-- Start with `Read-only + Keepalive` before enabling managed control.
+- Start with `Charging Control = Off` before enabling active charging control.
 - Check `Client Error`, `Connected`, `Sensor Invalid Reason` and `Write Queue Depth`.

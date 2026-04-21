@@ -821,6 +821,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 return False
             if not self._startup_charging_settled(wallbox):
                 return False
+            if self._is_startup_observed_only_phase_mismatch(
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target_phases,
+            ):
+                return False
 
         if requested_phases is None:
             return active_recovery
@@ -855,6 +861,22 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return (
             self._startup_charging_active_polls >= STARTUP_CHARGING_SETTLE_MIN_POLLS
             and (now - active_since) >= STARTUP_CHARGING_SETTLE_MIN_SECONDS
+        )
+
+    def _is_startup_observed_only_phase_mismatch(
+        self,
+        *,
+        requested_phases: int | None,
+        observed_phases: int | None,
+        target_phases: int | None,
+    ) -> bool:
+        return (
+            not getattr(self, "_startup_consistency_checked", True)
+            and requested_phases in (1, 3)
+            and observed_phases in (1, 3)
+            and target_phases in (1, 3)
+            and requested_phases == target_phases
+            and observed_phases != target_phases
         )
 
     def _startup_expected_phase_target(self, wallbox, sensors) -> int | None:
@@ -1218,6 +1240,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 return False
             if not self._startup_charging_settled(wallbox):
                 self._phase_switch_decision = "startup_waiting_for_stable_charging"
+                return False
+            if self._is_startup_observed_only_phase_mismatch(
+                requested_phases=requested_phases,
+                observed_phases=observed_phases,
+                target_phases=target_phases,
+            ):
+                self._phase_switch_decision = "startup_consistency_observing"
                 return False
 
         if requested_phases is None or target_phases not in (1, 3):

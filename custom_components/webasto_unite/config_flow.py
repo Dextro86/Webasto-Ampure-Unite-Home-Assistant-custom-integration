@@ -19,8 +19,8 @@ PHASE_SELECTOR_OPTIONS = [
 ]
 CONTROL_MODE_OPTIONS = [mode.value for mode in ControlMode]
 CONTROL_MODE_SELECTOR_OPTIONS = [
-    {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Read-only + Keepalive"},
-    {"value": ControlMode.MANAGED_CONTROL.value, "label": "Managed Charging Control"},
+    {"value": ControlMode.MANAGED_CONTROL.value, "label": "On"},
+    {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Off"},
 ]
 STARTUP_CHARGE_MODE_SELECTOR_OPTIONS = [
     {"value": ChargeMode.OFF.value, "label": "Off"},

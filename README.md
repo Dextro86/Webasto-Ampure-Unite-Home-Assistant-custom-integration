@@ -71,7 +71,7 @@ Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unit
 - [Configuration guide](docs/configuration.md): setup, one-screen settings layout, sensor choices, DLB, PV charging, phase switching and troubleshooting.
 - [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
 
-Start conservatively: first confirm monitoring works, then enable `Managed Charging Control`, and only then enable DLB, PV charging or automatic phase switching.
+Start conservatively: first confirm monitoring works, then set `Charging Control` to `On`, and only then enable DLB, PV charging or automatic phase switching.
 
 ## Settings Overview
 

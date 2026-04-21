@@ -39,14 +39,14 @@
             "description": "Base charging behavior, startup mode and current limits.",
             "data": {
               "installed_phases": "Installed Phases",
-              "control_mode": "Managed Charging Control",
+              "control_mode": "Charging Control",
               "startup_charge_mode": "Startup / Default Mode",
               "user_limit": "Default Current Limit",
               "safe_current": "Safe Current"
             },
             "data_description": {
               "installed_phases": "Physical charger installation. This also determines whether phase switching is relevant.",
-              "control_mode": "Choose whether the integration may actively write current limits and phase changes, or only monitor and keep the connection alive.",
+              "control_mode": "On lets the integration actively control charging current and phase switching. Off keeps the integration in read-only monitoring mode with keepalive only.",
               "startup_charge_mode": "Charge mode restored after Home Assistant restart or integration reload.",
               "user_limit": "Normal current limit used in Normal mode.",
               "safe_current": "Fallback current used when the integration cannot safely trust its control inputs."
