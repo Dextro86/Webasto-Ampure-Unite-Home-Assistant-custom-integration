@@ -25,6 +25,7 @@ _SERVICE_SCHEMA_MODE = vol.Schema({vol.Required("entry_id"): cv.string, vol.Requ
 _SERVICE_SCHEMA_LIMIT = vol.Schema({vol.Required("entry_id"): cv.string, vol.Required("current_a"): vol.Coerce(float)})
 _SERVICE_SCHEMA_RECONNECT = vol.Schema({vol.Required("entry_id"): cv.string})
 _SERVICE_SCHEMA_SESSION = vol.Schema({vol.Required("entry_id"): cv.string})
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
