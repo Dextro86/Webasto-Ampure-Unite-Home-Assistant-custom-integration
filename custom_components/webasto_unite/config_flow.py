@@ -132,6 +132,10 @@ def _optional_field(key: str, field_type, value: Any | None = None):
     return vol.Optional(key, default=value)
 
 
+def _compact_section_defaults(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None}
+
+
 def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     min_current = float(options[CONF_MIN_CURRENT])
     max_current = float(options[CONF_MAX_CURRENT])
@@ -387,6 +391,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             dlb_fields[_optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), current.get(CONF_DLB_L2_SENSOR))] = _entity_selector()
             dlb_fields[_optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), current.get(CONF_DLB_L3_SENSOR))] = _entity_selector()
         dlb_defaults[CONF_DLB_GRID_POWER_SENSOR] = current.get(CONF_DLB_GRID_POWER_SENSOR)
+        dlb_defaults = _compact_section_defaults(dlb_defaults)
         dlb_fields[_optional_field(CONF_DLB_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_DLB_GRID_POWER_SENSOR))] = _entity_selector()
         pv_fields: dict[Any, Any] = {
             vol.Optional(CONF_PV_CONTROL_STRATEGY, default=current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
@@ -412,6 +417,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             CONF_PV_MIN_PAUSE: current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S),
             CONF_PV_MIN_CURRENT: current.get(CONF_PV_MIN_CURRENT, 6.0),
         }
+        pv_defaults = _compact_section_defaults(pv_defaults)
         phase_fields: dict[Any, Any] = {}
         phase_defaults: dict[str, Any] = {}
         if installed_phases == PHASE_MODE_3P:

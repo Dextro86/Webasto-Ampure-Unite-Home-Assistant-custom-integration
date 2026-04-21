@@ -371,6 +371,66 @@ def test_options_flow_shows_all_dlb_fields_without_requiring_second_save():
     asyncio.run(_run())
 
 
+def test_options_flow_section_defaults_do_not_include_none_entity_values():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        validated = result["data_schema"](
+            {
+                "connection": {
+                    "host": "192.168.1.60",
+                    "port": 1502,
+                    "unit_id": 11,
+                    "polling_interval": 2.0,
+                },
+                "general_charging": {
+                    "installed_phases": "3p",
+                    "control_mode": "keepalive_only",
+                    "startup_charge_mode": "normal",
+                    "user_limit": 16.0,
+                    "safe_current": 6.0,
+                },
+                "dynamic_load_balancing": {
+                    "dlb_input_model": "disabled",
+                    "dlb_sensor_scope": "load_excluding_charger",
+                    "main_fuse": 25.0,
+                    "safety_margin": 2.0,
+                },
+                "pv_charging": {
+                    "pv_control_strategy": "disabled",
+                    "pv_input_model": "grid_power_derived",
+                    "pv_start_threshold": 1800.0,
+                    "pv_stop_threshold": 1200.0,
+                    "pv_start_delay": 0.0,
+                    "pv_stop_delay": 0.0,
+                    "pv_min_runtime": 0.0,
+                    "pv_min_pause": 0.0,
+                    "pv_min_current": 6.0,
+                },
+                "phase_switching": {
+                    "pv_phase_switching_mode": "manual_only",
+                    "pv_phase_switching_hysteresis": 500.0,
+                    "pv_phase_switching_min_interval": DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S,
+                    "pv_phase_switching_max_per_session": DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION,
+                },
+                "advanced": {
+                    "keepalive_mode": "auto",
+                    "keepalive_interval": 10.0,
+                    "timeout": 3.0,
+                    "retries": 3,
+                },
+            }
+        )
+        assert "dlb_l1_sensor" not in validated["dynamic_load_balancing"]
+        assert "dlb_grid_power_sensor" not in validated["dynamic_load_balancing"]
+        assert "pv_surplus_sensor" not in validated["pv_charging"]
+
+    asyncio.run(_run())
+
+
 def test_options_flow_shows_all_pv_fields_without_requiring_second_save():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
