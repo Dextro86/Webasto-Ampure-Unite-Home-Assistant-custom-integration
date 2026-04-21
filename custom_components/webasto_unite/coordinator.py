@@ -98,6 +98,8 @@ from .models import (
     PvOverrideStrategy,
     PvPhaseSwitchingMode,
     RuntimeSnapshot,
+    normalize_pv_control_strategy,
+    normalize_pv_override_strategy,
 )
 from .registers import (
     COMM_TIMEOUT_S,
@@ -233,8 +235,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 merged.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)
             ),
             pv_input_model=PvInputModel(merged.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)),
-            pv_control_strategy=PvControlStrategy(merged.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)),
-            pv_until_unplug_strategy=PvOverrideStrategy(
+            pv_control_strategy=normalize_pv_control_strategy(
+                merged.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
+            ),
+            pv_until_unplug_strategy=normalize_pv_override_strategy(
                 merged.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)
             ),
             pv_start_threshold_w=float(merged.get(CONF_PV_START_THRESHOLD, 1800.0)),
@@ -703,16 +707,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and decision.reason == ControlReason.SENSOR_UNAVAILABLE
         ):
             return "fallback"
-        if (
-            self.effective_mode == ChargeMode.PV
-            and self.control_config.pv_control_strategy
-            in (
-                PvControlStrategy.MIN_PLUS_SURPLUS,
-                PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS,
-            )
-        ):
-            if self.control_config.pv_control_strategy == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS:
-                return "min_always_plus_surplus"
+        if self.effective_mode == ChargeMode.PV and self.control_config.pv_control_strategy == PvControlStrategy.MIN_PLUS_SURPLUS:
             return "min_plus_surplus"
         if decision.dominant_limit_reason == ControlReason.DLB_LIMITED:
             return "dlb_limited"

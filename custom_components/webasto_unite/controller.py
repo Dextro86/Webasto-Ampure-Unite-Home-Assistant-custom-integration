@@ -16,6 +16,8 @@ from .models import (
     PvPhaseSwitchingMode,
     PvResult,
     WallboxState,
+    normalize_pv_control_strategy,
+    normalize_pv_override_strategy,
 )
 
 
@@ -197,7 +199,12 @@ class WallboxController:
         if mode == ChargeMode.FIXED_CURRENT:
             return self.config.fixed_current_a, ControlReason.FIXED_CURRENT_MODE
         if mode == ChargeMode.PV:
-            pv_result = self._evaluate_pv_mode(sensors, installed_phases, pv_strategy, wallbox)
+            pv_result = self._evaluate_pv_mode(
+                sensors,
+                installed_phases,
+                normalize_pv_control_strategy(pv_strategy),
+                wallbox,
+            )
             return pv_result.target_current_a, pv_result.reason
         return self.config.user_limit_a, ControlReason.NORMAL_MODE
 
@@ -217,17 +224,8 @@ class WallboxController:
 
         surplus_w = self._resolve_surplus_power(sensors)
 
-        if pv_strategy in (
-            PvControlStrategy.MIN_PLUS_SURPLUS,
-            PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS,
-        ):
+        if pv_strategy == PvControlStrategy.MIN_PLUS_SURPLUS:
             if surplus_w is None:
-                if pv_strategy == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS:
-                    return PvResult(
-                        target_current_a=self.config.pv_min_current_a,
-                        valid=False,
-                        reason=ControlReason.SENSOR_UNAVAILABLE,
-                    )
                 return PvResult(
                     target_current_a=None,
                     valid=False,
@@ -360,6 +358,8 @@ class WallboxController:
         until_unplug_strategy: PvOverrideStrategy,
         pv_until_unplug_active: bool,
     ) -> PvControlStrategy:
+        base_strategy = normalize_pv_control_strategy(base_strategy)
+        until_unplug_strategy = normalize_pv_override_strategy(until_unplug_strategy)
         if not pv_until_unplug_active or until_unplug_strategy == PvOverrideStrategy.INHERIT:
             return base_strategy
         return PvControlStrategy(until_unplug_strategy.value)

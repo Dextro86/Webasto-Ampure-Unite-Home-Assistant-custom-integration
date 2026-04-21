@@ -43,6 +43,20 @@ class PvOverrideStrategy(str, Enum):
     MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
+def normalize_pv_control_strategy(value: str | "PvControlStrategy") -> PvControlStrategy:
+    raw = value.value if isinstance(value, PvControlStrategy) else str(value)
+    if raw == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value:
+        return PvControlStrategy.MIN_PLUS_SURPLUS
+    return PvControlStrategy(raw)
+
+
+def normalize_pv_override_strategy(value: str | "PvOverrideStrategy") -> PvOverrideStrategy:
+    raw = value.value if isinstance(value, PvOverrideStrategy) else str(value)
+    if raw == PvOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS.value:
+        return PvOverrideStrategy.MIN_PLUS_SURPLUS
+    return PvOverrideStrategy(raw)
+
+
 class PvPhaseSwitchingMode(str, Enum):
     DISABLED = "disabled"
     MANUAL_ONLY = "manual_only"

@@ -168,7 +168,6 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "waiting_for_surplus": "Waiting for Surplus",
                 "pv_until_unplug": "PV Until Unplug",
                 "min_plus_surplus": "Min + Surplus",
-                "min_always_plus_surplus": "Min Always + Surplus",
                 "dlb_limited": "DLB Limited",
                 "partially_validated": "Partially Validated",
                 "validated_with_optional_gaps": "Validated with Optional Gaps",

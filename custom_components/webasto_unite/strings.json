@@ -16,59 +16,47 @@
   "options": {
     "step": {
       "init": {
-        "title": "Connection and Control",
-        "description": "Configure connection, startup behavior and safety limits. Start with Read-only + Keepalive; use Managed Charging Control only when you want this integration to write current limits or phase changes. Changes are saved only after completing all settings screens.",
+        "title": "Settings",
+        "description": "Configure Connection, General Charging, Dynamic Load Balancing, PV Charging and Phase Switching in one screen. Connection defines how Home Assistant reaches the charger. General Charging defines Installed Phases, Startup / Default Mode and current limits. Dynamic Load Balancing limits charging based on available capacity. PV Charging uses surplus power for charging. Phase Switching is only relevant for 3-phase installations.",
         "data": {
-          "host": "Charger IP address",
+          "host": "Host",
           "port": "Port",
-          "unit_id": "Modbus Unit ID",
-          "installed_phases": "Charger Phase Configuration",
-          "polling_interval": "Refresh Interval",
+          "unit_id": "Unit ID",
+          "installed_phases": "Installed Phases",
+          "polling_interval": "Polling Interval",
           "timeout": "Modbus Timeout",
           "retries": "Modbus Retries",
-          "control_mode": "Control Mode",
-          "startup_charge_mode": "Startup Charge Mode",
+          "control_mode": "Managed Charging Control",
+          "startup_charge_mode": "Startup / Default Mode",
           "keepalive_mode": "Keepalive Mode",
           "keepalive_interval": "Keepalive Interval",
-          "safe_current": "Safe Current on Failure",
+          "safe_current": "Safe Current",
           "min_current": "Minimum Current",
           "max_current": "Maximum Current",
-          "user_limit": "Default Current Limit"
-        }
-      },
-      "dlb": {
-        "title": "Dynamic Load Balancing",
-        "description": "Configure Dynamic Load Balancing (DLB). Choose Disabled unless you have suitable live house-load sensors. Phase current sensors are preferred; grid power must represent current load, not accumulated energy. If your sensors include the charger load, select the matching sensor scope so the charger does not limit itself unnecessarily.",
-        "data": {
-          "dlb_input_model": "DLB Measurement Source",
-          "dlb_sensor_scope": "DLB Sensor Scope",
+          "user_limit": "Default Current Limit",
+          "dlb_input_model": "Dynamic Load Balancing Mode",
+          "dlb_sensor_scope": "Dynamic Load Balancing Sensor Scope",
           "main_fuse": "Main Fuse Limit",
           "safety_margin": "Safety Margin",
-          "dlb_l1_sensor": "L1 House Current Sensor",
-          "dlb_l2_sensor": "L2 House Current Sensor",
-          "dlb_l3_sensor": "L3 House Current Sensor",
+          "dlb_l1_sensor": "Phase 1 Current Sensor",
+          "dlb_l2_sensor": "Phase 2 Current Sensor",
+          "dlb_l3_sensor": "Phase 3 Current Sensor",
           "dlb_grid_power_sensor": "Grid Power Sensor"
-        }
-      },
-      "pv": {
-        "title": "PV and Fixed Current Charging",
-        "description": "Configure PV charging, PV phase switching and Fixed Current. Use a surplus power sensor when possible. Use signed grid power only with a net power sensor where negative values mean export. Minimum + Surplus pauses when PV input is unavailable. Minimum Always + Surplus keeps charging at PV Minimum Current even without valid surplus input. Hysteresis and switch intervals prevent rapid 1P/3P switching.",
-        "data": {
           "pv_input_model": "PV Measurement Source",
-          "pv_control_strategy": "PV Control Strategy",
+          "pv_control_strategy": "PV Charging Strategy",
           "pv_until_unplug_strategy": "PV Until Unplug Strategy",
           "pv_surplus_sensor": "PV Surplus Sensor",
-          "pv_start_threshold": "PV Start Threshold (W)",
-          "pv_stop_threshold": "PV Stop Threshold (W)",
+          "pv_start_threshold": "Start Surplus Threshold (W)",
+          "pv_stop_threshold": "Stop Surplus Threshold (W)",
           "pv_start_delay": "PV Start Delay",
           "pv_stop_delay": "PV Stop Delay",
           "pv_min_runtime": "PV Minimum Runtime",
           "pv_min_pause": "PV Minimum Pause",
           "pv_min_current": "PV Minimum Current",
-          "pv_phase_switching_mode": "PV Phase Switching",
-          "pv_phase_switching_hysteresis": "PV Phase Switching Hysteresis (W)",
-          "pv_phase_switching_min_interval": "Minimum Phase Switch Interval",
-          "pv_phase_switching_max_per_session": "Maximum Phase Switches per Session",
+          "pv_phase_switching_mode": "Automatic PV Phase Switching",
+          "pv_phase_switching_hysteresis": "Phase Switching Hysteresis (W)",
+          "pv_phase_switching_min_interval": "Phase Switch Dwell Time",
+          "pv_phase_switching_max_per_session": "Maximum Phase Switches Per Session",
           "fixed_current": "Fixed Current"
         }
       }

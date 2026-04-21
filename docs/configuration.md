@@ -15,20 +15,40 @@ Before using the integration:
 - No other system keeps an active `Modbus/TCP` connection open to the charger. The charger appears to accept only one active Modbus client at a time.
 - DLB and PV control require suitable Home Assistant sensors.
 
-## Connection and Control
+## Settings layout
+
+The integration uses one options screen with the settings grouped in logical sections:
+
+- `Connection`
+- `General Charging`
+- `Dynamic Load Balancing`
+- `PV Charging`
+- `Phase Switching`
+
+This keeps the full configuration in one place. The validation rules remain the same: invalid sensor combinations, unsupported DLB modes or invalid PV thresholds are still rejected before the options are saved.
+
+## Connection
 
 Main settings:
 
-- `Charger IP address`: fixed IP address of the charger.
+- `Host`: fixed IP address or host name of the charger.
 - `Port`: Modbus TCP port, normally `502`.
-- `Modbus Unit ID`: unit ID used by the charger.
-- `Charger Phase Configuration`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
-- `Refresh Interval`: how often the integration refreshes charger state.
+- `Unit ID`: Modbus unit ID used by the charger.
+- `Installed Phases`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
+- `Polling Interval`: how often the integration refreshes charger state.
 - `Modbus Timeout` and `Modbus Retries`: connection resilience settings.
-- `Control Mode`: whether the integration may actively control charging.
-- `Startup Charge Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
 
-When changing settings, continue through all settings screens and submit the final screen. Changes are saved only at the end of the options flow.
+## General Charging
+
+Main settings:
+
+- `Managed Charging Control`: whether the integration may actively control charging.
+- `Startup / Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
+- `Minimum Current`: lower current limit used by control logic.
+- `Maximum Current`: configured upper current limit.
+- `Default Current Limit`: normal target current for `Normal` mode.
+- `Safe Current`: fallback current used when DLB input is unavailable or invalid.
+- `Keepalive Mode` and `Keepalive Interval`: keepalive behavior for chargers that need periodic writes.
 
 Recommended first setup:
 
@@ -45,7 +65,7 @@ Important current settings:
 - `Minimum Current`: lower current limit used by control logic.
 - `Maximum Current`: configured upper current limit.
 - `Default Current Limit`: normal target current for `Normal` mode.
-- `Safe Current on Failure`: fallback current used when DLB input is unavailable or invalid.
+- `Safe Current`: fallback current used when DLB input is unavailable or invalid.
 - `Fixed Current`: target used by `Fixed Current` mode.
 
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
@@ -59,6 +79,17 @@ If DLB input becomes unavailable, the integration falls back to `Safe Current on
 Dynamic Load Balancing (DLB) reduces the charger current when house load gets close to the configured main fuse limit.
 
 DLB is disabled by default. Enable it only after selecting suitable Home Assistant sensors.
+
+Main settings:
+
+- `Dynamic Load Balancing Mode`
+- `Dynamic Load Balancing Sensor Scope`
+- `Main Fuse Limit`
+- `Safety Margin`
+- `Phase 1 Current Sensor`
+- `Phase 2 Current Sensor`
+- `Phase 3 Current Sensor`
+- `Grid Power Sensor`
 
 DLB measurement sources:
 
@@ -89,20 +120,38 @@ charger measured current = 15 A
 available current estimate = 25 - 2 - (18 - 15) = 20 A
 ```
 
-## PV charging
+## PV Charging
+
+Main settings:
+
+- `PV Charging Strategy`
+- `PV Measurement Source`
+- `PV Surplus Sensor`
+- `Start Surplus Threshold (W)`
+- `Stop Surplus Threshold (W)`
+- `PV Start Delay`
+- `PV Stop Delay`
+- `PV Minimum Runtime`
+- `PV Minimum Pause`
+- `PV Minimum Current`
+- `PV Until Unplug Strategy`
+- `Fixed Current`
+- `Automatic PV Phase Switching`
+- `Phase Switching Hysteresis (W)`
+- `Phase Switch Dwell Time`
+- `Maximum Phase Switches Per Session`
 
 PV Control Strategy:
 
 - `Disabled`: do not use PV charging.
 - `Surplus Only`: charge only when enough surplus is available.
 - `Minimum + Surplus`: keep charging at minimum current and add surplus when available, but pause if the configured PV input is unavailable.
-- `Minimum Always + Surplus`: keep charging at minimum current and add surplus when available, even if the configured PV input is unavailable.
 
 PV charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
 
 `Minimum + Surplus` is not pure surplus-only charging. It may charge at `PV Minimum Current` when there is little or no surplus, as long as the PV input is valid. Use `Surplus Only` if you want PV charging to wait until enough surplus is present.
 
-If the configured PV input becomes unavailable, `Surplus Only` and `Minimum + Surplus` pause by writing `0 A`. `Minimum Always + Surplus` is the explicit grid-assisted comfort mode: it keeps charging at `PV Minimum Current` when it cannot determine current surplus.
+If the configured PV input becomes unavailable, `Surplus Only` and `Minimum + Surplus` pause by writing `0 A`.
 
 PV surplus can be provided in two ways:
 
@@ -145,7 +194,7 @@ It does not permanently change the selected base `Charge Mode`. It stays active 
 
 The `PV Until Unplug Strategy` can inherit the normal PV strategy or use a separate PV strategy for this temporary session.
 
-## Phase switching
+## Phase Switching
 
 PV Phase Switching modes:
 

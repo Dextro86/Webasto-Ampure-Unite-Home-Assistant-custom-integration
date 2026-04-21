@@ -30,7 +30,6 @@ PV strategies:
 
 - `Surplus Only`
 - `Minimum + Surplus`
-- `Minimum Always + Surplus`
 
 Temporary session overrides:
 
@@ -69,10 +68,22 @@ Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unit
 
 ## Documentation
 
-- [Configuration guide](docs/configuration.md): settings, sensor choices, DLB, PV charging, phase switching and troubleshooting.
+- [Configuration guide](docs/configuration.md): setup, one-screen settings layout, sensor choices, DLB, PV charging, phase switching and troubleshooting.
 - [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
 
 Start conservatively: first confirm monitoring works, then enable `Managed Charging Control`, and only then enable DLB, PV charging or automatic phase switching.
+
+## Settings Overview
+
+The integration options are grouped into one settings screen with these sections:
+
+- `Connection`: charger network and Modbus settings
+- `General Charging`: installed phases, startup/default mode and current limits
+- `Dynamic Load Balancing`: DLB input model, fuse limit and live sensor mapping
+- `PV Charging`: PV mode, PV sensor input and PV thresholds
+- `Phase Switching`: manual and automatic 1P/3P switching for 3-phase installations
+
+This keeps the full configuration in one place while preserving the same validation rules as before.
 
 ## Notes
 

@@ -1,5 +1,5 @@
 from custom_components.webasto_unite.controller import WallboxController
-from custom_components.webasto_unite.models import ChargeMode, ControlConfig, HaSensorSnapshot, PhaseCurrents, WallboxState, ControlReason, PvControlStrategy, PvOverrideStrategy, PvPhaseSwitchingMode
+from custom_components.webasto_unite.models import ChargeMode, ControlConfig, HaSensorSnapshot, PhaseCurrents, WallboxState, ControlReason, PvControlStrategy, PvOverrideStrategy, PvPhaseSwitchingMode, normalize_pv_control_strategy, normalize_pv_override_strategy
 from time import monotonic
 
 
@@ -182,17 +182,8 @@ def test_pv_mode_min_plus_surplus_pauses_when_sensor_is_unavailable():
     assert decision.final_target_a is None
 
 
-def test_pv_mode_min_always_plus_surplus_keeps_minimum_when_sensor_is_unavailable():
-    controller = make_controller(pv_control_strategy="min_always_plus_surplus", pv_min_current_a=6.0)
-    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
-    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
-
-    decision = controller.evaluate(ChargeMode.PV, wallbox, sensors)
-
-    assert decision.charging_enabled is True
-    assert decision.reason == ControlReason.SENSOR_UNAVAILABLE
-    assert decision.mode_target_a == 6.0
-    assert decision.final_target_a == 6.0
+def test_legacy_min_always_pv_strategy_normalizes_to_min_plus_surplus():
+    assert normalize_pv_control_strategy("min_always_plus_surplus") == PvControlStrategy.MIN_PLUS_SURPLUS
 
 
 def test_pv_until_unplug_strategy_can_override_base_pv_strategy():
@@ -205,14 +196,8 @@ def test_pv_until_unplug_strategy_can_override_base_pv_strategy():
     assert strategy == PvControlStrategy.MIN_PLUS_SURPLUS
 
 
-def test_pv_until_unplug_strategy_can_override_to_min_always_plus_surplus():
-    strategy = WallboxController.resolve_effective_pv_strategy(
-        PvControlStrategy.SURPLUS,
-        PvOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS,
-        True,
-    )
-
-    assert strategy == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS
+def test_legacy_min_always_pv_until_unplug_strategy_normalizes_to_min_plus_surplus():
+    assert normalize_pv_override_strategy("min_always_plus_surplus") == PvOverrideStrategy.MIN_PLUS_SURPLUS
 
 
 def test_pv_until_unplug_strategy_can_inherit_base_pv_strategy():

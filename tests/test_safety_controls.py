@@ -108,6 +108,15 @@ def default_pv_input(**overrides):
     return data
 
 
+def default_options_input(**overrides):
+    data = {}
+    data.update(default_init_input())
+    data.update(default_dlb_input())
+    data.update(default_pv_input())
+    data.update(overrides)
+    return data
+
+
 def test_off_mode_writes_zero_current_when_vehicle_is_connected():
     controller = make_controller()
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True, charging_active=True)
@@ -270,21 +279,9 @@ def test_options_flow_saves_connection_and_disabled_dlb_pv_at_final_step():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        dlb_form = await flow.async_step_init(
-            default_init_input(host="192.168.1.55", port=1502, unit_id=42, installed_phases="1p")
+        result = await flow.async_step_init(
+            default_options_input(host="192.168.1.55", port=1502, unit_id=42, installed_phases="1p")
         )
-        assert dlb_form["type"] == "form"
-        assert dlb_form["step_id"] == "dlb"
-        assert flow.options["host"] == "192.168.1.55"
-        assert flow.options["port"] == 1502
-        assert flow.options["unit_id"] == 42
-        assert flow.options["installed_phases"] == "1p"
-
-        pv_form = await flow.async_step_dlb(default_dlb_input())
-        assert pv_form["type"] == "form"
-        assert pv_form["step_id"] == "pv"
-
-        result = await flow.async_step_pv(default_pv_input())
         assert result["type"] == "create_entry"
         assert result["data"]["host"] == "192.168.1.55"
         assert result["data"]["port"] == 1502
@@ -343,9 +340,9 @@ def test_options_flow_dlb_phase_current_3p_requires_all_phase_sensors():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        await flow.async_step_init(default_init_input(installed_phases="3p"))
-        result = await flow.async_step_dlb(
-            default_dlb_input(
+        result = await flow.async_step_init(
+            default_options_input(
+                installed_phases="3p",
                 dlb_input_model="phase_currents",
                 dlb_l1_sensor="sensor.l1",
                 dlb_l2_sensor=None,
@@ -354,7 +351,7 @@ def test_options_flow_dlb_phase_current_3p_requires_all_phase_sensors():
         )
 
         assert result["type"] == "form"
-        assert result["step_id"] == "dlb"
+        assert result["step_id"] == "init"
         assert result["errors"]["base"] == "dlb_phase_sensor_required"
 
     asyncio.run(_run())
@@ -364,9 +361,9 @@ def test_options_flow_dlb_phase_current_1p_requires_only_l1_sensor():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        await flow.async_step_init(default_init_input(installed_phases="1p"))
-        result = await flow.async_step_dlb(
-            default_dlb_input(
+        result = await flow.async_step_init(
+            default_options_input(
+                installed_phases="1p",
                 dlb_input_model="phase_currents",
                 dlb_l1_sensor="sensor.l1",
                 dlb_l2_sensor=None,
@@ -374,8 +371,7 @@ def test_options_flow_dlb_phase_current_1p_requires_only_l1_sensor():
             )
         )
 
-        assert result["type"] == "form"
-        assert result["step_id"] == "pv"
+        assert result["type"] == "create_entry"
         assert flow.options["dlb_input_model"] == "phase_currents"
 
     asyncio.run(_run())
@@ -385,10 +381,8 @@ def test_options_flow_pv_surplus_mode_requires_surplus_sensor():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        await flow.async_step_init(default_init_input())
-        await flow.async_step_dlb(default_dlb_input())
-        result = await flow.async_step_pv(
-            default_pv_input(
+        result = await flow.async_step_init(
+            default_options_input(
                 pv_control_strategy="surplus",
                 pv_input_model="surplus_sensor",
                 pv_surplus_sensor=None,
@@ -396,7 +390,7 @@ def test_options_flow_pv_surplus_mode_requires_surplus_sensor():
         )
 
         assert result["type"] == "form"
-        assert result["step_id"] == "pv"
+        assert result["step_id"] == "init"
         assert result["errors"]["base"] == "pv_surplus_sensor_required"
 
     asyncio.run(_run())
@@ -406,17 +400,16 @@ def test_options_flow_pv_grid_derived_requires_grid_power_sensor():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        await flow.async_step_init(default_init_input())
-        await flow.async_step_dlb(default_dlb_input(dlb_grid_power_sensor=None))
-        result = await flow.async_step_pv(
-            default_pv_input(
+        result = await flow.async_step_init(
+            default_options_input(
+                dlb_grid_power_sensor=None,
                 pv_control_strategy="surplus",
                 pv_input_model="grid_power_derived",
             )
         )
 
         assert result["type"] == "form"
-        assert result["step_id"] == "pv"
+        assert result["step_id"] == "init"
         assert result["errors"]["base"] == "pv_grid_sensor_required"
 
     asyncio.run(_run())
@@ -509,7 +502,7 @@ def test_pv_min_plus_surplus_strategy_requires_surplus_model_inputs():
     assert result["pv_control_strategy"] == "min_plus_surplus"
 
 
-def test_pv_min_always_plus_surplus_strategy_requires_surplus_model_inputs():
+def test_legacy_pv_min_always_plus_surplus_strategy_normalizes_to_min_plus_surplus():
     result = _validate_pv_options(
         {
             "pv_input_model": "grid_power_derived",
@@ -524,7 +517,7 @@ def test_pv_min_always_plus_surplus_strategy_requires_surplus_model_inputs():
         }
     )
 
-    assert result["pv_control_strategy"] == "min_always_plus_surplus"
+    assert result["pv_control_strategy"] == "min_plus_surplus"
 
 
 def test_disabled_pv_strategy_allows_empty_pv_sensor_configuration():
@@ -2832,13 +2825,13 @@ def test_operating_state_reports_min_plus_surplus():
     assert coordinator._build_operating_state(decision) == "min_plus_surplus"
 
 
-def test_operating_state_reports_min_always_plus_surplus():
+def test_legacy_min_always_operating_state_normalizes_to_min_plus_surplus():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator._mode = ChargeMode.PV
     coordinator._charging_paused = False
     coordinator._pv_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig(pv_control_strategy="min_always_plus_surplus")
+    coordinator.control_config = ControlConfig(pv_control_strategy="min_plus_surplus")
 
     decision = SimpleNamespace(
         fallback_active=False,
@@ -2846,7 +2839,7 @@ def test_operating_state_reports_min_always_plus_surplus():
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "min_always_plus_surplus"
+    assert coordinator._build_operating_state(decision) == "min_plus_surplus"
 
 
 def test_operating_state_reports_fallback_before_mode():
