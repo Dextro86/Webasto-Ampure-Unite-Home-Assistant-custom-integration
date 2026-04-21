@@ -6,6 +6,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .const import *
@@ -38,8 +39,8 @@ DLB_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": DlbInputModel.GRID_POWER.value, "label": "Grid Power Sensor"},
 ]
 DLB_SENSOR_SCOPE_SELECTOR_OPTIONS = [
-    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Total House Current Charger Excluded"},
-    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Total House Current Charger Included"},
+    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Charger Excluded"},
+    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Charger Included"},
 ]
 PV_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": PvInputModel.SURPLUS_SENSOR.value, "label": "Use a Surplus Power Sensor"},
@@ -296,10 +297,21 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         self.options = dict(config_entry.options)
         self.entry_data = dict(config_entry.data)
 
+    def _flatten_section_input(self, user_input: dict[str, Any] | None) -> dict[str, Any]:
+        if not user_input:
+            return {}
+        flattened: dict[str, Any] = {}
+        for key, value in user_input.items():
+            if isinstance(value, dict):
+                flattened.update(value)
+            else:
+                flattened[key] = value
+        return flattened
+
     def _current_values(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         current = {**self._config_entry.data, **self.options}
         if user_input:
-            current.update(user_input)
+            current.update(self._flatten_section_input(user_input))
         if CONF_PV_CONTROL_STRATEGY in current:
             current[CONF_PV_CONTROL_STRATEGY] = normalize_pv_control_strategy(current[CONF_PV_CONTROL_STRATEGY]).value
         if CONF_PV_UNTIL_UNPLUG_STRATEGY in current:
@@ -308,67 +320,110 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
 
     def _build_init_schema(self, current: dict[str, Any]) -> vol.Schema:
         installed_phases = current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
-        schema: dict[Any, Any] = {
-            vol.Optional(CONF_HOST, default=current.get(CONF_HOST, "")): str,
-            vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): _int_selector(1, 65535),
-            vol.Optional(CONF_UNIT_ID, default=current.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)): _int_selector(1, 255),
-            vol.Optional(
-                CONF_INSTALLED_PHASES,
-                default=current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P),
-            ): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_POLLING_INTERVAL, default=current.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
-            vol.Optional(CONF_TIMEOUT, default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
-            vol.Optional(CONF_RETRIES, default=current.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
-            vol.Optional(CONF_CONTROL_MODE, default=current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
-            vol.Optional(
-                CONF_STARTUP_CHARGE_MODE,
-                default=current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE),
-            ): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_CHARGE_MODE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_USER_LIMIT, default=current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_SAFE_CURRENT, default=current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_MIN_CURRENT, default=current.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_MAX_CURRENT, default=current.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-            vol.Optional(CONF_KEEPALIVE_MODE, default=current.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_KEEPALIVE_INTERVAL, default=current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
-            vol.Optional(CONF_DLB_INPUT_MODEL, default=current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_DLB_SENSOR_SCOPE, default=current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_MAIN_FUSE, default=current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
-            vol.Optional(CONF_SAFETY_MARGIN, default=current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
-            _optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), current.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
-        }
-        if installed_phases == PHASE_MODE_3P:
-            schema[_optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), current.get(CONF_DLB_L2_SENSOR))] = _entity_selector()
-            schema[_optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), current.get(CONF_DLB_L3_SENSOR))] = _entity_selector()
-        schema[_optional_field(CONF_DLB_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_DLB_GRID_POWER_SENSOR))] = _entity_selector()
-        schema.update(
+        control_mode = current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)
+        managed_control = control_mode == ControlMode.MANAGED_CONTROL.value
+        dlb_model = current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)
+        pv_strategy = current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
+        pv_phase_mode = current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)
+        connection_schema = vol.Schema(
             {
-                vol.Optional(CONF_PV_CONTROL_STRATEGY, default=current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
-                vol.Optional(CONF_PV_INPUT_MODEL, default=current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS)),
-                _optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
-                vol.Optional(CONF_PV_START_THRESHOLD, default=current.get(CONF_PV_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
-                vol.Optional(CONF_PV_STOP_THRESHOLD, default=current.get(CONF_PV_STOP_THRESHOLD, 1200.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
-                vol.Optional(CONF_PV_START_DELAY, default=current.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
-                vol.Optional(CONF_PV_STOP_DELAY, default=current.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
-                vol.Optional(CONF_PV_MIN_RUNTIME, default=current.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
-                vol.Optional(CONF_PV_MIN_PAUSE, default=current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
-                vol.Optional(CONF_PV_MIN_CURRENT, default=current.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-                vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=current.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
-                vol.Optional(CONF_FIXED_CURRENT, default=current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+                vol.Optional(CONF_HOST, default=current.get(CONF_HOST, "")): str,
+                vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): _int_selector(1, 65535),
+                vol.Optional(CONF_UNIT_ID, default=current.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)): _int_selector(1, 255),
+                vol.Optional(CONF_POLLING_INTERVAL, default=current.get(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)): _float_selector(MIN_SECONDS, MAX_SECONDS, 0.1),
             }
         )
-        if installed_phases == PHASE_MODE_3P:
-            schema.update(
-                {
-                    vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
-                    vol.Optional(CONF_PV_PHASE_SWITCHING_HYSTERESIS, default=current.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W)): _float_selector(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, 1.0),
-                    vol.Optional(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, default=current.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S)): _float_selector(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, 1.0),
-                    vol.Optional(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, default=current.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION)): _int_selector(1, MAX_PHASE_SWITCHING_PER_SESSION),
-                }
-            )
+        general_schema = vol.Schema(
+            {
+                vol.Optional(CONF_INSTALLED_PHASES, default=current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
+                vol.Optional(CONF_CONTROL_MODE, default=current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
+                vol.Optional(CONF_STARTUP_CHARGE_MODE, default=current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_CHARGE_MODE_SELECTOR_OPTIONS)),
+                vol.Optional(CONF_USER_LIMIT, default=current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+                vol.Optional(CONF_SAFE_CURRENT, default=current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+            }
+        )
+        session_override_fields: dict[Any, Any] = {}
+        if managed_control:
+            session_override_fields = {
+                vol.Optional(CONF_FIXED_CURRENT, default=current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+                vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=current.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
+            }
+
+        dlb_fields: dict[Any, Any] = {
+            vol.Optional(CONF_DLB_INPUT_MODEL, default=current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
+        }
+        if dlb_model != DlbInputModel.DISABLED.value:
+            dlb_fields[vol.Optional(CONF_DLB_SENSOR_SCOPE, default=current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value))] = selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS))
+            dlb_fields[vol.Optional(CONF_MAIN_FUSE, default=current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A))] = _float_selector(MIN_CURRENT_A, 200.0, 0.1)
+            dlb_fields[vol.Optional(CONF_SAFETY_MARGIN, default=current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A))] = _float_selector(0.0, 50.0, 0.1)
+            if dlb_model == DlbInputModel.PHASE_CURRENTS.value:
+                dlb_fields[_optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), current.get(CONF_DLB_L1_SENSOR))] = _entity_selector()
+                if installed_phases == PHASE_MODE_3P:
+                    dlb_fields[_optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), current.get(CONF_DLB_L2_SENSOR))] = _entity_selector()
+                    dlb_fields[_optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), current.get(CONF_DLB_L3_SENSOR))] = _entity_selector()
+            if dlb_model == DlbInputModel.GRID_POWER.value:
+                dlb_fields[_optional_field(CONF_DLB_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_DLB_GRID_POWER_SENSOR))] = _entity_selector()
+        pv_fields: dict[Any, Any] = {
+            vol.Optional(CONF_PV_CONTROL_STRATEGY, default=current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
+        }
+        if pv_strategy != PvControlStrategy.DISABLED.value:
+            pv_fields[vol.Optional(CONF_PV_INPUT_MODEL, default=current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value))] = selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS))
+            if current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value) == PvInputModel.SURPLUS_SENSOR.value:
+                pv_fields[_optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_PV_SURPLUS_SENSOR))] = _entity_selector()
+            pv_fields[vol.Optional(CONF_PV_START_THRESHOLD, default=current.get(CONF_PV_START_THRESHOLD, 1800.0))] = _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0)
+            pv_fields[vol.Optional(CONF_PV_STOP_THRESHOLD, default=current.get(CONF_PV_STOP_THRESHOLD, 1200.0))] = _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0)
+            pv_fields[vol.Optional(CONF_PV_START_DELAY, default=current.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S))] = _float_selector(0.0, 3600.0, 0.1)
+            pv_fields[vol.Optional(CONF_PV_STOP_DELAY, default=current.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S))] = _float_selector(0.0, 3600.0, 0.1)
+            pv_fields[vol.Optional(CONF_PV_MIN_RUNTIME, default=current.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S))] = _float_selector(0.0, 3600.0, 0.1)
+            pv_fields[vol.Optional(CONF_PV_MIN_PAUSE, default=current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S))] = _float_selector(0.0, 3600.0, 0.1)
+            pv_fields[vol.Optional(CONF_PV_MIN_CURRENT, default=current.get(CONF_PV_MIN_CURRENT, 6.0))] = _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1)
+        phase_fields: dict[Any, Any] = {}
+        if installed_phases == PHASE_MODE_3P and pv_strategy != PvControlStrategy.DISABLED.value:
+            phase_fields = {
+                vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
+            }
+            if pv_phase_mode == PvPhaseSwitchingMode.AUTOMATIC_1P3P.value:
+                phase_fields[vol.Optional(CONF_PV_PHASE_SWITCHING_HYSTERESIS, default=current.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W))] = _float_selector(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, 1.0)
+                phase_fields[vol.Optional(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, default=current.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S))] = _float_selector(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, 1.0)
+                phase_fields[vol.Optional(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, default=current.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION))] = _int_selector(1, MAX_PHASE_SWITCHING_PER_SESSION)
+
+        schema: dict[Any, Any] = {
+            vol.Optional("connection", default={}): section(connection_schema, {"collapsed": False}),
+            vol.Optional("general_charging", default={}): section(general_schema, {"collapsed": False}),
+            vol.Optional("dynamic_load_balancing", default={}): section(vol.Schema(dlb_fields), {"collapsed": True}),
+            vol.Optional("pv_charging", default={}): section(vol.Schema(pv_fields), {"collapsed": True}),
+        }
+        if session_override_fields:
+            schema[vol.Optional("session_overrides", default={})] = section(vol.Schema(session_override_fields), {"collapsed": True})
+        if phase_fields:
+            schema[vol.Optional("phase_switching", default={})] = section(vol.Schema(phase_fields), {"collapsed": True})
         return vol.Schema(schema)
 
     def _validate_all_options(self, user_input: dict[str, Any]) -> dict[str, Any]:
-        validated = dict(user_input)
+        validated = self._current_values(user_input)
+        validated.setdefault(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)
+        validated.setdefault(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)
+        validated.setdefault(CONF_RETRIES, DEFAULT_RETRIES)
+        validated.setdefault(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)
+        validated.setdefault(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)
+        validated.setdefault(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)
+        validated.setdefault(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)
+        validated.setdefault(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)
+        validated.setdefault(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)
+        validated.setdefault(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)
+        validated.setdefault(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)
+        validated.setdefault(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)
+        validated.setdefault(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)
+        validated.setdefault(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)
+        validated.setdefault(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)
+        validated.setdefault(CONF_PV_START_THRESHOLD, 1800.0)
+        validated.setdefault(CONF_PV_STOP_THRESHOLD, 1200.0)
+        validated.setdefault(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)
+        validated.setdefault(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)
+        validated.setdefault(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)
+        validated.setdefault(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)
+        validated.setdefault(CONF_PV_MIN_CURRENT, 6.0)
+        validated.setdefault(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)
         connection_input = {
             CONF_HOST: validated.pop(CONF_HOST),
             CONF_PORT: validated.pop(CONF_PORT),

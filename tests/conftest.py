@@ -85,6 +85,16 @@ core.ServiceCall = object
 core.callback = lambda fn: fn
 sys.modules.setdefault("homeassistant.core", core)
 
+data_entry_flow = types.ModuleType("homeassistant.data_entry_flow")
+class _Section:
+    def __init__(self, schema, options=None):
+        self.schema = schema
+        self.options = options or {}
+def _section(schema, options=None):
+    return _Section(schema, options)
+data_entry_flow.section = _section
+sys.modules.setdefault("homeassistant.data_entry_flow", data_entry_flow)
+
 helpers = types.ModuleType("homeassistant.helpers")
 sys.modules.setdefault("homeassistant.helpers", helpers)
 

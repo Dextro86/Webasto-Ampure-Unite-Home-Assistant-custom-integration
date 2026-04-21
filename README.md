@@ -79,9 +79,10 @@ The integration options are grouped into one settings screen with these sections
 
 - `Connection`: charger network and Modbus settings
 - `General Charging`: installed phases, startup/default mode and current limits
-- `Dynamic Load Balancing`: DLB input model, fuse limit and live sensor mapping
-- `PV Charging`: PV mode, PV sensor input and PV thresholds
-- `Phase Switching`: manual and automatic 1P/3P switching for 3-phase installations
+- `Session Overrides`: temporary per-session Fixed Current and PV Until Unplug behavior when managed control is enabled
+- `Dynamic Load Balancing`: starts compact and only shows relevant DLB details for the selected DLB mode
+- `PV Charging`: starts compact and only shows relevant PV inputs and thresholds when PV charging is enabled
+- `Phase Switching`: only shown for 3-phase installations with active PV charging
 
 This keeps the full configuration in one place while preserving the same validation rules as before.
 

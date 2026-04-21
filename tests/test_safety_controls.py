@@ -295,6 +295,150 @@ def test_options_flow_saves_connection_and_disabled_dlb_pv_at_final_step():
     asyncio.run(_run())
 
 
+def test_options_flow_schema_is_grouped_into_sections():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        schema = result["data_schema"].args[0]
+        assert set(schema) == {
+            "connection",
+            "general_charging",
+            "dynamic_load_balancing",
+            "pv_charging",
+        }
+        assert result["data_schema"].args[0]["connection"].options["collapsed"] is False
+        assert result["data_schema"].args[0]["general_charging"].options["collapsed"] is False
+        assert result["data_schema"].args[0]["dynamic_load_balancing"].options["collapsed"] is True
+        assert result["data_schema"].args[0]["pv_charging"].options["collapsed"] is True
+
+    asyncio.run(_run())
+
+
+def test_options_flow_hides_phase_switching_section_for_1p_installation():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry(data=default_init_input(installed_phases="1p")))
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        schema = result["data_schema"].args[0]
+        assert "phase_switching" not in schema
+
+    asyncio.run(_run())
+
+
+def test_options_flow_shows_session_overrides_for_managed_control():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(
+            make_config_entry(options=default_options_input(control_mode="managed_control"))
+        )
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        schema = result["data_schema"].args[0]
+        assert "session_overrides" in schema
+        session_fields = schema["session_overrides"].schema.args[0]
+        assert set(session_fields) == {"fixed_current", "pv_until_unplug_strategy"}
+
+    asyncio.run(_run())
+
+
+def test_options_flow_shows_only_dlb_mode_when_dlb_is_disabled():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        dlb_fields = result["data_schema"].args[0]["dynamic_load_balancing"].schema.args[0]
+        assert set(dlb_fields) == {"dlb_input_model"}
+
+    asyncio.run(_run())
+
+
+def test_options_flow_shows_only_pv_strategy_when_pv_is_disabled():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        pv_fields = result["data_schema"].args[0]["pv_charging"].schema.args[0]
+        assert set(pv_fields) == {"pv_control_strategy"}
+
+    asyncio.run(_run())
+
+
+def test_options_flow_shows_phase_switch_details_only_for_automatic_pv_switching():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(
+            make_config_entry(
+                options=default_options_input(
+                    installed_phases="3p",
+                    pv_control_strategy="surplus",
+                    pv_phase_switching_mode="automatic_1p3p",
+                )
+            )
+        )
+
+        result = await flow.async_step_init()
+
+        assert result["type"] == "form"
+        phase_fields = result["data_schema"].args[0]["phase_switching"].schema.args[0]
+        assert set(phase_fields) == {
+            "pv_phase_switching_mode",
+            "pv_phase_switching_hysteresis",
+            "pv_phase_switching_min_interval",
+            "pv_phase_switching_max_per_session",
+        }
+
+    asyncio.run(_run())
+
+
+def test_options_flow_accepts_nested_section_input():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init(
+            {
+                "connection": {
+                    "host": "192.168.1.60",
+                    "port": 1502,
+                    "unit_id": 11,
+                    "installed_phases": "3p",
+                    "polling_interval": 2.0,
+                    "timeout": 3.0,
+                    "retries": 3,
+                },
+                "general_charging": {
+                    "installed_phases": "3p",
+                    "control_mode": "keepalive_only",
+                    "startup_charge_mode": "normal",
+                    "user_limit": 16.0,
+                    "safe_current": 6.0,
+                },
+                "dynamic_load_balancing": {
+                    "dlb_input_model": "disabled",
+                },
+                "pv_charging": {
+                    "pv_control_strategy": "disabled",
+                },
+            }
+        )
+
+        assert result["type"] == "create_entry"
+        assert result["data"]["host"] == "192.168.1.60"
+        assert result["data"]["port"] == 1502
+        assert result["data"]["pv_control_strategy"] == "disabled"
+        assert result["data"]["pv_phase_switching_mode"] == "manual_only"
+
+    asyncio.run(_run())
+
+
 def test_startup_charge_mode_can_be_configured():
     result = _validate_init_options(
         default_init_input(startup_charge_mode="pv")

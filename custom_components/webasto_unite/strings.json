@@ -17,47 +17,121 @@
     "step": {
       "init": {
         "title": "Settings",
-        "description": "Configure Connection, General Charging, Dynamic Load Balancing, PV Charging and Phase Switching in one screen. Connection defines how Home Assistant reaches the charger. General Charging defines Installed Phases, Startup / Default Mode and current limits. Dynamic Load Balancing limits charging based on available capacity. PV Charging uses surplus power for charging. Phase Switching is only relevant for 3-phase installations.",
-        "data": {
-          "host": "Host",
-          "port": "Port",
-          "unit_id": "Unit ID",
-          "installed_phases": "Installed Phases",
-          "polling_interval": "Polling Interval",
-          "timeout": "Modbus Timeout",
-          "retries": "Modbus Retries",
-          "control_mode": "Managed Charging Control",
-          "startup_charge_mode": "Startup / Default Mode",
-          "keepalive_mode": "Keepalive Mode",
-          "keepalive_interval": "Keepalive Interval",
-          "safe_current": "Safe Current",
-          "min_current": "Minimum Current",
-          "max_current": "Maximum Current",
-          "user_limit": "Default Current Limit",
-          "dlb_input_model": "Dynamic Load Balancing Mode",
-          "dlb_sensor_scope": "Dynamic Load Balancing Sensor Scope",
-          "main_fuse": "Main Fuse Limit",
-          "safety_margin": "Safety Margin",
-          "dlb_l1_sensor": "Phase 1 Current Sensor",
-          "dlb_l2_sensor": "Phase 2 Current Sensor",
-          "dlb_l3_sensor": "Phase 3 Current Sensor",
-          "dlb_grid_power_sensor": "Grid Power Sensor",
-          "pv_input_model": "PV Measurement Source",
-          "pv_control_strategy": "PV Charging Strategy",
-          "pv_until_unplug_strategy": "PV Until Unplug Strategy",
-          "pv_surplus_sensor": "PV Surplus Sensor",
-          "pv_start_threshold": "Start Surplus Threshold (W)",
-          "pv_stop_threshold": "Stop Surplus Threshold (W)",
-          "pv_start_delay": "PV Start Delay",
-          "pv_stop_delay": "PV Stop Delay",
-          "pv_min_runtime": "PV Minimum Runtime",
-          "pv_min_pause": "PV Minimum Pause",
-          "pv_min_current": "PV Minimum Current",
-          "pv_phase_switching_mode": "Automatic PV Phase Switching",
-          "pv_phase_switching_hysteresis": "Phase Switching Hysteresis (W)",
-          "pv_phase_switching_min_interval": "Phase Switch Dwell Time",
-          "pv_phase_switching_max_per_session": "Maximum Phase Switches Per Session",
-          "fixed_current": "Fixed Current"
+        "sections": {
+          "connection": {
+            "name": "Connection",
+            "description": "Basic network and Modbus settings used to reach the charger.",
+            "data": {
+              "host": "Host",
+              "port": "Port",
+              "unit_id": "Unit ID",
+              "polling_interval": "Polling Interval"
+            },
+            "data_description": {
+              "host": "IP address or host name of the charger.",
+              "port": "Modbus/TCP port of the charger. Usually 502.",
+              "unit_id": "Modbus unit ID used by the charger.",
+              "polling_interval": "How often Home Assistant refreshes charger state."
+            }
+          },
+          "general_charging": {
+            "name": "General Charging",
+            "description": "Base charging behavior, startup mode and current limits.",
+            "data": {
+              "installed_phases": "Installed Phases",
+              "control_mode": "Managed Charging Control",
+              "startup_charge_mode": "Startup / Default Mode",
+              "user_limit": "Default Current Limit",
+              "safe_current": "Safe Current"
+            },
+            "data_description": {
+              "installed_phases": "Physical charger installation. This also determines whether phase switching is relevant.",
+              "control_mode": "Choose whether the integration may actively write current limits and phase changes, or only monitor and keep the connection alive.",
+              "startup_charge_mode": "Charge mode restored after Home Assistant restart or integration reload.",
+              "user_limit": "Normal current limit used in Normal mode.",
+              "safe_current": "Fallback current used when the integration cannot safely trust its control inputs."
+            }
+          },
+          "session_overrides": {
+            "name": "Session Overrides",
+            "description": "Temporary session-specific charging behavior. These settings do not change the Startup / Default Mode.",
+            "data": {
+              "fixed_current": "Fixed Current",
+              "pv_until_unplug_strategy": "PV Until Unplug Strategy"
+            },
+            "data_description": {
+              "fixed_current": "Charging current used when Fixed Current Until Unplug is enabled for a session.",
+              "pv_until_unplug_strategy": "Temporary PV strategy used by the PV Until Unplug session override."
+            }
+          },
+          "dynamic_load_balancing": {
+            "name": "Dynamic Load Balancing",
+            "description": "Limit charging current based on available connection capacity and live house-load sensors.",
+            "data": {
+              "dlb_input_model": "Dynamic Load Balancing Mode",
+              "dlb_sensor_scope": "Dynamic Load Balancing Sensor Scope",
+              "main_fuse": "Main Fuse Limit",
+              "safety_margin": "Safety Margin",
+              "dlb_l1_sensor": "Phase 1 Current Sensor",
+              "dlb_l2_sensor": "Phase 2 Current Sensor",
+              "dlb_l3_sensor": "Phase 3 Current Sensor",
+              "dlb_grid_power_sensor": "Grid Power Sensor"
+            },
+            "data_description": {
+              "dlb_input_model": "How Dynamic Load Balancing determines available capacity.",
+              "dlb_sensor_scope": "Use Charger Excluded if your house current sensors do not include the charger. Use Charger Included otherwise.",
+              "main_fuse": "Main fuse or connection limit the charger should stay below.",
+              "safety_margin": "Extra margin kept below the configured main fuse limit.",
+              "dlb_l1_sensor": "Live current sensor for phase 1.",
+              "dlb_l2_sensor": "Live current sensor for phase 2.",
+              "dlb_l3_sensor": "Live current sensor for phase 3.",
+              "dlb_grid_power_sensor": "Signed live grid power sensor. Use only as a simple approximation. For 3-phase installations, per-phase current sensors are preferred."
+            }
+          },
+          "pv_charging": {
+            "name": "PV Charging",
+            "description": "Use PV surplus for charging and define how strict the integration should be about real surplus.",
+            "data": {
+              "pv_control_strategy": "PV Charging Strategy",
+              "pv_input_model": "PV Measurement Source",
+              "pv_surplus_sensor": "PV Surplus Sensor",
+              "pv_start_threshold": "Start Surplus Threshold (W)",
+              "pv_stop_threshold": "Stop Surplus Threshold (W)",
+              "pv_start_delay": "PV Start Delay",
+              "pv_stop_delay": "PV Stop Delay",
+              "pv_min_runtime": "PV Minimum Runtime",
+              "pv_min_pause": "PV Minimum Pause",
+              "pv_min_current": "PV Minimum Current"
+            },
+            "data_description": {
+              "pv_control_strategy": "Choose whether PV charging should wait for real surplus or allow minimum charging while PV control input remains valid.",
+              "pv_input_model": "How PV surplus is provided to the integration.",
+              "pv_surplus_sensor": "Sensor that represents currently available PV surplus.",
+              "pv_start_threshold": "Minimum surplus required before PV charging may start.",
+              "pv_stop_threshold": "Lower surplus boundary below which PV charging may stop again.",
+              "pv_start_delay": "How long surplus must stay high enough before PV charging starts.",
+              "pv_stop_delay": "How long surplus must stay too low before PV charging stops.",
+              "pv_min_runtime": "Minimum time PV charging should keep running after it has started.",
+              "pv_min_pause": "Minimum pause before PV charging may start again.",
+              "pv_min_current": "Minimum charging current used by Minimum + Surplus."
+            }
+          },
+          "phase_switching": {
+            "name": "Phase Switching",
+            "description": "Manual or automatic 1-phase / 3-phase switching for real 3-phase installations. Actual switching behavior still depends on the charger, vehicle and firmware.",
+            "data": {
+              "pv_phase_switching_mode": "Automatic PV Phase Switching",
+              "pv_phase_switching_hysteresis": "Phase Switching Hysteresis (W)",
+              "pv_phase_switching_min_interval": "Phase Switch Dwell Time",
+              "pv_phase_switching_max_per_session": "Maximum Phase Switches Per Session"
+            },
+            "data_description": {
+              "pv_phase_switching_mode": "Controls whether 1-phase / 3-phase switching is disabled, manual only, or automatic in PV mode.",
+              "pv_phase_switching_hysteresis": "Extra margin around the automatic 1P/3P switching point.",
+              "pv_phase_switching_min_interval": "Minimum waiting time before another automatic phase switch is allowed.",
+              "pv_phase_switching_max_per_session": "Maximum number of automatic 1P to 3P switch attempts in one plug-in session."
+            }
+          }
         }
       }
     },

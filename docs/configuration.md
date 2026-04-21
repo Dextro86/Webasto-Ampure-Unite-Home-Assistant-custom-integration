@@ -21,6 +21,7 @@ The integration uses one options screen with the settings grouped in logical sec
 
 - `Connection`
 - `General Charging`
+- `Session Overrides`
 - `Dynamic Load Balancing`
 - `PV Charging`
 - `Phase Switching`
@@ -34,21 +35,17 @@ Main settings:
 - `Host`: fixed IP address or host name of the charger.
 - `Port`: Modbus TCP port, normally `502`.
 - `Unit ID`: Modbus unit ID used by the charger.
-- `Installed Phases`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
 - `Polling Interval`: how often the integration refreshes charger state.
-- `Modbus Timeout` and `Modbus Retries`: connection resilience settings.
 
 ## General Charging
 
 Main settings:
 
+- `Installed Phases`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
 - `Managed Charging Control`: whether the integration may actively control charging.
 - `Startup / Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
-- `Minimum Current`: lower current limit used by control logic.
-- `Maximum Current`: configured upper current limit.
 - `Default Current Limit`: normal target current for `Normal` mode.
 - `Safe Current`: fallback current used when DLB input is unavailable or invalid.
-- `Keepalive Mode` and `Keepalive Interval`: keepalive behavior for chargers that need periodic writes.
 
 Recommended first setup:
 
@@ -58,12 +55,21 @@ Recommended first setup:
 
 If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
 
+## Session Overrides
+
+This section is only shown when `Managed Charging Control` is enabled.
+
+Main settings:
+
+- `Fixed Current`: target used when `Fixed Current Until Unplug` is enabled for a session.
+- `PV Until Unplug Strategy`: temporary PV strategy used while `PV Until Unplug` is active for a session.
+
+These settings do not change the configured `Startup / Default Mode`. They only define how the temporary session overrides behave when those runtime overrides are enabled.
+
 ## Current Limits
 
 Important current settings:
 
-- `Minimum Current`: lower current limit used by control logic.
-- `Maximum Current`: configured upper current limit.
 - `Default Current Limit`: normal target current for `Normal` mode.
 - `Safe Current`: fallback current used when DLB input is unavailable or invalid.
 - `Fixed Current`: target used by `Fixed Current` mode.
@@ -83,6 +89,9 @@ DLB is disabled by default. Enable it only after selecting suitable Home Assista
 Main settings:
 
 - `Dynamic Load Balancing Mode`
+
+Additional DLB settings only appear after DLB is enabled:
+
 - `Dynamic Load Balancing Sensor Scope`
 - `Main Fuse Limit`
 - `Safety Margin`
@@ -103,12 +112,12 @@ Use live measurement sensors, not energy counters. Current sensors should report
 
 DLB Sensor Scope:
 
-- `Total House Current Charger Excluded`: sensors measure house load without the charger.
-- `Total House Current Charger Included`: sensors measure total house load including the charger.
+- `Charger Excluded`: sensors measure house load without the charger.
+- `Charger Included`: sensors measure total house load including the charger.
 
-If your sensors include the charger load, select `Total House Current Charger Included`. The integration then compensates for the charger's own measured current before calculating the DLB Limit. This prevents the charger from immediately reducing itself just because its own load appears in the house-current sensors.
+If your sensors include the charger load, select `Charger Included`. The integration then compensates for the charger's own measured current before calculating the DLB Limit. This prevents the charger from immediately reducing itself just because its own load appears in the house-current sensors.
 
-If your sensors exclude the charger load, select `Total House Current Charger Excluded`. In that case the integration assumes the house load sensors already represent non-charger load only.
+If your sensors exclude the charger load, select `Charger Excluded`. In that case the integration assumes the house load sensors already represent non-charger load only.
 
 Example:
 
@@ -125,6 +134,9 @@ available current estimate = 25 - 2 - (18 - 15) = 20 A
 Main settings:
 
 - `PV Charging Strategy`
+
+Additional PV settings only appear after PV charging is enabled:
+
 - `PV Measurement Source`
 - `PV Surplus Sensor`
 - `Start Surplus Threshold (W)`
@@ -134,12 +146,6 @@ Main settings:
 - `PV Minimum Runtime`
 - `PV Minimum Pause`
 - `PV Minimum Current`
-- `PV Until Unplug Strategy`
-- `Fixed Current`
-- `Automatic PV Phase Switching`
-- `Phase Switching Hysteresis (W)`
-- `Phase Switch Dwell Time`
-- `Maximum Phase Switches Per Session`
 
 PV Control Strategy:
 
@@ -196,13 +202,15 @@ The `PV Until Unplug Strategy` can inherit the normal PV strategy or use a separ
 
 ## Phase Switching
 
+This section is only shown for `3 Phases` installations with PV charging enabled.
+
 PV Phase Switching modes:
 
 - `Disabled`: do not expose or use phase switching through the integration.
 - `Manual Only`: expose `Manual Phase Switch`, but do not switch automatically. Manual switching is only available while charging is inactive.
 - `Automatic 1P/3P`: allow automatic phase switching in PV mode.
 
-`PV Phase Switching Hysteresis (W)` controls the extra margin around the automatic 1P/3P switching point. The default is `500 W`.
+`PV Phase Switching Hysteresis (W)` controls the extra margin around the automatic 1P/3P switching point. The default is `500 W`. The hysteresis, dwell time and per-session limit are only shown when `Automatic 1P/3P` is selected.
 
 `Minimum Phase Switch Interval` is used as a stability guard for automatic 1P->3P switching. Surplus must remain high for this long before the integration requests 3-phase mode. It also rate-limits repeated 1P->3P attempts. The default is `300` seconds.
 
