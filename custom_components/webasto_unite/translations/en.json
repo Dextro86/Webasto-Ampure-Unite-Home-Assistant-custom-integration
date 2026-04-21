@@ -41,7 +41,7 @@
           "dlb_l1_sensor": "Phase 1 Current Sensor",
           "dlb_l2_sensor": "Phase 2 Current Sensor",
           "dlb_l3_sensor": "Phase 3 Current Sensor",
-          "dlb_grid_power_sensor": "Grid Power Sensor"
+          "dlb_grid_power_sensor": "Grid Power Sensor",
           "pv_input_model": "PV Measurement Source",
           "pv_control_strategy": "PV Charging Strategy",
           "pv_until_unplug_strategy": "PV Until Unplug Strategy",
