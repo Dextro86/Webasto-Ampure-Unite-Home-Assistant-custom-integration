@@ -11,13 +11,12 @@ from .models import (
     ControlDecision,
     ControlReason,
     HaSensorSnapshot,
-    PvControlStrategy,
-    PvOverrideStrategy,
-    PvPhaseSwitchingMode,
-    PvResult,
+    SolarControlStrategy,
+    SolarOverrideStrategy,
+    SolarResult,
     WallboxState,
-    normalize_pv_control_strategy,
-    normalize_pv_override_strategy,
+    normalize_solar_control_strategy,
+    normalize_solar_override_strategy,
 )
 
 
@@ -43,7 +42,10 @@ class WallboxController:
     config: ControlConfig
     dlb: DlbEngine = field(init=False)
     write_state: WriteState = field(default_factory=WriteState)
-    pv_state: PvRuntimeState = field(default_factory=PvRuntimeState)
+    solar_state: PvRuntimeState = field(default_factory=PvRuntimeState)
+    observed_session_phase_count: int | None = None
+    _pending_session_phase_count: int | None = None
+    _pending_session_phase_polls: int = 0
 
     def __post_init__(self) -> None:
         self.dlb = DlbEngine(self.config)
@@ -53,12 +55,13 @@ class WallboxController:
         mode: ChargeMode,
         wallbox: WallboxState,
         sensors: HaSensorSnapshot,
-        pv_strategy: PvControlStrategy | None = None,
+        pv_strategy: SolarControlStrategy | None = None,
     ) -> ControlDecision:
-        effective_pv_strategy = pv_strategy or self.config.pv_control_strategy
+        effective_pv_strategy = pv_strategy or self.config.solar_control_strategy
+        self._update_session_phase_observation(wallbox)
 
         if mode == ChargeMode.OFF:
-            self.reset_pv_state()
+            self.reset_solar_state()
             self.reset_pending_write_state()
             should_write_stop = wallbox.charging_active or wallbox.vehicle_connected
             return ControlDecision(
@@ -72,11 +75,11 @@ class WallboxController:
                 should_write=should_write_stop,
             )
 
-        if mode != ChargeMode.PV:
-            self.reset_pv_state()
+        if mode != ChargeMode.SOLAR:
+            self.reset_solar_state()
 
         installed_phases = self._resolve_installed_phases(wallbox)
-        pv_phase_count = self._resolve_pv_phase_count(wallbox)
+        pv_phase_count = self._resolve_solar_phase_count(mode, wallbox)
         dlb_result = self.dlb.calculate_available_current(
             sensors,
             installed_phases,
@@ -169,64 +172,111 @@ class WallboxController:
         self.write_state.last_write_monotonic = 0.0
         self.reset_pending_write_state()
 
-    def reset_pv_state(self) -> None:
-        self.pv_state.active = False
-        self.pv_state.start_condition_since = None
-        self.pv_state.stop_condition_since = None
-        self.pv_state.last_transition_monotonic = 0.0
-        self.pv_state.last_stop_monotonic = 0.0
+    def reset_solar_state(self) -> None:
+        self.solar_state.active = False
+        self.solar_state.start_condition_since = None
+        self.solar_state.stop_condition_since = None
+        self.solar_state.last_transition_monotonic = 0.0
+        self.solar_state.last_stop_monotonic = 0.0
+
+    def reset_session_phase_observation(self) -> None:
+        self.observed_session_phase_count = None
+        self._pending_session_phase_count = None
+        self._pending_session_phase_polls = 0
+
+    def _update_session_phase_observation(self, wallbox: WallboxState) -> None:
+        if not wallbox.vehicle_connected:
+            self.reset_session_phase_observation()
+            return
+        if not wallbox.charging_active or wallbox.phases_in_use not in (1, 3):
+            self._pending_session_phase_count = None
+            self._pending_session_phase_polls = 0
+            return
+
+        if self.observed_session_phase_count == wallbox.phases_in_use:
+            self._pending_session_phase_count = None
+            self._pending_session_phase_polls = 0
+            return
+
+        if self._pending_session_phase_count != wallbox.phases_in_use:
+            self._pending_session_phase_count = wallbox.phases_in_use
+            self._pending_session_phase_polls = 1
+            return
+
+        self._pending_session_phase_polls += 1
+        if self._pending_session_phase_polls >= 2:
+            self.observed_session_phase_count = wallbox.phases_in_use
+            self._pending_session_phase_count = None
+            self._pending_session_phase_polls = 0
 
     def _resolve_installed_phases(self, wallbox: WallboxState) -> int:
         if wallbox.installed_phases in (1, 3):
             return wallbox.installed_phases
         return 3
 
-    def _resolve_pv_phase_count(self, wallbox: WallboxState) -> int:
+    def _resolve_solar_phase_count(self, mode: ChargeMode, wallbox: WallboxState) -> int:
         if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
             return wallbox.phases_in_use
-        return self._resolve_installed_phases(wallbox)
+        installed_phases = self._resolve_installed_phases(wallbox)
+        if (
+            mode == ChargeMode.SOLAR
+            and wallbox.vehicle_connected
+            and installed_phases == 3
+            and self.observed_session_phase_count in (1, 3)
+        ):
+            return self.observed_session_phase_count
+        if (
+            mode == ChargeMode.SOLAR
+            and not wallbox.charging_active
+            and installed_phases == 3
+            and wallbox.phases_in_use not in (1, 3)
+        ):
+            # Pre-start phase count is unknown; use a conservative 1P assumption
+            # so 1P vehicles on 3P installations can still start on PV.
+            return 1
+        return installed_phases
 
     def _mode_target(
         self,
         mode: ChargeMode,
         sensors: HaSensorSnapshot,
         installed_phases: int,
-        pv_strategy: PvControlStrategy,
+        pv_strategy: SolarControlStrategy,
         wallbox: WallboxState,
     ) -> tuple[float | None, ControlReason]:
         if mode == ChargeMode.NORMAL:
             return self.config.user_limit_a, ControlReason.NORMAL_MODE
         if mode == ChargeMode.FIXED_CURRENT:
             return self.config.fixed_current_a, ControlReason.FIXED_CURRENT_MODE
-        if mode == ChargeMode.PV:
-            pv_result = self._evaluate_pv_mode(
+        if mode == ChargeMode.SOLAR:
+            pv_result = self._evaluate_solar_mode(
                 sensors,
                 installed_phases,
-                normalize_pv_control_strategy(pv_strategy),
+                normalize_solar_control_strategy(pv_strategy),
                 wallbox,
             )
             return pv_result.target_current_a, pv_result.reason
         return self.config.user_limit_a, ControlReason.NORMAL_MODE
 
-    def _evaluate_pv_mode(
+    def _evaluate_solar_mode(
         self,
         sensors: HaSensorSnapshot,
         installed_phases: int,
-        pv_strategy: PvControlStrategy,
+        pv_strategy: SolarControlStrategy,
         wallbox: WallboxState,
-    ) -> PvResult:
-        if pv_strategy == PvControlStrategy.DISABLED:
-            return PvResult(
+    ) -> SolarResult:
+        if pv_strategy == SolarControlStrategy.DISABLED:
+            return SolarResult(
                 target_current_a=None,
                 valid=True,
                 reason=ControlReason.BELOW_MIN_CURRENT,
             )
 
-        surplus_w = self._resolve_surplus_power(sensors)
+        surplus_w = self.resolve_surplus_power(sensors)
 
-        if pv_strategy == PvControlStrategy.MIN_PLUS_SURPLUS:
+        if pv_strategy == SolarControlStrategy.MIN_PLUS_SURPLUS:
             if surplus_w is None:
-                return PvResult(
+                return SolarResult(
                     target_current_a=None,
                     valid=False,
                     reason=ControlReason.SENSOR_UNAVAILABLE,
@@ -239,33 +289,33 @@ class WallboxController:
                 wallbox.voltage_l3_v,
             )
             surplus_target = surplus_w / voltage_sum_v
-            return PvResult(
-                target_current_a=max(self.config.pv_min_current_a, surplus_target),
+            return SolarResult(
+                target_current_a=max(self.config.solar_min_current_a, surplus_target),
                 valid=True,
-                reason=ControlReason.PV_MODE,
+                reason=ControlReason.SOLAR_MODE,
             )
 
-        if pv_strategy == PvControlStrategy.SURPLUS:
-            return self._evaluate_surplus_pv_mode(sensors, installed_phases, surplus_w, wallbox)
-        return PvResult(
+        if pv_strategy == SolarControlStrategy.SURPLUS:
+            return self._evaluate_eco_solar_mode(sensors, installed_phases, surplus_w, wallbox)
+        return SolarResult(
             target_current_a=None,
             valid=True,
             reason=ControlReason.BELOW_MIN_CURRENT,
         )
 
-    def _evaluate_surplus_pv_mode(
+    def _evaluate_eco_solar_mode(
         self,
         sensors: HaSensorSnapshot,
         installed_phases: int,
         surplus_w: float | None,
         wallbox: WallboxState,
-    ) -> PvResult:
+    ) -> SolarResult:
         now = monotonic()
 
         if surplus_w is None:
-            self.pv_state.start_condition_since = None
-            self.pv_state.stop_condition_since = None
-            return PvResult(
+            self.solar_state.start_condition_since = None
+            self.solar_state.stop_condition_since = None
+            return SolarResult(
                 target_current_a=None,
                 valid=False,
                 reason=ControlReason.SENSOR_UNAVAILABLE,
@@ -278,139 +328,96 @@ class WallboxController:
             wallbox.voltage_l3_v,
         )
         target_current = surplus_w / voltage_sum_v
+        min_surplus_power_w = self.config.solar_min_current_a * voltage_sum_v
+        effective_start_threshold_w = max(self.config.solar_start_threshold_w, min_surplus_power_w)
+        effective_stop_threshold_w = max(self.config.solar_stop_threshold_w, min_surplus_power_w)
 
-        if self.pv_state.active:
-            self.pv_state.start_condition_since = None
-            if surplus_w >= self.config.pv_stop_threshold_w:
-                self.pv_state.stop_condition_since = None
-                return PvResult(
-                    target_current_a=max(target_current, self.config.pv_min_current_a),
+        if self.solar_state.active:
+            self.solar_state.start_condition_since = None
+            if surplus_w >= effective_stop_threshold_w:
+                self.solar_state.stop_condition_since = None
+                return SolarResult(
+                    target_current_a=max(target_current, self.config.solar_min_current_a),
                     valid=True,
-                    reason=ControlReason.PV_MODE,
+                    reason=ControlReason.SOLAR_MODE,
                 )
 
-            runtime_elapsed = now - self.pv_state.last_transition_monotonic
-            if runtime_elapsed < self.config.pv_min_runtime_s:
-                return PvResult(
-                    target_current_a=self.config.pv_min_current_a,
+            runtime_elapsed = now - self.solar_state.last_transition_monotonic
+            if runtime_elapsed < self.config.solar_min_runtime_s:
+                return SolarResult(
+                    target_current_a=self.config.solar_min_current_a,
                     valid=True,
-                    reason=ControlReason.PV_MODE,
+                    reason=ControlReason.SOLAR_MODE,
                 )
 
-            if self.pv_state.stop_condition_since is None:
-                self.pv_state.stop_condition_since = now
+            if self.solar_state.stop_condition_since is None:
+                self.solar_state.stop_condition_since = now
 
-            if (now - self.pv_state.stop_condition_since) < self.config.pv_stop_delay_s:
-                return PvResult(
-                    target_current_a=self.config.pv_min_current_a,
+            if (now - self.solar_state.stop_condition_since) < self.config.solar_stop_delay_s:
+                return SolarResult(
+                    target_current_a=self.config.solar_min_current_a,
                     valid=True,
-                    reason=ControlReason.PV_MODE,
+                    reason=ControlReason.SOLAR_MODE,
                 )
 
-            self.pv_state.active = False
-            self.pv_state.stop_condition_since = None
-            self.pv_state.last_transition_monotonic = now
-            self.pv_state.last_stop_monotonic = now
-            return PvResult(
+            self.solar_state.active = False
+            self.solar_state.stop_condition_since = None
+            self.solar_state.last_transition_monotonic = now
+            self.solar_state.last_stop_monotonic = now
+            return SolarResult(
                 target_current_a=None,
                 valid=True,
                 reason=ControlReason.BELOW_MIN_CURRENT,
             )
 
-        self.pv_state.stop_condition_since = None
-        if surplus_w < self.config.pv_start_threshold_w:
-            self.pv_state.start_condition_since = None
-            return PvResult(
+        self.solar_state.stop_condition_since = None
+        if surplus_w < effective_start_threshold_w:
+            self.solar_state.start_condition_since = None
+            return SolarResult(
                 target_current_a=None,
                 valid=True,
                 reason=ControlReason.BELOW_MIN_CURRENT,
             )
 
-        if (now - self.pv_state.last_stop_monotonic) < self.config.pv_min_pause_s:
-            return PvResult(
+        if (now - self.solar_state.last_stop_monotonic) < self.config.solar_min_pause_s:
+            return SolarResult(
                 target_current_a=None,
                 valid=True,
                 reason=ControlReason.BELOW_MIN_CURRENT,
             )
 
-        if self.pv_state.start_condition_since is None:
-            self.pv_state.start_condition_since = now
+        if self.solar_state.start_condition_since is None:
+            self.solar_state.start_condition_since = now
 
-        if (now - self.pv_state.start_condition_since) < self.config.pv_start_delay_s:
-            return PvResult(
+        if (now - self.solar_state.start_condition_since) < self.config.solar_start_delay_s:
+            return SolarResult(
                 target_current_a=None,
                 valid=True,
                 reason=ControlReason.BELOW_MIN_CURRENT,
             )
 
-        self.pv_state.active = True
-        self.pv_state.start_condition_since = None
-        self.pv_state.last_transition_monotonic = now
-        return PvResult(
-            target_current_a=max(target_current, self.config.pv_min_current_a),
+        self.solar_state.active = True
+        self.solar_state.start_condition_since = None
+        self.solar_state.last_transition_monotonic = now
+        return SolarResult(
+            target_current_a=max(target_current, self.config.solar_min_current_a),
             valid=True,
-            reason=ControlReason.PV_MODE,
+            reason=ControlReason.SOLAR_MODE,
         )
 
     @staticmethod
-    def resolve_effective_pv_strategy(
-        base_strategy: PvControlStrategy,
-        until_unplug_strategy: PvOverrideStrategy,
-        pv_until_unplug_active: bool,
-    ) -> PvControlStrategy:
-        base_strategy = normalize_pv_control_strategy(base_strategy)
-        until_unplug_strategy = normalize_pv_override_strategy(until_unplug_strategy)
-        if not pv_until_unplug_active or until_unplug_strategy == PvOverrideStrategy.INHERIT:
+    def resolve_effective_solar_strategy(
+        base_strategy: SolarControlStrategy,
+        until_unplug_strategy: SolarOverrideStrategy,
+        solar_until_unplug_active: bool,
+    ) -> SolarControlStrategy:
+        base_strategy = normalize_solar_control_strategy(base_strategy)
+        until_unplug_strategy = normalize_solar_override_strategy(until_unplug_strategy)
+        if not solar_until_unplug_active or until_unplug_strategy == SolarOverrideStrategy.INHERIT:
             return base_strategy
-        return PvControlStrategy(until_unplug_strategy.value)
+        return SolarControlStrategy(until_unplug_strategy.value)
 
-    def resolve_pv_phase_target(
-        self,
-        mode: ChargeMode,
-        wallbox: WallboxState,
-        sensors: HaSensorSnapshot,
-    ) -> int | None:
-        if mode != ChargeMode.PV:
-            return None
-        if self.config.pv_phase_switching_mode != PvPhaseSwitchingMode.AUTOMATIC_1P3P:
-            return None
-        if wallbox.phase_switch_mode_raw not in (0, 1):
-            return None
-
-        surplus_w = self._resolve_surplus_power(sensors)
-        if surplus_w is None:
-            return None
-
-        current_phases = self._resolve_requested_phase_mode(wallbox)
-        if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
-            current_phases = wallbox.phases_in_use
-
-        if current_phases is None:
-            return None
-
-        min_1p_w = self.config.pv_min_current_a * voltage_sum_for_phases(
-            1,
-            wallbox.voltage_l1_v,
-            wallbox.voltage_l2_v,
-            wallbox.voltage_l3_v,
-        )
-        min_3p_w = self.config.pv_min_current_a * voltage_sum_for_phases(
-            3,
-            wallbox.voltage_l1_v,
-            wallbox.voltage_l2_v,
-            wallbox.voltage_l3_v,
-        )
-        hysteresis_w = self.config.pv_phase_switching_hysteresis_w
-        switch_up_w = min_3p_w + hysteresis_w
-        switch_down_w = max(min_1p_w, min_3p_w - hysteresis_w)
-
-        if current_phases == 1 and surplus_w >= switch_up_w:
-            return 3
-        if current_phases == 3 and min_1p_w <= surplus_w <= switch_down_w:
-            return 1
-        return None
-
-    def _resolve_surplus_power(self, sensors: HaSensorSnapshot) -> float | None:
+    def resolve_surplus_power(self, sensors: HaSensorSnapshot) -> float | None:
         if sensors.surplus_power_w is not None:
             return max(0.0, sensors.surplus_power_w)
 
@@ -454,14 +461,6 @@ class WallboxController:
             return None, dominant_limit_reason
 
         return round(final_target, 1), dominant_limit_reason
-
-    @staticmethod
-    def _resolve_requested_phase_mode(wallbox: WallboxState) -> int | None:
-        if wallbox.phase_switch_mode_raw == 0:
-            return 1
-        if wallbox.phase_switch_mode_raw == 1:
-            return 3
-        return None
 
     def _should_write_current(
         self,

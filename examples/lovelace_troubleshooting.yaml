@@ -8,8 +8,6 @@ cards:
         name: Charging On/Off
       - entity: select.webasto_unite_charge_mode
         name: Charge Mode
-      - entity: select.webasto_unite_phase_switch
-        name: Manual Phase Switch
       - entity: sensor.webasto_unite_operating_state
         name: Charging Behavior
       - entity: sensor.webasto_unite_effective_mode
@@ -22,8 +20,6 @@ cards:
         name: Current Limit
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
-      - entity: sensor.webasto_unite_capability_summary
-        name: Capability Summary
       - entity: sensor.webasto_unite_control_reason
         name: Control Reason
       - entity: sensor.webasto_unite_dominant_limit
@@ -41,14 +37,6 @@ cards:
         name: Modbus Connected
       - entity: binary_sensor.webasto_unite_keepalive_overdue
         name: Keepalive Overdue
-      - entity: sensor.webasto_unite_keepalive_age
-        name: Keepalive Age
-      - entity: sensor.webasto_unite_keepalive_sent_count
-        name: Keepalive Sent Count
-      - entity: sensor.webasto_unite_keepalive_write_failures
-        name: Keepalive Write Failures
-      - entity: sensor.webasto_unite_pending_write
-        name: Pending Write
       - entity: sensor.webasto_unite_client_error
         name: Client Error
 
@@ -72,23 +60,15 @@ cards:
         name: Current L3
 
   - type: entities
-    title: PV & Phase Switching
+    title: PV
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_pv_surplus_input
         name: PV Surplus Input
-      - entity: select.webasto_unite_phase_switch
-        name: Manual Phase Switch
-      - entity: sensor.webasto_unite_phase_switch_decision
-        name: Phase Switch Decision
-      - entity: sensor.webasto_unite_phase_switch_count
-        name: Phase Switch Commands
 
   - type: entities
     title: Charger Context
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_firmware_version
-        name: Firmware Version
-      - entity: sensor.webasto_unite_charger_configured_phases
-        name: Charger Configured Phases
+      - entity: sensor.webasto_unite_equipment_state
+        name: Equipment State

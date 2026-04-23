@@ -28,7 +28,6 @@ from .registers import (
     MODEL,
     MIN_CURRENT_HW_A,
     NUMBER_OF_PHASES,
-    PHASE_SWITCH_MODE,
     SAFE_CURRENT_A,
     SESSION_MAX_CURRENT_A,
     SERIAL_NUMBER,
@@ -61,46 +60,32 @@ class WallboxReader:
             wallbox.charge_point_power_w = await self.client.read(CHARGE_POINT_POWER_W)
             number_of_phases = int(await self.client.read(NUMBER_OF_PHASES))
 
-            charge_point_state = await self.client.read(CHARGE_POINT_STATE)
-            charge_state = await self.client.read(CHARGE_STATE)
-            evse_state = await self.client.read(EVSE_STATE)
-            cable_state = await self.client.read(CABLE_STATE)
+            # 1000..1037 contains the high-frequency runtime telemetry we poll each cycle.
+            telemetry_base = 1000
+            telemetry = await self.client.read_input_registers_block(telemetry_base, 38)
 
-            current_l1 = await self.client.read(CURRENT_L1_A)
-            current_l2 = await self.client.read(CURRENT_L2_A)
-            current_l3 = await self.client.read(CURRENT_L3_A)
-            voltage_l1 = await self.client.read(VOLTAGE_L1_V)
-            voltage_l2 = await self.client.read(VOLTAGE_L2_V)
-            voltage_l3 = await self.client.read(VOLTAGE_L3_V)
-            active_power_l1 = await self.client.read(ACTIVE_POWER_L1_W)
-            active_power_l2 = await self.client.read(ACTIVE_POWER_L2_W)
-            active_power_l3 = await self.client.read(ACTIVE_POWER_L3_W)
-
-            wallbox.charge_point_state_raw = int(charge_point_state)
-            wallbox.charge_state_raw = int(charge_state)
-            wallbox.evse_state_raw = int(evse_state)
-            wallbox.cable_state_raw = int(cable_state)
-            wallbox.error_code = int(await self.client.read(ERROR_CODE))
-            wallbox.active_power_w = await self.client.read(TOTAL_CHARGE_ACTIVE_POWER_W)
-            wallbox.active_power_l1_w = active_power_l1
-            wallbox.active_power_l2_w = active_power_l2
-            wallbox.active_power_l3_w = active_power_l3
-            wallbox.phase_currents = PhaseCurrents(l1=current_l1, l2=current_l2, l3=current_l3)
-            wallbox.voltage_l1_v = voltage_l1
-            wallbox.voltage_l2_v = voltage_l2
-            wallbox.voltage_l3_v = voltage_l3
+            wallbox.charge_point_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_POINT_STATE.address)
+            wallbox.charge_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_STATE.address)
+            wallbox.evse_state_raw = self._block_u16(telemetry, telemetry_base, EVSE_STATE.address)
+            wallbox.cable_state_raw = self._block_u16(telemetry, telemetry_base, CABLE_STATE.address)
+            wallbox.error_code = self._block_u16(telemetry, telemetry_base, ERROR_CODE.address)
+            wallbox.active_power_w = self._block_u32(telemetry, telemetry_base, TOTAL_CHARGE_ACTIVE_POWER_W.address)
+            wallbox.active_power_l1_w = self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L1_W.address)
+            wallbox.active_power_l2_w = self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L2_W.address)
+            wallbox.active_power_l3_w = self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L3_W.address)
+            wallbox.phase_currents = PhaseCurrents(
+                l1=self._block_u16(telemetry, telemetry_base, CURRENT_L1_A.address) * CURRENT_L1_A.scale,
+                l2=self._block_u16(telemetry, telemetry_base, CURRENT_L2_A.address) * CURRENT_L2_A.scale,
+                l3=self._block_u16(telemetry, telemetry_base, CURRENT_L3_A.address) * CURRENT_L3_A.scale,
+            )
+            wallbox.voltage_l1_v = self._block_u16(telemetry, telemetry_base, VOLTAGE_L1_V.address)
+            wallbox.voltage_l2_v = self._block_u16(telemetry, telemetry_base, VOLTAGE_L2_V.address)
+            wallbox.voltage_l3_v = self._block_u16(telemetry, telemetry_base, VOLTAGE_L3_V.address)
+            wallbox.energy_meter_kwh = self._block_u32(telemetry, telemetry_base, ENERGY_METER_KWH.address) * ENERGY_METER_KWH.scale
             wallbox.actual_current_a = wallbox.phase_currents.max_present()
             wallbox.phases_in_use = wallbox.phase_currents.active_phase_count()
             wallbox.charge_point_phase_count = 1 if number_of_phases == 0 else 3
-            try:
-                wallbox.phase_switch_mode_raw = int(await self.client.read(PHASE_SWITCH_MODE))
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Optional phase switch register 405 unavailable: %s", err)
-                wallbox.phase_switch_mode_raw = None
-            if wallbox.phase_switch_mode_raw in (0, 1):
-                wallbox.installed_phases = 1 if wallbox.phase_switch_mode_raw == 0 else 3
-            else:
-                wallbox.installed_phases = 1 if configured_installed_phases == "1p" else 3
+            wallbox.installed_phases = 1 if configured_installed_phases == "1p" else 3
             wallbox.session_max_current_a = self._normalize_optional_current_limit_a(
                 await self.client.read(SESSION_MAX_CURRENT_A)
             )
@@ -117,16 +102,21 @@ class WallboxReader:
                 wallbox.ev_max_current_a = None
             wallbox.safe_current_a = await self.client.read(SAFE_CURRENT_A)
             wallbox.communication_timeout_s = int(await self.client.read(COMM_TIMEOUT_S))
-            wallbox.session_energy_kwh = await self.client.read(SESSION_ENERGY_KWH)
-            wallbox.energy_meter_kwh = await self.client.read(ENERGY_METER_KWH)
-            wallbox.session_start_time = self.format_clock_hhmmss(await self.client.read(SESSION_START_TIME))
-            wallbox.session_duration_s = int(await self.client.read(SESSION_DURATION_S))
-            wallbox.session_end_time = self.format_clock_hhmmss(await self.client.read(SESSION_END_TIME))
+            session_base = 1502
+            session_block = await self.client.read_input_registers_block(session_base, 12)
+            wallbox.session_energy_kwh = self._block_u32(session_block, session_base, SESSION_ENERGY_KWH.address) * SESSION_ENERGY_KWH.scale
+            wallbox.session_start_time = self.format_clock_hhmmss(
+                self._block_u32(session_block, session_base, SESSION_START_TIME.address)
+            )
+            wallbox.session_duration_s = self._block_u32(session_block, session_base, SESSION_DURATION_S.address)
+            wallbox.session_end_time = self.format_clock_hhmmss(
+                self._block_u32(session_block, session_base, SESSION_END_TIME.address)
+            )
             wallbox.current_limit_a = await self.client.read(SET_CHARGE_CURRENT_A)
             wallbox.life_bit_seen = int(await self.client.read(LIFE_BIT))
 
-            wallbox.charging_state = self.map_charging_state(charge_point_state)
-            wallbox.vehicle_connected = int(cable_state) >= 2
+            wallbox.charging_state = self.map_charging_state(wallbox.charge_point_state_raw)
+            wallbox.vehicle_connected = int(wallbox.cable_state_raw or 0) >= 2
             wallbox.update_charging_active()
             wallbox.available = True
             wallbox.connection_state = ConnectionState.CONNECTED
@@ -136,6 +126,15 @@ class WallboxReader:
             wallbox.available = False
             wallbox.connection_state = ConnectionState.ERROR
             raise
+
+    @staticmethod
+    def _block_u16(block: list[int], base_address: int, address: int) -> int:
+        return int(block[address - base_address])
+
+    @staticmethod
+    def _block_u32(block: list[int], base_address: int, address: int) -> int:
+        offset = address - base_address
+        return int((block[offset] << 16) | block[offset + 1])
 
     @staticmethod
     def format_clock_hhmmss(raw_value: float | int | None) -> str | None:

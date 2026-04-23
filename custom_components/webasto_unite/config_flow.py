@@ -10,65 +10,54 @@ from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, KeepaliveMode, PvControlStrategy, PvInputModel, PvOverrideStrategy, PvPhaseSwitchingMode, normalize_pv_control_strategy, normalize_pv_override_strategy
+from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, SolarControlStrategy, SolarInputModel, SolarOverrideStrategy, normalize_charge_mode, normalize_solar_control_strategy, normalize_solar_override_strategy
+
+
+def _solar_mode_label(strategy: str | SolarControlStrategy) -> str:
+    normalized = normalize_solar_control_strategy(strategy)
+    if normalized == SolarControlStrategy.ECO_SOLAR:
+        return "Eco Solar"
+    if normalized == SolarControlStrategy.SMART_SOLAR:
+        return "Smart Solar"
+    return "Solar"
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
     {"value": PHASE_MODE_1P, "label": "1 Phase"},
     {"value": PHASE_MODE_3P, "label": "3 Phases"},
 ]
-CONTROL_MODE_OPTIONS = [mode.value for mode in ControlMode]
 CONTROL_MODE_SELECTOR_OPTIONS = [
-    {"value": ControlMode.MANAGED_CONTROL.value, "label": "On"},
-    {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Off"},
+    {"value": ControlMode.MANAGED_CONTROL.value, "label": "Enabled"},
+    {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Monitoring Only"},
 ]
 STARTUP_CHARGE_MODE_SELECTOR_OPTIONS = [
     {"value": ChargeMode.OFF.value, "label": "Off"},
     {"value": ChargeMode.NORMAL.value, "label": "Normal"},
-    {"value": ChargeMode.PV.value, "label": "PV"},
+    {"value": ChargeMode.SOLAR.value, "label": "Solar"},
     {"value": ChargeMode.FIXED_CURRENT.value, "label": "Fixed Current"},
 ]
-KEEPALIVE_MODE_SELECTOR_OPTIONS = [
-    {"value": KeepaliveMode.AUTO.value, "label": "Auto (Recommended)"},
-    {"value": KeepaliveMode.FORCED.value, "label": "Always Send Keepalive"},
-    {"value": KeepaliveMode.DISABLED.value, "label": "Disable Keepalive"},
-]
-DLB_INPUT_MODEL_SELECTOR_OPTIONS = [
-    {"value": DlbInputModel.DISABLED.value, "label": "Disabled"},
-    {"value": DlbInputModel.PHASE_CURRENTS.value, "label": "Phase Current Sensors (Recommended)"},
-    {"value": DlbInputModel.GRID_POWER.value, "label": "Grid Power Sensor"},
-]
 DLB_SENSOR_SCOPE_SELECTOR_OPTIONS = [
-    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Charger Excluded"},
-    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Charger Included"},
+    {"value": DlbSensorScope.LOAD_EXCLUDING_CHARGER.value, "label": "Exclude Charger Load"},
+    {"value": DlbSensorScope.TOTAL_INCLUDING_CHARGER.value, "label": "Include Charger Load"},
 ]
-PV_INPUT_MODEL_SELECTOR_OPTIONS = [
-    {"value": PvInputModel.SURPLUS_SENSOR.value, "label": "Use a Surplus Power Sensor"},
-    {"value": PvInputModel.GRID_POWER_DERIVED.value, "label": "Use Signed Grid Power Sensor"},
+SOLAR_INPUT_MODEL_SELECTOR_OPTIONS = [
+    {"value": SolarInputModel.SURPLUS_SENSOR.value, "label": "Solar Surplus Sensor"},
+    {"value": SolarInputModel.GRID_POWER_DERIVED.value, "label": "Signed Grid Power Sensor"},
 ]
-PV_CONTROL_STRATEGY_OPTIONS = [
-    {"value": PvControlStrategy.DISABLED.value, "label": "Disabled"},
-    {"value": PvControlStrategy.SURPLUS.value, "label": "Surplus Only"},
-    {"value": PvControlStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + Surplus"},
+SOLAR_CONTROL_STRATEGY_OPTIONS = [
+    {"value": SolarControlStrategy.DISABLED.value, "label": "Disabled"},
+    {"value": SolarControlStrategy.ECO_SOLAR.value, "label": "Eco Solar"},
+    {"value": SolarControlStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
 ]
-PV_OVERRIDE_STRATEGY_OPTIONS = [
-    {"value": PvOverrideStrategy.INHERIT.value, "label": "Same as PV Control Strategy"},
-    {"value": PvOverrideStrategy.SURPLUS.value, "label": "Surplus Only"},
-    {"value": PvOverrideStrategy.MIN_PLUS_SURPLUS.value, "label": "Minimum + Surplus"},
+SOLAR_OVERRIDE_STRATEGY_OPTIONS = [
+    {"value": SolarOverrideStrategy.INHERIT.value, "label": "Use Solar Strategy"},
+    {"value": SolarOverrideStrategy.ECO_SOLAR.value, "label": "Eco Solar"},
+    {"value": SolarOverrideStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
 ]
-PV_PHASE_SWITCHING_MODE_OPTIONS = [
-    {"value": PvPhaseSwitchingMode.DISABLED.value, "label": "Disabled"},
-    {"value": PvPhaseSwitchingMode.MANUAL_ONLY.value, "label": "Manual Only"},
-    {"value": PvPhaseSwitchingMode.AUTOMATIC_1P3P.value, "label": "Automatic 1P/3P"},
-]
-
 MIN_CURRENT_A = 6.0
 MAX_CURRENT_A = 32.0
 MIN_POWER_W = 0.0
 MAX_POWER_W = 250_000.0
-MAX_PHASE_SWITCHING_HYSTERESIS_W = 10_000.0
-MAX_PHASE_SWITCHING_MIN_INTERVAL_S = 7_200.0
-MAX_PHASE_SWITCHING_PER_SESSION = 50
 MIN_SECONDS = 0.1
 MAX_SECONDS = 300.0
 MAX_RETRIES = 10
@@ -90,9 +79,12 @@ def _bounded_float(min_value: float, max_value: float, field_name: str):
 def _bounded_int(min_value: int, max_value: int, field_name: str):
     def _validate(value: Any) -> int:
         try:
-            number = int(value)
+            numeric = float(value)
         except (TypeError, ValueError) as err:
             raise vol.Invalid(f"{field_name} must be an integer") from err
+        if not numeric.is_integer():
+            raise vol.Invalid(f"{field_name} must be a whole number")
+        number = int(numeric)
         if not min_value <= number <= max_value:
             raise vol.Invalid(f"{field_name} must be between {min_value} and {max_value}")
         return number
@@ -137,10 +129,10 @@ def _compact_section_defaults(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
-    min_current = float(options[CONF_MIN_CURRENT])
-    max_current = float(options[CONF_MAX_CURRENT])
-    user_limit = float(options[CONF_USER_LIMIT])
-    safe_current = float(options[CONF_SAFE_CURRENT])
+    min_current = int(options[CONF_MIN_CURRENT])
+    max_current = int(options[CONF_MAX_CURRENT])
+    user_limit = int(options[CONF_USER_LIMIT])
+    safe_current = int(options[CONF_SAFE_CURRENT])
 
     if min_current > max_current:
         raise vol.Invalid(f"{CONF_MIN_CURRENT} must be less than or equal to {CONF_MAX_CURRENT}")
@@ -148,10 +140,10 @@ def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
         raise vol.Invalid(f"{CONF_USER_LIMIT} must be between {CONF_MIN_CURRENT} and {CONF_MAX_CURRENT}")
     if not min_current <= safe_current <= max_current:
         raise vol.Invalid(f"{CONF_SAFE_CURRENT} must be between {CONF_MIN_CURRENT} and {CONF_MAX_CURRENT}")
-    startup_mode = options.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE)
-    if startup_mode not in {mode.value for mode in ChargeMode}:
-        raise vol.Invalid(f"{CONF_STARTUP_CHARGE_MODE} must be a supported charge mode")
-    options[CONF_STARTUP_CHARGE_MODE] = startup_mode
+    options[CONF_STARTUP_CHARGE_MODE] = normalize_charge_mode(
+        options.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE),
+        options.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value),
+    ).value
     return options
 
 
@@ -173,70 +165,75 @@ def _validate_connection_data(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_dlb_options(options: dict[str, Any], installed_phases: str) -> dict[str, Any]:
-    model = options[CONF_DLB_INPUT_MODEL]
-    if model == DlbInputModel.DISABLED.value:
+    dlb_enabled_raw = options.get(CONF_DLB_ENABLED)
+    if dlb_enabled_raw is None:
+        dlb_enabled = options.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value) == DlbInputModel.PHASE_CURRENTS.value
+    else:
+        dlb_enabled = bool(dlb_enabled_raw)
+    if not dlb_enabled:
         return options
-    if model == DlbInputModel.PHASE_CURRENTS.value:
-        if installed_phases == PHASE_MODE_1P:
-            if not options.get(CONF_DLB_L1_SENSOR):
-                raise vol.Invalid("A DLB L1 phase current sensor is required for 1p phase_currents mode")
-        else:
-            missing = [key for key in (CONF_DLB_L1_SENSOR, CONF_DLB_L2_SENSOR, CONF_DLB_L3_SENSOR) if not options.get(key)]
-            if missing:
-                raise vol.Invalid("DLB L1, L2 and L3 phase current sensors are required for 3p phase_currents mode")
-    if model == DlbInputModel.GRID_POWER.value:
-        if installed_phases == PHASE_MODE_3P:
-            raise vol.Invalid("DLB grid power mode is only supported for 1p charger configurations")
-        if not options.get(CONF_DLB_GRID_POWER_SENSOR):
-            raise vol.Invalid("A DLB grid power sensor is required for grid_power mode")
+    if installed_phases == PHASE_MODE_1P:
+        if not options.get(CONF_DLB_L1_SENSOR):
+            raise vol.Invalid("A DLB L1 phase current sensor is required for 1p DLB")
+    else:
+        missing = [key for key in (CONF_DLB_L1_SENSOR, CONF_DLB_L2_SENSOR, CONF_DLB_L3_SENSOR) if not options.get(key)]
+        if missing:
+            raise vol.Invalid("DLB L1, L2 and L3 phase current sensors are required for 3p DLB")
     return options
 
 
-def _validate_pv_options(options: dict[str, Any]) -> dict[str, Any]:
-    options[CONF_PV_CONTROL_STRATEGY] = normalize_pv_control_strategy(
-        options.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
+def _validate_solar_options(options: dict[str, Any]) -> dict[str, Any]:
+    options[CONF_SOLAR_CONTROL_STRATEGY] = normalize_solar_control_strategy(
+        options.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)
     ).value
-    options[CONF_PV_UNTIL_UNPLUG_STRATEGY] = normalize_pv_override_strategy(
-        options.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)
+    options[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(
+        options.get(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)
     ).value
-    start_threshold = float(options[CONF_PV_START_THRESHOLD])
-    stop_threshold = float(options[CONF_PV_STOP_THRESHOLD])
-    pv_min_current = float(options[CONF_PV_MIN_CURRENT])
-    fixed_current = float(options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A))
-    phase_switch_max = int(options.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION))
+    start_threshold = float(options[CONF_SOLAR_START_THRESHOLD])
+    stop_threshold = float(options[CONF_SOLAR_STOP_THRESHOLD])
+    solar_min_current = int(options[CONF_SOLAR_MIN_CURRENT])
+    fixed_current = int(options.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A))
+    max_current = int(options.get(CONF_MAX_CURRENT, MAX_CURRENT_A))
 
     if stop_threshold > start_threshold:
-        raise vol.Invalid(f"{CONF_PV_STOP_THRESHOLD} must be less than or equal to {CONF_PV_START_THRESHOLD}")
-    if pv_min_current > MAX_CURRENT_A:
-        raise vol.Invalid(f"{CONF_PV_MIN_CURRENT} must be less than or equal to {MAX_CURRENT_A}")
+        raise vol.Invalid(f"{CONF_SOLAR_STOP_THRESHOLD} must be less than or equal to {CONF_SOLAR_START_THRESHOLD}")
+    if solar_min_current > MAX_CURRENT_A:
+        raise vol.Invalid(f"{CONF_SOLAR_MIN_CURRENT} must be less than or equal to {MAX_CURRENT_A}")
+    if solar_min_current > max_current:
+        raise vol.Invalid(f"{CONF_SOLAR_MIN_CURRENT} must be less than or equal to {CONF_MAX_CURRENT}")
     if not MIN_CURRENT_A <= fixed_current <= MAX_CURRENT_A:
         raise vol.Invalid(f"{CONF_FIXED_CURRENT} must be between {MIN_CURRENT_A} and {MAX_CURRENT_A}")
-    if not 1 <= phase_switch_max <= MAX_PHASE_SWITCHING_PER_SESSION:
-        raise vol.Invalid(f"{CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION} must be between 1 and {MAX_PHASE_SWITCHING_PER_SESSION}")
+    if fixed_current > max_current:
+        raise vol.Invalid(f"{CONF_FIXED_CURRENT} must be less than or equal to {CONF_MAX_CURRENT}")
 
-    strategy = options[CONF_PV_CONTROL_STRATEGY]
+    strategy = options[CONF_SOLAR_CONTROL_STRATEGY]
     if strategy in (
-        PvControlStrategy.SURPLUS.value,
-        PvControlStrategy.MIN_PLUS_SURPLUS.value,
+        SolarControlStrategy.SURPLUS.value,
+        SolarControlStrategy.MIN_PLUS_SURPLUS.value,
     ):
-        model = options[CONF_PV_INPUT_MODEL]
-        if model == PvInputModel.SURPLUS_SENSOR.value and not options.get(CONF_PV_SURPLUS_SENSOR):
-            raise vol.Invalid("A PV surplus sensor is required for surplus_sensor mode")
-        if model == PvInputModel.GRID_POWER_DERIVED.value and not (
-            options.get(CONF_DLB_GRID_POWER_SENSOR)
+        model = options[CONF_SOLAR_INPUT_MODEL]
+        if model == SolarInputModel.SURPLUS_SENSOR.value and not options.get(CONF_SOLAR_SURPLUS_SENSOR):
+            raise vol.Invalid("A solar surplus sensor is required for surplus_sensor mode")
+        if model == SolarInputModel.GRID_POWER_DERIVED.value and not (
+            options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR)
         ):
-            raise vol.Invalid("A DLB grid power sensor is required when PV mode derives surplus from grid power")
+            raise vol.Invalid("A grid power sensor is required when solar mode derives surplus from grid power")
     return options
+
+
+_validate_pv_options = _validate_solar_options
 
 
 def _validation_error_key(err: Exception) -> str:
     message = str(err)
-    if CONF_MIN_CURRENT in message and CONF_MAX_CURRENT in message:
-        return "min_exceeds_max"
     if CONF_USER_LIMIT in message:
         return "user_limit_out_of_range"
     if CONF_SAFE_CURRENT in message:
         return "safe_current_out_of_range"
+    if CONF_SOLAR_MIN_CURRENT in message and CONF_MAX_CURRENT in message:
+        return "solar_min_current_out_of_range"
+    if CONF_MIN_CURRENT in message and CONF_MAX_CURRENT in message:
+        return "min_exceeds_max"
     if CONF_HOST in message:
         return "host_required"
     if CONF_PORT in message:
@@ -251,20 +248,14 @@ def _validation_error_key(err: Exception) -> str:
         return "dlb_phase_sensor_required"
     if "DLB L1 phase current sensor is required" in message:
         return "dlb_phase_sensor_required"
-    if "DLB grid power sensor is required for grid_power mode" in message:
-        return "dlb_grid_sensor_required"
-    if "DLB grid power mode is only supported for 1p" in message:
-        return "dlb_grid_power_3p_not_supported"
-    if CONF_PV_STOP_THRESHOLD in message and CONF_PV_START_THRESHOLD in message:
-        return "pv_threshold_order"
-    if "PV surplus sensor is required" in message:
-        return "pv_surplus_sensor_required"
-    if "PV mode derives surplus from grid power" in message:
-        return "pv_grid_sensor_required"
+    if CONF_SOLAR_STOP_THRESHOLD in message and CONF_SOLAR_START_THRESHOLD in message:
+        return "solar_threshold_order"
+    if "solar surplus sensor is required" in message:
+        return "solar_surplus_sensor_required"
+    if "grid power sensor is required when solar mode derives surplus" in message:
+        return "solar_grid_sensor_required"
     if CONF_FIXED_CURRENT in message:
         return "fixed_current_out_of_range"
-    if CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION in message:
-        return "phase_switch_limit_out_of_range"
     return "invalid_config"
 
 
@@ -314,21 +305,30 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
 
     def _current_values(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         current = {**self._config_entry.data, **self.options}
+        flattened: dict[str, Any] = {}
         if user_input:
-            current.update(self._flatten_section_input(user_input))
-        if CONF_PV_CONTROL_STRATEGY in current:
-            current[CONF_PV_CONTROL_STRATEGY] = normalize_pv_control_strategy(current[CONF_PV_CONTROL_STRATEGY]).value
-        if CONF_PV_UNTIL_UNPLUG_STRATEGY in current:
-            current[CONF_PV_UNTIL_UNPLUG_STRATEGY] = normalize_pv_override_strategy(current[CONF_PV_UNTIL_UNPLUG_STRATEGY]).value
+            flattened = self._flatten_section_input(user_input)
+            current.update(flattened)
+        if CONF_SOLAR_GRID_POWER_SENSOR not in current and CONF_DLB_GRID_POWER_SENSOR in current:
+            current[CONF_SOLAR_GRID_POWER_SENSOR] = current.get(CONF_DLB_GRID_POWER_SENSOR)
+        if current.get(CONF_DLB_INPUT_MODEL) == "grid_power":
+            current[CONF_DLB_INPUT_MODEL] = DlbInputModel.DISABLED.value
+        if CONF_DLB_ENABLED not in flattened and CONF_DLB_INPUT_MODEL in flattened:
+            current[CONF_DLB_ENABLED] = (
+                flattened[CONF_DLB_INPUT_MODEL] == DlbInputModel.PHASE_CURRENTS.value
+            )
+        if CONF_DLB_ENABLED not in current:
+            model = current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)
+            current[CONF_DLB_ENABLED] = model == DlbInputModel.PHASE_CURRENTS.value
+        if CONF_SOLAR_CONTROL_STRATEGY in current:
+            current[CONF_SOLAR_CONTROL_STRATEGY] = normalize_solar_control_strategy(current[CONF_SOLAR_CONTROL_STRATEGY]).value
+        if CONF_SOLAR_UNTIL_UNPLUG_STRATEGY in current:
+            current[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(current[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
         return current
 
     def _build_init_schema(self, current: dict[str, Any]) -> vol.Schema:
-        installed_phases = current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)
         control_mode = current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)
         managed_control = control_mode == ControlMode.MANAGED_CONTROL.value
-        dlb_model = current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)
-        pv_strategy = current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)
-        pv_phase_mode = current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)
         connection_defaults = {
             CONF_HOST: current.get(CONF_HOST, ""),
             CONF_PORT: current.get(CONF_PORT, DEFAULT_PORT),
@@ -354,9 +354,26 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Optional(CONF_INSTALLED_PHASES, default=current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P)): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SELECTOR_OPTIONS)),
                 vol.Optional(CONF_CONTROL_MODE, default=current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=CONTROL_MODE_SELECTOR_OPTIONS)),
-                vol.Optional(CONF_STARTUP_CHARGE_MODE, default=current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=STARTUP_CHARGE_MODE_SELECTOR_OPTIONS)),
-                vol.Optional(CONF_USER_LIMIT, default=current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-                vol.Optional(CONF_SAFE_CURRENT, default=current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+                vol.Optional(
+                    CONF_STARTUP_CHARGE_MODE,
+                    default=current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"value": ChargeMode.OFF.value, "label": "Off"},
+                            {"value": ChargeMode.NORMAL.value, "label": "Normal"},
+                            {
+                                "value": ChargeMode.SOLAR.value,
+                                "label": _solar_mode_label(
+                                    current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)
+                                ),
+                            },
+                            {"value": ChargeMode.FIXED_CURRENT.value, "label": "Fixed Current"},
+                        ]
+                    )
+                ),
+                vol.Optional(CONF_USER_LIMIT, default=current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
+                vol.Optional(CONF_SAFE_CURRENT, default=current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
             }
         )
         session_override_fields: dict[Any, Any] = {}
@@ -364,84 +381,70 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         if managed_control:
             session_override_defaults = {
                 CONF_FIXED_CURRENT: current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A),
-                CONF_PV_UNTIL_UNPLUG_STRATEGY: current.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value),
+                CONF_SOLAR_UNTIL_UNPLUG_STRATEGY: current.get(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value),
             }
             session_override_fields = {
-                vol.Optional(CONF_FIXED_CURRENT, default=current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
-                vol.Optional(CONF_PV_UNTIL_UNPLUG_STRATEGY, default=current.get(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_OVERRIDE_STRATEGY_OPTIONS)),
+                vol.Optional(CONF_FIXED_CURRENT, default=current.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
+                vol.Optional(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, default=current.get(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_OVERRIDE_STRATEGY_OPTIONS)),
             }
 
         dlb_fields: dict[Any, Any] = {
-            vol.Optional(CONF_DLB_INPUT_MODEL, default=current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_INPUT_MODEL_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_DLB_ENABLED, default=current.get(CONF_DLB_ENABLED, False)): bool,
             vol.Optional(CONF_DLB_SENSOR_SCOPE, default=current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_DLB_REQUIRE_UNITS, default=current.get(CONF_DLB_REQUIRE_UNITS, False)): bool,
             vol.Optional(CONF_MAIN_FUSE, default=current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
             vol.Optional(CONF_SAFETY_MARGIN, default=current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
             _optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), current.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
+            _optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), current.get(CONF_DLB_L2_SENSOR)): _entity_selector(),
+            _optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), current.get(CONF_DLB_L3_SENSOR)): _entity_selector(),
         }
         dlb_defaults: dict[str, Any] = {
-            CONF_DLB_INPUT_MODEL: current.get(CONF_DLB_INPUT_MODEL, DlbInputModel.DISABLED.value),
+            CONF_DLB_ENABLED: current.get(CONF_DLB_ENABLED, False),
             CONF_DLB_SENSOR_SCOPE: current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value),
+            CONF_DLB_REQUIRE_UNITS: current.get(CONF_DLB_REQUIRE_UNITS, False),
             CONF_MAIN_FUSE: current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A),
             CONF_SAFETY_MARGIN: current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A),
             CONF_DLB_L1_SENSOR: current.get(CONF_DLB_L1_SENSOR),
+            CONF_DLB_L2_SENSOR: current.get(CONF_DLB_L2_SENSOR),
+            CONF_DLB_L3_SENSOR: current.get(CONF_DLB_L3_SENSOR),
         }
-        if installed_phases == PHASE_MODE_3P:
-            dlb_defaults[CONF_DLB_L2_SENSOR] = current.get(CONF_DLB_L2_SENSOR)
-            dlb_defaults[CONF_DLB_L3_SENSOR] = current.get(CONF_DLB_L3_SENSOR)
-            dlb_fields[_optional_field(CONF_DLB_L2_SENSOR, _entity_selector(), current.get(CONF_DLB_L2_SENSOR))] = _entity_selector()
-            dlb_fields[_optional_field(CONF_DLB_L3_SENSOR, _entity_selector(), current.get(CONF_DLB_L3_SENSOR))] = _entity_selector()
-        dlb_defaults[CONF_DLB_GRID_POWER_SENSOR] = current.get(CONF_DLB_GRID_POWER_SENSOR)
         dlb_defaults = _compact_section_defaults(dlb_defaults)
-        dlb_fields[_optional_field(CONF_DLB_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_DLB_GRID_POWER_SENSOR))] = _entity_selector()
-        pv_fields: dict[Any, Any] = {
-            vol.Optional(CONF_PV_CONTROL_STRATEGY, default=current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_CONTROL_STRATEGY_OPTIONS)),
-            vol.Optional(CONF_PV_INPUT_MODEL, default=current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_INPUT_MODEL_SELECTOR_OPTIONS)),
-            _optional_field(CONF_PV_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_PV_SURPLUS_SENSOR)): _entity_selector(),
-            vol.Optional(CONF_PV_START_THRESHOLD, default=current.get(CONF_PV_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
-            vol.Optional(CONF_PV_STOP_THRESHOLD, default=current.get(CONF_PV_STOP_THRESHOLD, 1200.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
-            vol.Optional(CONF_PV_START_DELAY, default=current.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
-            vol.Optional(CONF_PV_STOP_DELAY, default=current.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
-            vol.Optional(CONF_PV_MIN_RUNTIME, default=current.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
-            vol.Optional(CONF_PV_MIN_PAUSE, default=current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
-            vol.Optional(CONF_PV_MIN_CURRENT, default=current.get(CONF_PV_MIN_CURRENT, 6.0)): _float_selector(MIN_CURRENT_A, MAX_CURRENT_A, 0.1),
+        solar_fields: dict[Any, Any] = {
+            vol.Optional(CONF_SOLAR_CONTROL_STRATEGY, default=current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_CONTROL_STRATEGY_OPTIONS)),
+            vol.Optional(CONF_SOLAR_INPUT_MODEL, default=current.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_INPUT_MODEL_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_SOLAR_REQUIRE_UNITS, default=current.get(CONF_SOLAR_REQUIRE_UNITS, False)): bool,
+            _optional_field(CONF_SOLAR_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_SOLAR_SURPLUS_SENSOR)): _entity_selector(),
+            _optional_field(CONF_SOLAR_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_SOLAR_GRID_POWER_SENSOR)): _entity_selector(),
+            vol.Optional(CONF_SOLAR_START_THRESHOLD, default=current.get(CONF_SOLAR_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
+            vol.Optional(CONF_SOLAR_STOP_THRESHOLD, default=current.get(CONF_SOLAR_STOP_THRESHOLD, 1200.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
+            vol.Optional(CONF_SOLAR_START_DELAY, default=current.get(CONF_SOLAR_START_DELAY, DEFAULT_PV_START_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_SOLAR_STOP_DELAY, default=current.get(CONF_SOLAR_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_SOLAR_MIN_RUNTIME, default=current.get(CONF_SOLAR_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_SOLAR_MIN_PAUSE, default=current.get(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)): _float_selector(0.0, 3600.0, 0.1),
+            vol.Optional(CONF_SOLAR_MIN_CURRENT, default=current.get(CONF_SOLAR_MIN_CURRENT, 6.0)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
         }
-        pv_defaults: dict[str, Any] = {
-            CONF_PV_CONTROL_STRATEGY: current.get(CONF_PV_CONTROL_STRATEGY, PvControlStrategy.DISABLED.value),
-            CONF_PV_INPUT_MODEL: current.get(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value),
-            CONF_PV_SURPLUS_SENSOR: current.get(CONF_PV_SURPLUS_SENSOR),
-            CONF_PV_START_THRESHOLD: current.get(CONF_PV_START_THRESHOLD, 1800.0),
-            CONF_PV_STOP_THRESHOLD: current.get(CONF_PV_STOP_THRESHOLD, 1200.0),
-            CONF_PV_START_DELAY: current.get(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S),
-            CONF_PV_STOP_DELAY: current.get(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S),
-            CONF_PV_MIN_RUNTIME: current.get(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S),
-            CONF_PV_MIN_PAUSE: current.get(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S),
-            CONF_PV_MIN_CURRENT: current.get(CONF_PV_MIN_CURRENT, 6.0),
+        solar_defaults: dict[str, Any] = {
+            CONF_SOLAR_CONTROL_STRATEGY: current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value),
+            CONF_SOLAR_INPUT_MODEL: current.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value),
+            CONF_SOLAR_REQUIRE_UNITS: current.get(CONF_SOLAR_REQUIRE_UNITS, False),
+            CONF_SOLAR_SURPLUS_SENSOR: current.get(CONF_SOLAR_SURPLUS_SENSOR),
+            CONF_SOLAR_GRID_POWER_SENSOR: current.get(CONF_SOLAR_GRID_POWER_SENSOR),
+            CONF_SOLAR_START_THRESHOLD: current.get(CONF_SOLAR_START_THRESHOLD, 1800.0),
+            CONF_SOLAR_STOP_THRESHOLD: current.get(CONF_SOLAR_STOP_THRESHOLD, 1200.0),
+            CONF_SOLAR_START_DELAY: current.get(CONF_SOLAR_START_DELAY, DEFAULT_PV_START_DELAY_S),
+            CONF_SOLAR_STOP_DELAY: current.get(CONF_SOLAR_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S),
+            CONF_SOLAR_MIN_RUNTIME: current.get(CONF_SOLAR_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S),
+            CONF_SOLAR_MIN_PAUSE: current.get(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S),
+            CONF_SOLAR_MIN_CURRENT: current.get(CONF_SOLAR_MIN_CURRENT, 6.0),
         }
-        pv_defaults = _compact_section_defaults(pv_defaults)
-        phase_fields: dict[Any, Any] = {}
-        phase_defaults: dict[str, Any] = {}
-        if installed_phases == PHASE_MODE_3P:
-            phase_defaults = {
-                CONF_PV_PHASE_SWITCHING_MODE: current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE),
-                CONF_PV_PHASE_SWITCHING_HYSTERESIS: current.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W),
-                CONF_PV_PHASE_SWITCHING_MIN_INTERVAL: current.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S),
-                CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION: current.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION),
-            }
-            phase_fields = {
-                vol.Optional(CONF_PV_PHASE_SWITCHING_MODE, default=current.get(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)): selector.SelectSelector(selector.SelectSelectorConfig(options=PV_PHASE_SWITCHING_MODE_OPTIONS)),
-                vol.Optional(CONF_PV_PHASE_SWITCHING_HYSTERESIS, default=current.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W)): _float_selector(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, 1.0),
-                vol.Optional(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, default=current.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S)): _float_selector(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, 1.0),
-                vol.Optional(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, default=current.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION)): _int_selector(1, MAX_PHASE_SWITCHING_PER_SESSION),
-            }
+        solar_defaults = _compact_section_defaults(solar_defaults)
         advanced_defaults = {
-            CONF_KEEPALIVE_MODE: current.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value),
             CONF_KEEPALIVE_INTERVAL: current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S),
             CONF_TIMEOUT: current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S),
             CONF_RETRIES: current.get(CONF_RETRIES, DEFAULT_RETRIES),
         }
         advanced_schema = vol.Schema(
             {
-                vol.Optional(CONF_KEEPALIVE_MODE, default=current.get(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=KEEPALIVE_MODE_SELECTOR_OPTIONS)),
                 vol.Optional(CONF_KEEPALIVE_INTERVAL, default=current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
                 vol.Optional(CONF_TIMEOUT, default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
                 vol.Optional(CONF_RETRIES, default=current.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
@@ -452,13 +455,11 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional("connection", default=connection_defaults): section(connection_schema, {"collapsed": False}),
             vol.Optional("general_charging", default=general_defaults): section(general_schema, {"collapsed": False}),
             vol.Optional("dynamic_load_balancing", default=dlb_defaults): section(vol.Schema(dlb_fields), {"collapsed": True}),
-            vol.Optional("pv_charging", default=pv_defaults): section(vol.Schema(pv_fields), {"collapsed": True}),
+            vol.Optional("solar_charging", default=solar_defaults): section(vol.Schema(solar_fields), {"collapsed": True}),
             vol.Optional("advanced", default=advanced_defaults): section(advanced_schema, {"collapsed": True}),
         }
         if session_override_fields:
             schema[vol.Optional("session_overrides", default=session_override_defaults)] = section(vol.Schema(session_override_fields), {"collapsed": True})
-        if phase_fields:
-            schema[vol.Optional("phase_switching", default=phase_defaults)] = section(vol.Schema(phase_fields), {"collapsed": True})
         return vol.Schema(schema)
 
     def _validate_all_options(self, user_input: dict[str, Any]) -> dict[str, Any]:
@@ -466,26 +467,27 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_POLLING_INTERVAL, DEFAULT_POLL_INTERVAL_S)
         validated.setdefault(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)
         validated.setdefault(CONF_RETRIES, DEFAULT_RETRIES)
-        validated.setdefault(CONF_KEEPALIVE_MODE, KeepaliveMode.AUTO.value)
         validated.setdefault(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)
         validated.setdefault(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)
         validated.setdefault(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)
         validated.setdefault(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)
         validated.setdefault(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)
         validated.setdefault(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)
+        validated.setdefault(CONF_DLB_ENABLED, False)
         validated.setdefault(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)
+        validated.setdefault(CONF_DLB_REQUIRE_UNITS, False)
         validated.setdefault(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)
         validated.setdefault(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)
-        validated.setdefault(CONF_PV_INPUT_MODEL, PvInputModel.GRID_POWER_DERIVED.value)
-        validated.setdefault(CONF_PV_UNTIL_UNPLUG_STRATEGY, PvOverrideStrategy.INHERIT.value)
-        validated.setdefault(CONF_PV_START_THRESHOLD, 1800.0)
-        validated.setdefault(CONF_PV_STOP_THRESHOLD, 1200.0)
-        validated.setdefault(CONF_PV_START_DELAY, DEFAULT_PV_START_DELAY_S)
-        validated.setdefault(CONF_PV_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)
-        validated.setdefault(CONF_PV_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)
-        validated.setdefault(CONF_PV_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)
-        validated.setdefault(CONF_PV_MIN_CURRENT, 6.0)
-        validated.setdefault(CONF_PV_PHASE_SWITCHING_MODE, DEFAULT_PV_PHASE_SWITCHING_MODE)
+        validated.setdefault(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)
+        validated.setdefault(CONF_SOLAR_REQUIRE_UNITS, False)
+        validated.setdefault(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)
+        validated.setdefault(CONF_SOLAR_START_THRESHOLD, 1800.0)
+        validated.setdefault(CONF_SOLAR_STOP_THRESHOLD, 1200.0)
+        validated.setdefault(CONF_SOLAR_START_DELAY, DEFAULT_PV_START_DELAY_S)
+        validated.setdefault(CONF_SOLAR_STOP_DELAY, DEFAULT_PV_STOP_DELAY_S)
+        validated.setdefault(CONF_SOLAR_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)
+        validated.setdefault(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)
+        validated.setdefault(CONF_SOLAR_MIN_CURRENT, 6.0)
         connection_input = {
             CONF_HOST: validated.pop(CONF_HOST),
             CONF_PORT: validated.pop(CONF_PORT),
@@ -498,37 +500,34 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_TIMEOUT] = _bounded_float(MIN_SECONDS, 60.0, CONF_TIMEOUT)(validated[CONF_TIMEOUT])
         validated[CONF_RETRIES] = _bounded_int(1, MAX_RETRIES, CONF_RETRIES)(validated[CONF_RETRIES])
         validated[CONF_KEEPALIVE_INTERVAL] = _bounded_float(1.0, MAX_SECONDS, CONF_KEEPALIVE_INTERVAL)(validated[CONF_KEEPALIVE_INTERVAL])
-        validated[CONF_SAFE_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_SAFE_CURRENT)(validated[CONF_SAFE_CURRENT])
-        validated[CONF_MIN_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_MIN_CURRENT)(validated[CONF_MIN_CURRENT])
-        validated[CONF_MAX_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_MAX_CURRENT)(validated[CONF_MAX_CURRENT])
-        validated[CONF_USER_LIMIT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_USER_LIMIT)(validated[CONF_USER_LIMIT])
+        validated[CONF_SAFE_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_SAFE_CURRENT)(validated[CONF_SAFE_CURRENT])
+        validated[CONF_MIN_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_MIN_CURRENT)(validated[CONF_MIN_CURRENT])
+        validated[CONF_MAX_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_MAX_CURRENT)(validated[CONF_MAX_CURRENT])
+        validated[CONF_USER_LIMIT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_USER_LIMIT)(validated[CONF_USER_LIMIT])
         validated[CONF_MAIN_FUSE] = _bounded_float(MIN_CURRENT_A, 200.0, CONF_MAIN_FUSE)(validated[CONF_MAIN_FUSE])
         validated[CONF_SAFETY_MARGIN] = _bounded_float(0.0, 50.0, CONF_SAFETY_MARGIN)(validated[CONF_SAFETY_MARGIN])
-        validated[CONF_PV_START_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_PV_START_THRESHOLD)(validated[CONF_PV_START_THRESHOLD])
-        validated[CONF_PV_STOP_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_PV_STOP_THRESHOLD)(validated[CONF_PV_STOP_THRESHOLD])
-        validated[CONF_PV_START_DELAY] = _bounded_float(0.0, 3600.0, CONF_PV_START_DELAY)(validated[CONF_PV_START_DELAY])
-        validated[CONF_PV_STOP_DELAY] = _bounded_float(0.0, 3600.0, CONF_PV_STOP_DELAY)(validated[CONF_PV_STOP_DELAY])
-        validated[CONF_PV_MIN_RUNTIME] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_RUNTIME)(validated[CONF_PV_MIN_RUNTIME])
-        validated[CONF_PV_MIN_PAUSE] = _bounded_float(0.0, 3600.0, CONF_PV_MIN_PAUSE)(validated[CONF_PV_MIN_PAUSE])
-        validated[CONF_PV_MIN_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_PV_MIN_CURRENT)(validated[CONF_PV_MIN_CURRENT])
-        validated[CONF_FIXED_CURRENT] = _bounded_float(MIN_CURRENT_A, MAX_CURRENT_A, CONF_FIXED_CURRENT)(validated[CONF_FIXED_CURRENT])
-        validated[CONF_PV_CONTROL_STRATEGY] = normalize_pv_control_strategy(validated[CONF_PV_CONTROL_STRATEGY]).value
-        validated[CONF_PV_UNTIL_UNPLUG_STRATEGY] = normalize_pv_override_strategy(validated[CONF_PV_UNTIL_UNPLUG_STRATEGY]).value
-        if CONF_PV_PHASE_SWITCHING_HYSTERESIS in validated:
-            validated[CONF_PV_PHASE_SWITCHING_HYSTERESIS] = _bounded_float(MIN_POWER_W, MAX_PHASE_SWITCHING_HYSTERESIS_W, CONF_PV_PHASE_SWITCHING_HYSTERESIS)(validated[CONF_PV_PHASE_SWITCHING_HYSTERESIS])
-        else:
-            validated[CONF_PV_PHASE_SWITCHING_HYSTERESIS] = float(self.options.get(CONF_PV_PHASE_SWITCHING_HYSTERESIS, DEFAULT_PV_PHASE_SWITCHING_HYSTERESIS_W))
-        if CONF_PV_PHASE_SWITCHING_MIN_INTERVAL in validated:
-            validated[CONF_PV_PHASE_SWITCHING_MIN_INTERVAL] = _bounded_float(0.0, MAX_PHASE_SWITCHING_MIN_INTERVAL_S, CONF_PV_PHASE_SWITCHING_MIN_INTERVAL)(validated[CONF_PV_PHASE_SWITCHING_MIN_INTERVAL])
-        else:
-            validated[CONF_PV_PHASE_SWITCHING_MIN_INTERVAL] = float(self.options.get(CONF_PV_PHASE_SWITCHING_MIN_INTERVAL, DEFAULT_PV_PHASE_SWITCHING_MIN_INTERVAL_S))
-        if CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION in validated:
-            validated[CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION] = _bounded_int(1, MAX_PHASE_SWITCHING_PER_SESSION, CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION)(validated[CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION])
-        else:
-            validated[CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION] = int(self.options.get(CONF_PV_PHASE_SWITCHING_MAX_PER_SESSION, DEFAULT_PV_PHASE_SWITCHING_MAX_PER_SESSION))
+        validated[CONF_SOLAR_START_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_SOLAR_START_THRESHOLD)(validated[CONF_SOLAR_START_THRESHOLD])
+        validated[CONF_SOLAR_STOP_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_SOLAR_STOP_THRESHOLD)(validated[CONF_SOLAR_STOP_THRESHOLD])
+        validated[CONF_SOLAR_START_DELAY] = _bounded_float(0.0, 3600.0, CONF_SOLAR_START_DELAY)(validated[CONF_SOLAR_START_DELAY])
+        validated[CONF_SOLAR_STOP_DELAY] = _bounded_float(0.0, 3600.0, CONF_SOLAR_STOP_DELAY)(validated[CONF_SOLAR_STOP_DELAY])
+        validated[CONF_SOLAR_MIN_RUNTIME] = _bounded_float(0.0, 3600.0, CONF_SOLAR_MIN_RUNTIME)(validated[CONF_SOLAR_MIN_RUNTIME])
+        validated[CONF_SOLAR_MIN_PAUSE] = _bounded_float(0.0, 3600.0, CONF_SOLAR_MIN_PAUSE)(validated[CONF_SOLAR_MIN_PAUSE])
+        validated[CONF_SOLAR_MIN_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_SOLAR_MIN_CURRENT)(validated[CONF_SOLAR_MIN_CURRENT])
+        validated[CONF_FIXED_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_FIXED_CURRENT)(validated[CONF_FIXED_CURRENT])
+        validated[CONF_DLB_INPUT_MODEL] = (
+            DlbInputModel.PHASE_CURRENTS.value
+            if bool(validated.get(CONF_DLB_ENABLED))
+            else DlbInputModel.DISABLED.value
+        )
+        if CONF_DLB_GRID_POWER_SENSOR in validated and CONF_SOLAR_GRID_POWER_SENSOR not in validated:
+            validated[CONF_SOLAR_GRID_POWER_SENSOR] = validated[CONF_DLB_GRID_POWER_SENSOR]
+        if CONF_SOLAR_GRID_POWER_SENSOR in validated:
+            validated.pop(CONF_DLB_GRID_POWER_SENSOR, None)
+        validated[CONF_SOLAR_CONTROL_STRATEGY] = normalize_solar_control_strategy(validated[CONF_SOLAR_CONTROL_STRATEGY]).value
+        validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
         validated = _validate_init_options(validated)
         validated = _validate_dlb_options(validated, self.entry_data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P))
-        validated = _validate_pv_options(validated)
+        validated = _validate_solar_options(validated)
         return validated
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):

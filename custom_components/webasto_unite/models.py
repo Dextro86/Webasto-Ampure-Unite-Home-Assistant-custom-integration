@@ -9,14 +9,14 @@ from typing import Any, Optional
 class ChargeMode(str, Enum):
     OFF = "off"
     NORMAL = "normal"
-    PV = "pv"
+    SOLAR = "solar"
+    PV = SOLAR
     FIXED_CURRENT = "fixed_current"
 
 
 class DlbInputModel(str, Enum):
     DISABLED = "disabled"
     PHASE_CURRENTS = "phase_currents"
-    GRID_POWER = "grid_power"
 
 
 class DlbSensorScope(str, Enum):
@@ -24,49 +24,61 @@ class DlbSensorScope(str, Enum):
     LOAD_EXCLUDING_CHARGER = "load_excluding_charger"
 
 
-class PvInputModel(str, Enum):
+class SolarInputModel(str, Enum):
     SURPLUS_SENSOR = "surplus_sensor"
     GRID_POWER_DERIVED = "grid_power_derived"
 
 
-class PvControlStrategy(str, Enum):
+class SolarControlStrategy(str, Enum):
     DISABLED = "disabled"
-    SURPLUS = "surplus"
-    MIN_PLUS_SURPLUS = "min_plus_surplus"
+    ECO_SOLAR = "eco_solar"
+    SURPLUS = ECO_SOLAR
+    SMART_SOLAR = "smart_solar"
+    MIN_PLUS_SURPLUS = SMART_SOLAR
     MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
-class PvOverrideStrategy(str, Enum):
+class SolarOverrideStrategy(str, Enum):
     INHERIT = "inherit"
-    SURPLUS = "surplus"
-    MIN_PLUS_SURPLUS = "min_plus_surplus"
+    ECO_SOLAR = "eco_solar"
+    SURPLUS = ECO_SOLAR
+    SMART_SOLAR = "smart_solar"
+    MIN_PLUS_SURPLUS = SMART_SOLAR
     MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
-def normalize_pv_control_strategy(value: str | "PvControlStrategy") -> PvControlStrategy:
-    raw = value.value if isinstance(value, PvControlStrategy) else str(value)
-    if raw == PvControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value:
-        return PvControlStrategy.MIN_PLUS_SURPLUS
-    return PvControlStrategy(raw)
+def normalize_charge_mode(value: str | "ChargeMode", solar_strategy: str | "SolarControlStrategy" | None = None) -> ChargeMode:
+    if isinstance(value, ChargeMode):
+        return value
+    raw = str(value)
+    if raw == "pv":
+        return ChargeMode.SOLAR
+    return ChargeMode(raw)
 
 
-def normalize_pv_override_strategy(value: str | "PvOverrideStrategy") -> PvOverrideStrategy:
-    raw = value.value if isinstance(value, PvOverrideStrategy) else str(value)
-    if raw == PvOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS.value:
-        return PvOverrideStrategy.MIN_PLUS_SURPLUS
-    return PvOverrideStrategy(raw)
+def normalize_solar_control_strategy(value: str | "SolarControlStrategy") -> SolarControlStrategy:
+    raw = value.value if isinstance(value, SolarControlStrategy) else str(value)
+    if raw in {"surplus", SolarControlStrategy.ECO_SOLAR.value}:
+        return SolarControlStrategy.ECO_SOLAR
+    if raw in {"min_plus_surplus", SolarControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, SolarControlStrategy.SMART_SOLAR.value}:
+        return SolarControlStrategy.SMART_SOLAR
+    return SolarControlStrategy(raw)
 
 
-class PvPhaseSwitchingMode(str, Enum):
-    DISABLED = "disabled"
-    MANUAL_ONLY = "manual_only"
-    AUTOMATIC_1P3P = "automatic_1p3p"
+def normalize_solar_override_strategy(value: str | "SolarOverrideStrategy") -> SolarOverrideStrategy:
+    raw = value.value if isinstance(value, SolarOverrideStrategy) else str(value)
+    if raw in {"surplus", SolarOverrideStrategy.ECO_SOLAR.value}:
+        return SolarOverrideStrategy.ECO_SOLAR
+    if raw in {"min_plus_surplus", SolarOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, SolarOverrideStrategy.SMART_SOLAR.value}:
+        return SolarOverrideStrategy.SMART_SOLAR
+    return SolarOverrideStrategy(raw)
 
 
-class KeepaliveMode(str, Enum):
-    AUTO = "auto"
-    FORCED = "forced"
-    DISABLED = "disabled"
+PvInputModel = SolarInputModel
+PvControlStrategy = SolarControlStrategy
+PvOverrideStrategy = SolarOverrideStrategy
+normalize_pv_control_strategy = normalize_solar_control_strategy
+normalize_pv_override_strategy = normalize_solar_override_strategy
 
 
 class ControlMode(str, Enum):
@@ -96,7 +108,8 @@ class ControlReason(str, Enum):
     OFF_MODE = "off_mode"
     NORMAL_MODE = "normal_mode"
     FIXED_CURRENT_MODE = "fixed_current_mode"
-    PV_MODE = "pv_mode"
+    SOLAR_MODE = "solar_mode"
+    PV_MODE = SOLAR_MODE
     DLB_LIMITED = "dlb_limited"
     HARDWARE_LIMITED = "hardware_limited"
     CABLE_LIMITED = "cable_limited"
@@ -150,8 +163,6 @@ class WallboxState:
     phases_in_use: Optional[int] = None
     installed_phases: Optional[int] = None
     charge_point_phase_count: Optional[int] = None
-    phase_switch_mode_raw: Optional[int] = None
-
     error_code: Optional[int] = None
     serial_number: Optional[str] = None
     charge_point_id: Optional[str] = None
@@ -214,7 +225,6 @@ class ControlConfig:
     timeout_s: float = 3.0
     retries: int = 3
     control_mode: ControlMode = ControlMode.KEEPALIVE_ONLY
-    keepalive_mode: KeepaliveMode = KeepaliveMode.AUTO
     keepalive_interval_s: float = 10.0
     safe_current_a: float = 6.0
     min_current_a: float = 6.0
@@ -224,24 +234,71 @@ class ControlConfig:
     safety_margin_a: float = 2.0
     dlb_input_model: DlbInputModel = DlbInputModel.DISABLED
     dlb_sensor_scope: DlbSensorScope = DlbSensorScope.LOAD_EXCLUDING_CHARGER
-    pv_input_model: PvInputModel = PvInputModel.GRID_POWER_DERIVED
-    pv_control_strategy: PvControlStrategy = PvControlStrategy.DISABLED
-    pv_until_unplug_strategy: PvOverrideStrategy = PvOverrideStrategy.INHERIT
-    pv_start_threshold_w: float = 1800.0
-    pv_stop_threshold_w: float = 1200.0
-    pv_start_delay_s: float = 0.0
-    pv_stop_delay_s: float = 0.0
-    pv_min_runtime_s: float = 0.0
-    pv_min_pause_s: float = 0.0
-    pv_min_current_a: float = 6.0
-    pv_phase_switching_mode: PvPhaseSwitchingMode = PvPhaseSwitchingMode.MANUAL_ONLY
-    pv_phase_switching_hysteresis_w: float = 500.0
-    pv_phase_switching_min_interval_s: float = 300.0
-    pv_phase_switching_max_per_session: int = 6
+    dlb_require_units: bool = False
+    solar_input_model: SolarInputModel = SolarInputModel.GRID_POWER_DERIVED
+    solar_control_strategy: SolarControlStrategy = SolarControlStrategy.DISABLED
+    solar_until_unplug_strategy: SolarOverrideStrategy = SolarOverrideStrategy.INHERIT
+    solar_require_units: bool = False
+    solar_start_threshold_w: float = 1800.0
+    solar_stop_threshold_w: float = 1200.0
+    solar_start_delay_s: float = 0.0
+    solar_stop_delay_s: float = 0.0
+    solar_min_runtime_s: float = 0.0
+    solar_min_pause_s: float = 0.0
+    solar_min_current_a: float = 6.0
     fixed_current_a: float = 6.0
     min_seconds_between_writes: float = 5.0
     min_current_change_a: float = 1.0
     stable_cycles_before_write: int = 2
+
+    def __post_init__(self) -> None:
+        self.solar_input_model = SolarInputModel(self.solar_input_model)
+        self.solar_control_strategy = normalize_solar_control_strategy(self.solar_control_strategy)
+        self.solar_until_unplug_strategy = normalize_solar_override_strategy(self.solar_until_unplug_strategy)
+
+    @property
+    def pv_input_model(self) -> SolarInputModel:
+        return self.solar_input_model
+
+    @property
+    def pv_control_strategy(self) -> SolarControlStrategy:
+        return self.solar_control_strategy
+
+    @property
+    def pv_until_unplug_strategy(self) -> SolarOverrideStrategy:
+        return self.solar_until_unplug_strategy
+
+    @property
+    def pv_require_units(self) -> bool:
+        return self.solar_require_units
+
+    @property
+    def pv_start_threshold_w(self) -> float:
+        return self.solar_start_threshold_w
+
+    @property
+    def pv_stop_threshold_w(self) -> float:
+        return self.solar_stop_threshold_w
+
+    @property
+    def pv_start_delay_s(self) -> float:
+        return self.solar_start_delay_s
+
+    @property
+    def pv_stop_delay_s(self) -> float:
+        return self.solar_stop_delay_s
+
+    @property
+    def pv_min_runtime_s(self) -> float:
+        return self.solar_min_runtime_s
+
+    @property
+    def pv_min_pause_s(self) -> float:
+        return self.solar_min_pause_s
+
+    @property
+    def pv_min_current_a(self) -> float:
+        return self.solar_min_current_a
 
 
 @dataclass(slots=True)
@@ -249,8 +306,13 @@ class SensorInputState:
     phase_currents: PhaseCurrents = field(default_factory=PhaseCurrents)
     grid_power_w: Optional[float] = None
     surplus_power_w: Optional[float] = None
+    solar_input_state: Optional[str] = None
     valid: bool = True
     reason_invalid: Optional[str] = None
+
+    @property
+    def pv_input_state(self) -> Optional[str]:
+        return self.solar_input_state
 
 
 HaSensorSnapshot = SensorInputState
@@ -264,10 +326,13 @@ class DlbResult:
 
 
 @dataclass(slots=True)
-class PvResult:
+class SolarResult:
     target_current_a: Optional[float]
     valid: bool
     reason: ControlReason
+
+
+PvResult = SolarResult
 
 
 @dataclass(slots=True)
@@ -293,7 +358,7 @@ class RuntimeSnapshot:
     control_mode: ControlMode
     control_reason: str
     charging_paused: bool
-    pv_until_unplug_active: bool
+    solar_until_unplug_active: bool
     fixed_current_until_unplug_active: bool
     keepalive_age_s: Optional[float]
     keepalive_interval_s: Optional[float]
@@ -307,15 +372,26 @@ class RuntimeSnapshot:
     dlb_limit_a: Optional[float] = None
     final_target_a: Optional[float] = None
     mode_target_a: Optional[float] = None
-    pv_surplus_w: Optional[float] = None
-    phase_switch_decision: Optional[str] = None
-    phase_switch_count: int = 0
+    solar_surplus_w: Optional[float] = None
+    solar_input_state: Optional[str] = None
     dominant_limit_reason: Optional[str] = None
     fallback_active: bool = False
     last_client_error: str | None = None
     entry_title: str | None = None
     capability_summary: str | None = None
     capabilities: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def pv_until_unplug_active(self) -> bool:
+        return self.solar_until_unplug_active
+
+    @property
+    def pv_surplus_w(self) -> Optional[float]:
+        return self.solar_surplus_w
+
+    @property
+    def pv_input_state(self) -> Optional[str]:
+        return self.solar_input_state
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -326,7 +402,7 @@ class RuntimeSnapshot:
             "control_mode": self.control_mode.value,
             "control_reason": self.control_reason,
             "charging_paused": self.charging_paused,
-            "pv_until_unplug_active": self.pv_until_unplug_active,
+            "solar_until_unplug_active": self.solar_until_unplug_active,
             "fixed_current_until_unplug_active": self.fixed_current_until_unplug_active,
             "keepalive_age_s": self.keepalive_age_s,
             "keepalive_interval_s": self.keepalive_interval_s,
@@ -340,9 +416,8 @@ class RuntimeSnapshot:
             "dlb_limit_a": self.dlb_limit_a,
             "final_target_a": self.final_target_a,
             "mode_target_a": self.mode_target_a,
-            "pv_surplus_w": self.pv_surplus_w,
-            "phase_switch_decision": self.phase_switch_decision,
-            "phase_switch_count": self.phase_switch_count,
+            "solar_surplus_w": self.solar_surplus_w,
+            "solar_input_state": self.solar_input_state,
             "dominant_limit_reason": self.dominant_limit_reason,
             "fallback_active": self.fallback_active,
             "last_client_error": self.last_client_error,

@@ -6,23 +6,21 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, PvControlStrategy, PvPhaseSwitchingMode
+from .models import ChargeMode, SolarControlStrategy
 
-CHARGE_MODE_LABELS = {
-    ChargeMode.OFF: "Off",
-    ChargeMode.NORMAL: "Normal",
-    ChargeMode.PV: "PV",
-    ChargeMode.FIXED_CURRENT: "Fixed Current",
-}
-CHARGE_MODE_BY_LABEL = {label: mode for mode, label in CHARGE_MODE_LABELS.items()}
+
+def _solar_mode_label(strategy: SolarControlStrategy) -> str:
+    strategy = SolarControlStrategy(strategy)
+    if strategy == SolarControlStrategy.SMART_SOLAR:
+        return "Smart Solar"
+    if strategy == SolarControlStrategy.ECO_SOLAR:
+        return "Eco Solar"
+    return "Solar"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
-        WebastoModeSelect(coordinator),
-        WebastoPhaseSwitchSelect(coordinator),
-    ])
+    async_add_entities([WebastoModeSelect(coordinator)])
 
 
 class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
@@ -32,72 +30,37 @@ class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_charge_mode"
 
+    def _mode_labels(self) -> dict[ChargeMode, str]:
+        return {
+            ChargeMode.OFF: "Off",
+            ChargeMode.NORMAL: "Normal",
+            ChargeMode.SOLAR: _solar_mode_label(self.coordinator.control_config.solar_control_strategy),
+            ChargeMode.FIXED_CURRENT: "Fixed Current",
+        }
+
     @property
     def options(self) -> list[str]:
+        labels = self._mode_labels()
         modes = [ChargeMode.OFF, ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT]
-        if self.coordinator.control_config.pv_control_strategy != PvControlStrategy.DISABLED:
-            modes.insert(2, ChargeMode.PV)
-        return [CHARGE_MODE_LABELS[mode] for mode in modes]
+        if self.coordinator.control_config.solar_control_strategy != SolarControlStrategy.DISABLED:
+            modes.insert(2, ChargeMode.SOLAR)
+        return [labels[mode] for mode in modes]
 
     @property
     def current_option(self) -> str | None:
+        labels = self._mode_labels()
         if self.coordinator.data is None:
-            return CHARGE_MODE_LABELS[ChargeMode.NORMAL]
+            return labels[ChargeMode.NORMAL]
         current_mode = self.coordinator.data.mode
         if (
-            current_mode == ChargeMode.PV
-            and self.coordinator.control_config.pv_control_strategy == PvControlStrategy.DISABLED
+            current_mode == ChargeMode.SOLAR
+            and self.coordinator.control_config.solar_control_strategy == SolarControlStrategy.DISABLED
         ):
-            return CHARGE_MODE_LABELS[ChargeMode.NORMAL]
-        return CHARGE_MODE_LABELS[current_mode]
+            return labels[ChargeMode.NORMAL]
+        return labels[current_mode]
 
     async def async_select_option(self, option: str) -> None:
-        self.coordinator.set_mode(CHARGE_MODE_BY_LABEL[option])
+        labels = self._mode_labels()
+        mode_by_label = {label: mode for mode, label in labels.items()}
+        self.coordinator.set_mode(mode_by_label[option])
         await self.coordinator.async_request_refresh()
-
-
-PHASE_SWITCH_LABELS = {
-    1: "1 Phase",
-    3: "3 Phases",
-}
-PHASE_SWITCH_BY_LABEL = {label: phases for phases, label in PHASE_SWITCH_LABELS.items()}
-PHASE_SWITCH_PHASES_BY_RAW = {
-    0: 1,
-    1: 3,
-}
-
-
-class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
-    _attr_name = "Manual Phase Switch"
-
-    def __init__(self, coordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_phase_switch"
-
-    @property
-    def options(self) -> list[str]:
-        return list(PHASE_SWITCH_LABELS.values())
-
-    @property
-    def available(self) -> bool:
-        data = self.coordinator.data
-        return (
-            super().available
-            and self.coordinator.control_config.pv_phase_switching_mode != PvPhaseSwitchingMode.DISABLED
-            and data is not None
-            and data.wallbox.phase_switch_mode_raw in (0, 1)
-            and not data.wallbox.charging_active
-        )
-
-    @property
-    def current_option(self) -> str | None:
-        data = self.coordinator.data
-        if data is None or data.wallbox.phase_switch_mode_raw is None:
-            return None
-        phases = PHASE_SWITCH_PHASES_BY_RAW.get(data.wallbox.phase_switch_mode_raw)
-        if phases is None:
-            return None
-        return PHASE_SWITCH_LABELS[phases]
-
-    async def async_select_option(self, option: str) -> None:
-        await self.coordinator.async_set_phase_switch_mode(PHASE_SWITCH_BY_LABEL[option])

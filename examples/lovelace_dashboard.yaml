@@ -109,17 +109,5 @@ cards:
     title: Webasto Unite Diagnostics
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_firmware_version
-        name: Firmware Version
-      - entity: sensor.webasto_unite_charger_configured_phases
-        name: Charger Configured Phases
-      - entity: sensor.webasto_unite_keepalive_age
-        name: Keepalive Age
-      - entity: sensor.webasto_unite_keepalive_sent_count
-        name: Keepalive Sent Count
-      - entity: sensor.webasto_unite_keepalive_write_failures
-        name: Keepalive Write Failures
-      - entity: sensor.webasto_unite_pending_write
-        name: Pending Write
       - entity: sensor.webasto_unite_client_error
         name: Client Error

@@ -21,8 +21,6 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
     _attr_name = "Current Limit"
-    _attr_native_min_value = 6
-    _attr_native_max_value = 32
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 
@@ -34,6 +32,14 @@ class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
     def native_value(self):
         return self.coordinator.control_config.user_limit_a
 
+    @property
+    def native_min_value(self) -> float:
+        return self.coordinator.control_config.min_current_a
+
+    @property
+    def native_max_value(self) -> float:
+        return self.coordinator.control_config.max_current_a
+
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.set_user_limit(float(value))
         await self.coordinator.async_request_refresh()
@@ -41,8 +47,6 @@ class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
 
 class WebastoFixedCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
     _attr_name = "Fixed Current"
-    _attr_native_min_value = 6
-    _attr_native_max_value = 32
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 
@@ -53,6 +57,14 @@ class WebastoFixedCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
     @property
     def native_value(self):
         return self.coordinator.control_config.fixed_current_a
+
+    @property
+    def native_min_value(self) -> float:
+        return self.coordinator.control_config.min_current_a
+
+    @property
+    def native_max_value(self) -> float:
+        return self.coordinator.control_config.max_current_a
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.set_fixed_current(float(value))

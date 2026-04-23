@@ -20,7 +20,6 @@
         "sections": {
           "connection": {
             "name": "Connection",
-            "description": "Basic network and Modbus settings used to reach the charger.",
             "data": {
               "host": "Host",
               "port": "Port",
@@ -29,123 +28,104 @@
             },
             "data_description": {
               "host": "IP address or host name of the charger.",
-              "port": "Modbus/TCP port of the charger. Usually 502.",
+              "port": "Modbus/TCP port of the charger.",
               "unit_id": "Modbus unit ID used by the charger.",
-              "polling_interval": "How often Home Assistant refreshes charger state."
+              "polling_interval": "Interval for charger state refreshes."
             }
           },
           "general_charging": {
-            "name": "General Charging",
-            "description": "Base charging behavior, startup mode and current limits.",
+            "name": "Charging",
             "data": {
-              "installed_phases": "Installed Phases",
-              "control_mode": "Charging Control",
-              "startup_charge_mode": "Startup / Default Mode",
-              "user_limit": "Default Current Limit",
-              "safe_current": "Safe Current"
+              "installed_phases": "Charger Installation",
+              "control_mode": "Integration Charging Control",
+              "startup_charge_mode": "Default Mode",
+              "user_limit": "Current Limit",
+              "safe_current": "Fallback Current"
             },
             "data_description": {
-              "installed_phases": "Physical charger installation. This also determines whether phase switching is relevant.",
-              "control_mode": "On lets the integration actively control charging current and phase switching. Off keeps the integration in read-only monitoring mode with keepalive only.",
-              "startup_charge_mode": "Charge mode restored after Home Assistant restart or integration reload.",
-              "user_limit": "Normal current limit used in Normal mode.",
-              "safe_current": "Fallback current used when the integration cannot safely trust its control inputs."
+              "installed_phases": "Physical charger setup: 1-phase or 3-phase.",
+              "control_mode": "On lets the integration control the charger. Off keeps the integration in monitoring mode with keepalive only.",
+              "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
+              "user_limit": "Current limit for charging.",
+              "safe_current": "Charging current used when the integration cannot safely rely on its sensor inputs."
             }
           },
           "session_overrides": {
-            "name": "Session Overrides",
-            "description": "Temporary session-specific charging behavior. These settings do not change the Startup / Default Mode.",
+            "name": "Temporary Session Settings",
             "data": {
-              "fixed_current": "Fixed Current",
-              "pv_until_unplug_strategy": "PV Until Unplug Strategy"
+              "fixed_current": "Fixed Current Until Unplug",
+              "solar_until_unplug_strategy": "Solar Until Unplug Mode"
             },
             "data_description": {
-              "fixed_current": "Charging current used when Fixed Current Until Unplug is enabled for a session.",
-              "pv_until_unplug_strategy": "Temporary PV strategy used by the PV Until Unplug session override."
+              "fixed_current": "Charging current used when Fixed Current Until Unplug is active.",
+              "solar_until_unplug_strategy": "Solar mode used when Solar Until Unplug is active."
             }
           },
           "dynamic_load_balancing": {
             "name": "Dynamic Load Balancing",
-            "description": "Limit charging current based on available connection capacity and live house-load sensors.",
             "data": {
-              "dlb_input_model": "Dynamic Load Balancing Mode",
-              "dlb_sensor_scope": "Dynamic Load Balancing Sensor Scope",
-              "main_fuse": "Main Fuse Limit",
+              "dlb_enabled": "Enable DLB",
+              "dlb_sensor_scope": "Sensor Scope",
+              "dlb_require_units": "Require Sensor Units",
+              "main_fuse": "Main Fuse",
               "safety_margin": "Safety Margin",
-              "dlb_l1_sensor": "Phase 1 Current Sensor",
-              "dlb_l2_sensor": "Phase 2 Current Sensor",
-              "dlb_l3_sensor": "Phase 3 Current Sensor",
-              "dlb_grid_power_sensor": "Grid Power Sensor"
+              "dlb_l1_sensor": "L1 Current Sensor",
+              "dlb_l2_sensor": "L2 Current Sensor",
+              "dlb_l3_sensor": "L3 Current Sensor"
             },
             "data_description": {
-              "dlb_input_model": "How Dynamic Load Balancing determines available capacity.",
-              "dlb_sensor_scope": "Use Charger Excluded if your house current sensors do not include the charger. Use Charger Included otherwise.",
-              "main_fuse": "Main fuse or connection limit the charger should stay below.",
+              "dlb_enabled": "Lets the integration reduce charging current when the available connection capacity becomes too low.",
+              "dlb_sensor_scope": "Choose Excluded if your current sensors do not include the charger load. Choose Included if they do.",
+              "dlb_require_units": "If enabled, current sensors must expose a supported unit. Unitless values are ignored.",
+              "main_fuse": "Maximum current available for the full electrical connection.",
               "safety_margin": "Extra margin kept below the configured main fuse limit.",
-              "dlb_l1_sensor": "Live current sensor for phase 1.",
-              "dlb_l2_sensor": "Live current sensor for phase 2.",
-              "dlb_l3_sensor": "Live current sensor for phase 3.",
-              "dlb_grid_power_sensor": "Signed live grid power sensor. Use only as a simple approximation. For 3-phase installations, per-phase current sensors are preferred."
+              "dlb_l1_sensor": "Current sensor for phase L1.",
+              "dlb_l2_sensor": "Current sensor for phase L2.",
+              "dlb_l3_sensor": "Current sensor for phase L3."
             }
           },
-          "pv_charging": {
-            "name": "PV Charging",
-            "description": "Use PV surplus for charging and define how strict the integration should be about real surplus.",
+          "solar_charging": {
+            "name": "Solar Charging",
             "data": {
-              "pv_control_strategy": "PV Charging Strategy",
-              "pv_input_model": "PV Measurement Source",
-              "pv_surplus_sensor": "PV Surplus Sensor",
-              "pv_start_threshold": "Start Surplus Threshold (W)",
-              "pv_stop_threshold": "Stop Surplus Threshold (W)",
-              "pv_start_delay": "PV Start Delay",
-              "pv_stop_delay": "PV Stop Delay",
-              "pv_min_runtime": "PV Minimum Runtime",
-              "pv_min_pause": "PV Minimum Pause",
-              "pv_min_current": "PV Minimum Current"
+              "solar_control_strategy": "Solar Strategy",
+              "solar_input_model": "Solar Input Source",
+              "solar_require_units": "Require Solar Sensor Units",
+              "solar_surplus_sensor": "Solar Surplus Sensor",
+              "solar_grid_power_sensor": "Grid Power Sensor",
+              "solar_start_threshold": "Start Threshold (W)",
+              "solar_stop_threshold": "Stop Threshold (W)",
+              "solar_start_delay": "Solar Start Delay",
+              "solar_stop_delay": "Solar Stop Delay",
+              "solar_min_runtime": "Solar Minimum Runtime",
+              "solar_min_pause": "Solar Minimum Pause",
+              "solar_min_current": "Solar Minimum Current"
             },
             "data_description": {
-              "pv_control_strategy": "Choose whether PV charging should wait for real surplus or allow minimum charging while PV control input remains valid.",
-              "pv_input_model": "How PV surplus is provided to the integration.",
-              "pv_surplus_sensor": "Sensor that represents currently available PV surplus.",
-              "pv_start_threshold": "Minimum surplus required before PV charging may start.",
-              "pv_stop_threshold": "Lower surplus boundary below which PV charging may stop again.",
-              "pv_start_delay": "How long surplus must stay high enough before PV charging starts.",
-              "pv_stop_delay": "How long surplus must stay too low before PV charging stops.",
-              "pv_min_runtime": "Minimum time PV charging should keep running after it has started.",
-              "pv_min_pause": "Minimum pause before PV charging may start again.",
-              "pv_min_current": "Minimum charging current used by Minimum + Surplus."
-            }
-          },
-          "phase_switching": {
-            "name": "Phase Switching",
-            "description": "Manual or automatic 1-phase / 3-phase switching for real 3-phase installations. Actual switching behavior still depends on the charger, vehicle and firmware.",
-            "data": {
-              "pv_phase_switching_mode": "Automatic PV Phase Switching",
-              "pv_phase_switching_hysteresis": "Phase Switching Hysteresis (W)",
-              "pv_phase_switching_min_interval": "Phase Switch Dwell Time",
-              "pv_phase_switching_max_per_session": "Maximum Phase Switches Per Session"
-            },
-            "data_description": {
-              "pv_phase_switching_mode": "Controls whether 1-phase / 3-phase switching is disabled, manual only, or automatic in PV mode.",
-              "pv_phase_switching_hysteresis": "Extra margin around the automatic 1P/3P switching point.",
-              "pv_phase_switching_min_interval": "Minimum waiting time before another automatic phase switch is allowed.",
-              "pv_phase_switching_max_per_session": "Maximum number of automatic 1P to 3P switch attempts in one plug-in session."
+              "solar_control_strategy": "Choose how strictly the integration should follow available solar surplus.",
+              "solar_input_model": "Choose how solar input is provided to the integration.",
+              "solar_require_units": "If enabled, solar sensors must expose a supported unit (W, kW, mW, MW). Unitless values are ignored.",
+              "solar_surplus_sensor": "Sensor that reports the currently available solar surplus.",
+              "solar_grid_power_sensor": "Signed grid power sensor used to derive solar surplus from import and export.",
+              "solar_start_threshold": "Minimum solar surplus required before charging may start.",
+              "solar_stop_threshold": "Solar surplus level below which charging may stop again.",
+              "solar_start_delay": "How long solar surplus must stay high enough before charging starts.",
+              "solar_stop_delay": "How long solar surplus must stay too low before charging stops.",
+              "solar_min_runtime": "Minimum time charging should keep running after a solar start.",
+              "solar_min_pause": "Minimum pause before charging may start again on solar.",
+              "solar_min_current": "Minimum charging current used by Smart Solar."
             }
           },
           "advanced": {
             "name": "Advanced",
-            "description": "Communication and keepalive settings that usually do not need to be changed for normal use.",
             "data": {
-              "keepalive_mode": "Keepalive Mode",
               "keepalive_interval": "Keepalive Interval",
-              "timeout": "Communication Timeout",
-              "retries": "Communication Retries"
+              "timeout": "Request Timeout",
+              "retries": "Retry Attempts"
             },
             "data_description": {
-              "keepalive_mode": "Controls whether keepalive writes are automatic, always on or disabled.",
-              "keepalive_interval": "How often keepalive writes are sent when keepalive is active.",
-              "timeout": "Modbus communication timeout per request.",
-              "retries": "Number of Modbus retry attempts before a request is treated as failed."
+              "keepalive_interval": "How often keepalive writes are sent.",
+              "timeout": "How long the integration waits for a charger response.",
+              "retries": "How many times the integration retries a failed request."
             }
           }
         }
@@ -161,13 +141,11 @@
       "unit_id_out_of_range": "Unit ID must be between 1 and 255.",
       "installed_phases_invalid": "Installed phases must be 1p or 3p.",
       "dlb_phase_sensor_required": "Select the required DLB phase current sensors for the configured 1p or 3p installation.",
-      "dlb_grid_sensor_required": "Select a grid power sensor for the grid-power DLB model.",
-      "dlb_grid_power_3p_not_supported": "Grid-power DLB is only supported for 1-phase charger configurations. Use phase-current sensors for 3-phase DLB.",
-      "pv_threshold_order": "The PV stop threshold must be less than or equal to the PV start threshold.",
-      "pv_surplus_sensor_required": "Select a PV surplus sensor for the surplus-sensor PV model.",
-      "pv_grid_sensor_required": "Select a grid power sensor when PV surplus is derived from grid power.",
-      "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range.",
-      "phase_switch_limit_out_of_range": "The phase switching session limit must stay within the supported range."
+      "solar_threshold_order": "The solar stop threshold must be less than or equal to the solar start threshold.",
+      "solar_min_current_out_of_range": "Solar Minimum Current must be less than or equal to Maximum Current.",
+      "solar_surplus_sensor_required": "Select a solar surplus sensor for the surplus-sensor solar model.",
+      "solar_grid_sensor_required": "Select a grid power sensor when solar surplus is derived from grid power.",
+      "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range."
     }
   }
 }

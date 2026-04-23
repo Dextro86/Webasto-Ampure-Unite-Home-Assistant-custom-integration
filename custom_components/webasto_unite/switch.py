@@ -6,14 +6,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, PvControlStrategy
+from .models import ChargeMode, SolarControlStrategy
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         WebastoChargingSwitch(coordinator),
-        WebastoPvUntilUnplugSwitch(coordinator),
+        WebastoSolarUntilUnplugSwitch(coordinator),
         WebastoFixedCurrentUntilUnplugSwitch(coordinator),
     ])
 
@@ -38,18 +38,18 @@ class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
 
-class WebastoPvUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
-    _attr_name = "PV Until Unplug"
+class WebastoSolarUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
+    _attr_name = "Solar Until Unplug"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_pv_until_unplug"
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_solar_until_unplug"
 
     @property
     def available(self) -> bool:
         return (
             super().available
-            and self.coordinator.control_config.pv_control_strategy != PvControlStrategy.DISABLED
+            and self.coordinator.control_config.solar_control_strategy != SolarControlStrategy.DISABLED
         )
 
     @property
@@ -57,14 +57,14 @@ class WebastoPvUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
         data = self.coordinator.data
         if data is None:
             return False
-        return data.pv_until_unplug_active
+        return data.solar_until_unplug_active
 
     async def async_turn_on(self, **kwargs):
-        self.coordinator.set_pv_until_unplug(True)
+        self.coordinator.set_solar_until_unplug(True)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
-        self.coordinator.set_pv_until_unplug(False)
+        self.coordinator.set_solar_until_unplug(False)
         await self.coordinator.async_request_refresh()
 
 

@@ -12,7 +12,7 @@ set_mode:
       name: Mode
       description: Charge Mode to apply.
       required: true
-      example: "pv"
+      example: "solar"
 set_user_limit:
   name: Set Current Limit
   description: Set the default Current Limit used by normal charging mode.
@@ -36,9 +36,27 @@ trigger_reconnect:
       description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
+enable_solar_until_unplug:
+  name: Enable Solar Until Unplug
+  description: Temporarily use solar charging until the vehicle is unplugged.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
+disable_solar_until_unplug:
+  name: Disable Solar Until Unplug
+  description: Disable the temporary Solar Until Unplug override.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
 enable_pv_until_unplug:
   name: Enable PV Until Unplug
-  description: Temporarily use PV charging until the vehicle is unplugged.
+  description: Legacy alias for Enable Solar Until Unplug.
   fields:
     entry_id:
       name: Entry ID
@@ -47,7 +65,7 @@ enable_pv_until_unplug:
       example: "abc123"
 disable_pv_until_unplug:
   name: Disable PV Until Unplug
-  description: Disable the temporary PV Until Unplug override.
+  description: Legacy alias for Disable Solar Until Unplug.
   fields:
     entry_id:
       name: Entry ID

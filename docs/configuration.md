@@ -13,21 +13,20 @@ Before using the integration:
 - The charger has network connectivity and a fixed IP address.
 - `Modbus/TCP` is enabled in the charger's web interface.
 - No other system keeps an active `Modbus/TCP` connection open to the charger. The charger appears to accept only one active Modbus client at a time.
-- DLB and PV control require suitable Home Assistant sensors.
+- DLB and Solar control require suitable Home Assistant sensors.
 
 ## Settings layout
 
 The integration uses one options screen with the settings grouped in logical sections:
 
 - `Connection`
-- `General Charging`
-- `Session Overrides`
+- `Charging`
+- `Temporary Session Settings`
 - `Dynamic Load Balancing`
-- `PV Charging`
-- `Phase Switching`
+- `Solar Charging`
 - `Advanced`
 
-This keeps the full configuration in one place. The validation rules remain the same: invalid sensor combinations, unsupported DLB modes or invalid PV thresholds are still rejected before the options are saved.
+This keeps the full configuration in one place. The validation rules remain the same: invalid sensor combinations or invalid Solar thresholds are still rejected before the options are saved.
 
 ## Connection
 
@@ -38,48 +37,55 @@ Main settings:
 - `Unit ID`: Modbus unit ID used by the charger.
 - `Polling Interval`: how often the integration refreshes charger state.
 
-## General Charging
+## Charging
 
 Main settings:
 
-- `Installed Phases`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
-- `Charging Control`: whether the integration may actively control charging.
-- `Startup / Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
-- `Default Current Limit`: normal target current for `Normal` mode.
-- `Safe Current`: fallback current used when DLB input is unavailable or invalid.
+- `Charger Installation`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
+- `Integration Charging Control`: whether the integration may actively control the charger or stay in monitoring-only mode.
+- `Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
+- `Current Limit`: normal target current for charging.
+- `Fallback Current`: fallback current used when the integration cannot safely rely on its sensor inputs.
 
 Recommended first setup:
 
-1. Set `Charging Control` to `Off`.
-2. Confirm that monitoring, connection state, currents, power and firmware values look correct.
-3. Switch `Charging Control` to `On` only after the monitored values are plausible.
+1. Set `Integration Charging Control` to `Monitoring Only`.
+2. Confirm that monitoring, connection state, currents and power values look correct.
+3. Switch `Integration Charging Control` to `Enabled` only after the monitored values are plausible.
 
-If you want the integration to return to PV charging after a Home Assistant restart, set `Startup Charge Mode` to `PV`. PV must still be configured with a valid PV strategy and sensor setup; otherwise startup falls back to `Normal`.
+If you want the integration to return to Solar charging after a Home Assistant restart, set `Default Mode` to the Solar option. The label of that option follows the configured Solar strategy, so it appears as `Eco Solar` or `Smart Solar`. Solar must still be configured with a valid Solar strategy and sensor setup; otherwise startup falls back to `Normal`.
 
-## Session Overrides
+Restart behavior is intentionally split in two parts:
 
-This section is only shown when `Charging Control` is set to `On`.
+- `Default Mode` is restored from the integration settings.
+- `Charging On/Off` is restored from persistent storage.
+
+This means a Home Assistant restart does not automatically resume charging if charging was previously turned off. It also means temporary runtime session settings are not restored after restart.
+
+## Temporary Session Settings
+
+This section is only shown when `Integration Charging Control` is set to `Enabled`.
 
 Main settings:
 
-- `Fixed Current`: target used when `Fixed Current Until Unplug` is enabled for a session.
-- `PV Until Unplug Strategy`: temporary PV strategy used while `PV Until Unplug` is active for a session.
+- `Fixed Current Until Unplug`: target used when `Fixed Current Until Unplug` is enabled for a session.
+- `Solar Until Unplug Mode`: temporary Solar mode used while `Solar Until Unplug` is active for a session.
 
-These settings do not change the configured `Startup / Default Mode`. They only define how the temporary session overrides behave when those runtime overrides are enabled.
+These settings do not change the configured `Default Mode`. They only define how the temporary session settings behave when those runtime overrides are enabled.
 
 ## Current Limits
 
 Important current settings:
 
-- `Default Current Limit`: normal target current for `Normal` mode.
-- `Safe Current`: fallback current used when DLB input is unavailable or invalid.
+- `Current Limit`: normal target current for charging.
+- `Fallback Current`: fallback current used when sensor inputs are unavailable or invalid.
 - `Fixed Current`: target used by `Fixed Current` mode.
 
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
 
-`Default Current Limit` is also a general user limit. This means `Fixed Current` and `Fixed Current Until Unplug` can still be capped by `Default Current Limit`, `Maximum Current`, DLB and charger/session limits. Example: if `Fixed Current` is `16 A` but `Default Current Limit` is `10 A`, the final target will not exceed `10 A`.
+`Current Limit` is also a general user limit. This means `Fixed Current` and `Fixed Current Until Unplug` can still be capped by `Current Limit`, `Maximum Current`, DLB and charger/session limits. Example: if `Fixed Current` is `16 A` but `Current Limit` is `10 A`, the final target will not exceed `10 A`.
 
-If DLB input becomes unavailable, the integration falls back to `Safe Current on Failure`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured DLB sensors.
+If DLB input becomes unavailable, the integration falls back to `Fallback Current`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured sensors.
 
 ## Dynamic Load Balancing
 
@@ -89,33 +95,28 @@ DLB is disabled by default. Enable it only after selecting suitable Home Assista
 
 Main settings:
 
-- `Dynamic Load Balancing Mode`
-- `Dynamic Load Balancing Sensor Scope`
-- `Main Fuse Limit`
+- `Sensor Scope`
+- `Main Fuse`
 - `Safety Margin`
-- `Phase 1 Current Sensor`
-- `Phase 2 Current Sensor`
-- `Phase 3 Current Sensor`
-- `Grid Power Sensor`
+- `L1 Current Sensor`
+- `L2 Current Sensor`
+- `L3 Current Sensor`
 
-DLB measurement sources:
+DLB can be enabled or disabled. When enabled, it uses phase current sensors only:
 
-- `Disabled`: do not use DLB.
-- `Phase Current Sensors (Recommended)`: use separate L1, L2 and L3 current sensors from your smart meter or energy meter. This is the preferred DLB input because it matches how main fuses are normally loaded per phase. Use current sensors in `A` or `mA`; the integration normalizes them internally.
-- `Grid Power Sensor`: calculate available current from a single live power sensor in `W` or `kW`. This is only supported for 1-phase charger configurations. It is not suitable as 3-phase fuse protection because one total power value cannot detect phase imbalance. For 3-phase DLB, use phase-current sensors.
+- `1p` charger setup: L1 is required.
+- `3p` charger setup: L1, L2 and L3 are required.
 
-For a 1-phase charger setup, only the L1 current sensor is required. For a 3-phase charger setup, select L1, L2 and L3 sensors.
+Use live measurement sensors, not energy counters. Current sensors should report `A` or `mA`. Energy sensors such as `Wh` or `kWh` are not suitable for DLB because they represent accumulated energy, not current load.
 
-Use live measurement sensors, not energy counters. Current sensors should report `A` or `mA`. Power sensors should report `W` or `kW`. Energy sensors such as `Wh` or `kWh` are not suitable for DLB because they represent accumulated energy, not current load.
+Sensor Scope:
 
-DLB Sensor Scope:
+- `Exclude Charger Load`: sensors measure house load without the charger.
+- `Include Charger Load`: sensors measure total house load including the charger.
 
-- `Charger Excluded`: sensors measure house load without the charger.
-- `Charger Included`: sensors measure total house load including the charger.
+If your sensors include the charger load, select `Include Charger Load`. The integration then compensates for the charger's own measured current before calculating the DLB Limit. This prevents the charger from immediately reducing itself just because its own load appears in the house-current sensors.
 
-If your sensors include the charger load, select `Charger Included`. The integration then compensates for the charger's own measured current before calculating the DLB Limit. This prevents the charger from immediately reducing itself just because its own load appears in the house-current sensors.
-
-If your sensors exclude the charger load, select `Charger Excluded`. In that case the integration assumes the house load sensors already represent non-charger load only.
+If your sensors exclude the charger load, select `Exclude Charger Load`. In that case the integration assumes the house load sensors already represent non-charger load only.
 
 Example:
 
@@ -127,37 +128,38 @@ charger measured current = 15 A
 available current estimate = 25 - 2 - (18 - 15) = 20 A
 ```
 
-## PV Charging
+## Solar Charging
 
 Main settings:
 
-- `PV Charging Strategy`
-- `PV Measurement Source`
-- `PV Surplus Sensor`
-- `Start Surplus Threshold (W)`
-- `Stop Surplus Threshold (W)`
-- `PV Start Delay`
-- `PV Stop Delay`
-- `PV Minimum Runtime`
-- `PV Minimum Pause`
-- `PV Minimum Current`
+- `Solar Strategy`
+- `Solar Input Source`
+- `Require Solar Sensor Units`
+- `Solar Surplus Sensor`
+- `Start Threshold (W)`
+- `Stop Threshold (W)`
+- `Solar Start Delay`
+- `Solar Stop Delay`
+- `Solar Minimum Runtime`
+- `Solar Minimum Pause`
+- `Solar Minimum Current`
 
-PV Control Strategy:
+Solar Strategy:
 
-- `Disabled`: do not use PV charging.
-- `Surplus Only`: charge only when enough surplus is available.
-- `Minimum + Surplus`: keep charging at minimum current and add surplus when available, but pause if the configured PV input is unavailable.
+- `Disabled`: do not use Solar charging.
+- `Eco Solar`: charge only when enough surplus is available.
+- `Smart Solar`: keep charging at minimum current and add surplus when available, but pause if the configured Solar input is unavailable.
 
-PV charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
+Solar charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
 
-`Minimum + Surplus` is not pure surplus-only charging. It may charge at `PV Minimum Current` when there is little or no surplus, as long as the PV input is valid. Use `Surplus Only` if you want PV charging to wait until enough surplus is present.
+`Smart Solar` is not pure surplus-only charging. It may charge at `Solar Minimum Current` when there is little or no surplus, as long as the Solar input is valid. Use `Eco Solar` if you want Solar charging to wait until enough surplus is present.
 
-If the configured PV input becomes unavailable, `Surplus Only` and `Minimum + Surplus` pause by writing `0 A`.
+If the configured Solar input becomes unavailable, `Eco Solar` and `Smart Solar` pause by writing `0 A`.
 
-PV surplus can be provided in two ways:
+Solar input can be provided in two ways:
 
-- `Use a Surplus Power Sensor`: select a Home Assistant sensor that directly represents available PV surplus as current power in `W` or `kW`.
-- `Use Signed Grid Power Sensor`: select a net grid power sensor where negative values mean export to the grid. For example, `-1800 W` means roughly `1800 W` export.
+- `Solar Surplus Sensor`: select a Home Assistant sensor that directly represents available Solar surplus as current power in `W` or `kW`.
+- `Signed Grid Power Sensor`: select a net grid power sensor where negative values mean export to the grid. For example, `-1800 W` means roughly `1800 W` export.
 
 The surplus sensor must represent power that is available now. Do not select a daily energy production sensor or energy import/export counter.
 
@@ -166,91 +168,37 @@ Do not use separate production and consumption sensors directly unless you first
 If your consumption sensor includes the charger, calculate surplus like this:
 
 ```text
-surplus = PV production - total consumption + charger power
+surplus = Solar production - total consumption + charger power
 ```
 
 This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
 
-Use current power sensors, not energy counters. `W` and `kW` are valid. `Wh` and `kWh` are not suitable for PV control because they represent accumulated energy, not current surplus.
+Use current power sensors, not energy counters. `W` and `kW` are valid. `Wh` and `kWh` are not suitable for Solar control because they represent accumulated energy, not current surplus.
+If `Require Solar Sensor Units` is enabled, unitless Solar sensors are ignored to prevent accidental misconfiguration.
 
-When PV power is converted to charging current, the integration uses the charger-reported phase voltages when they are plausible. If voltage data is missing or invalid, it falls back to `230 V` per phase.
+When Solar power is converted to charging current, the integration uses the charger-reported phase voltages when they are plausible. If voltage data is missing or invalid, it falls back to `230 V` per phase.
 
-PV thresholds:
+Solar thresholds:
 
-- `PV Start Threshold (W)`: surplus must reach this value before `Surplus Only` starts charging.
-- `PV Stop Threshold (W)`: if surplus stays below this value while charging, the integration may pause after the configured stop delay and minimum runtime.
-- `PV Start Delay`: surplus must stay above the start threshold for this long before charging starts.
-- `PV Stop Delay`: surplus must stay below the stop threshold for this long before charging stops.
-- `PV Minimum Runtime`: once PV charging starts, keep it running for at least this long.
-- `PV Minimum Pause`: after PV charging stops, wait this long before starting again.
-- `PV Minimum Current`: lowest current target used when PV charging is allowed to run.
+- `Start Threshold (W)`: surplus must reach this value before `Eco Solar` starts charging.
+- `Stop Threshold (W)`: if surplus stays below this value while charging, the integration may pause after the configured stop delay and minimum runtime.
+- `Solar Start Delay`: surplus must stay above the start threshold for this long before charging starts.
+- `Solar Stop Delay`: surplus must stay below the stop threshold for this long before charging stops.
+- `Solar Minimum Runtime`: once Solar charging starts, keep it running for at least this long.
+- `Solar Minimum Pause`: after Solar charging stops, wait this long before starting again.
+- `Solar Minimum Current`: lowest current target used when Solar charging is allowed to run.
 
-`PV Minimum Current` is not a PV maximum. There is no separate PV maximum-current setting. PV charging is capped by `Default Current Limit`, `Maximum Current`, DLB, safety behavior and charger/session limits.
+In `Eco Solar`, the integration also requires enough surplus to support at least `Solar Minimum Current` on the active phase setup. This keeps surplus mode aligned with real surplus charging behavior.
 
-## PV Until Unplug
+`Solar Minimum Current` is not a Solar maximum. There is no separate Solar maximum-current setting. Solar charging is capped by `Current Limit`, `Maximum Current`, DLB, safety behavior and charger/session limits.
 
-`PV Until Unplug` is a temporary session override.
+## Solar Until Unplug
+
+`Solar Until Unplug` is a temporary session override.
 
 It does not permanently change the selected base `Charge Mode`. It stays active until the vehicle is unplugged or until you disable the override manually.
 
-The `PV Until Unplug Strategy` can inherit the normal PV strategy or use a separate PV strategy for this temporary session.
-
-## Phase Switching
-
-This section is shown for `3 Phases` installations.
-
-PV Phase Switching modes:
-
-- `Disabled`: do not expose or use phase switching through the integration.
-- `Manual Only`: expose `Manual Phase Switch`, but do not switch automatically. Manual switching is only available while charging is inactive.
-- `Automatic 1P/3P`: allow automatic phase switching in PV mode.
-
-`PV Phase Switching Hysteresis (W)` controls the extra margin around the automatic 1P/3P switching point. The default is `500 W`. The hysteresis, dwell time and per-session limit are only shown when `Automatic 1P/3P` is selected.
-
-`Minimum Phase Switch Interval` is used as a stability guard for automatic 1P->3P switching. Surplus must remain high for this long before the integration requests 3-phase mode. It also rate-limits repeated 1P->3P attempts. The default is `300` seconds.
-
-`Maximum Phase Switches per Session` limits automatic 1P->3P attempts during one plug-in session. The default is `6`. Returning to 1-phase is treated as a fallback path and may still happen when 3-phase charging is no longer realistic.
-
-Hysteresis prevents rapid switching around the 1P/3P boundary. A larger hysteresis waits longer before switching to 3-phase and switches back to 1-phase sooner when surplus drops. This can be useful with fast-moving clouds. A smaller hysteresis follows surplus more aggressively but may switch more often.
-
-The integration distinguishes between the requested phase-switch mode and the phases that are actually drawing current. `Phase Switch Mode Code` reports register `405`; `Effective Active Phases` is derived from the measured charger currents. PV current calculation uses the effective active phases while charging, because some vehicles or firmware states may report 3-phase mode while still drawing current mostly on one phase.
-
-This distinction is important. Register `405` tells the charger which phase mode was requested. It does not always prove that the vehicle is physically charging on all three phases at that moment. The measured currents are the best practical signal for active phase count while charging.
-
-Automatic PV phase switching uses measured active phases while charging. If register `405` says `3 Phases` but measured current shows the vehicle is still effectively charging on one phase, the integration first treats that conservatively as observed mismatch. Fresh runtime recovery is now primarily reserved for cases where the requested charger phase mode still differs from the intended target, or where startup recovery is still responsible after a restart.
-
-With `PV Minimum Current = 6 A`, the default thresholds are approximately:
-
-- switch from 1P to 3P at `4640 W` or more surplus
-- switch from 3P to 1P between `1380 W` and `3640 W` surplus
-- do not switch in the hysteresis band between `3640 W` and `4640 W`
-
-Manual phase switching uses register `405` and is only available when phase switching is not disabled.
-
-Manual phase switching is persistent charger state. If you manually select `1 Phase`, the charger can remain in 1-phase mode for `Normal`, `Fixed Current` and later sessions until you manually select `3 Phases` again or automatic PV phase switching changes it.
-
-Automatic phase switching only runs in `PV` mode or `PV Until Unplug`. It does not run in `Normal`, `Fixed Current` or `Off`.
-
-Automatic 1P->3P switching is deliberately conservative. Surplus must remain high for the configured `Minimum Phase Switch Interval` before the integration requests 3-phase mode. Returning from 3P to 1P is treated as a fallback path and is allowed even when the normal 1P->3P switch budget has been reached.
-
-If surplus drops again while a pending 1P->3P switch is waiting, the pending switch is cancelled. This avoids switching to 3-phase based on a short cloud gap or a brief surplus spike.
-
-The integration performs phase switching conservatively:
-
-1. It writes `0 A` to pause charging.
-2. It waits for a later refresh cycle where the charger reports that charging is no longer active.
-3. It writes phase-switch register `405`.
-4. It resumes charging after the charger reports the requested phase mode.
-
-Register `405` has been validated on one charger with firmware `3.187`. Other firmware versions may behave differently.
-
-Runtime support for phase switching is treated conservatively:
-
-- firmware `3.187.0` or newer: phase switching is allowed
-- firmware strings such as `v3.187.0-1.0.156.0`: the integration uses the leading charger firmware part, so this example is treated as `3.187.0`
-- older or unrecognized firmware: the integration keeps monitoring, current control, DLB, PV charging and keepalive active, but it does not start manual phase switching, automatic PV phase switching or phase-switch mismatch recovery
-
-This is deliberate. Older firmware may expose register `405` without reliably applying the actual phase change. Blocking runtime phase-switch attempts on unsupported firmware avoids unnecessary pause-and-switch attempts during charging.
+The `Solar Until Unplug Mode` can inherit the normal Solar strategy or use a separate Solar strategy for this temporary session.
 
 ## Advanced
 
@@ -258,19 +206,17 @@ This section groups lower-level communication settings that most users should le
 
 Main settings:
 
-- `Keepalive Mode`
 - `Keepalive Interval`
-- `Communication Timeout`
-- `Communication Retries`
+- `Request Timeout`
+- `Retry Attempts`
 
+Keepalive is always enabled by the integration, independent of `Integration Charging Control` being `Enabled` or `Monitoring Only`.
 These values are mainly useful for charger-specific troubleshooting or communication tuning. They do not change the high-level charging strategy.
 
-Useful phase-switching diagnostics:
+Useful diagnostics:
 
 - `Effective Active Phases`: phases currently drawing measurable current.
-- `PV Surplus Input`: surplus value used by the PV logic.
-- `Phase Switch Decision`: current automatic phase-switching decision or block reason.
-- `Phase Switch Commands`: number of automatic PV phase-switch commands in the current plug-in session.
+- `Solar Surplus Input`: surplus value used by the Solar logic.
 
 ## Important entities
 
@@ -278,8 +224,7 @@ Daily-use entities:
 
 - `Charge Mode`: selected base charging mode.
 - `Charging On/Off`: user switch for whether charging is allowed.
-- `Manual Phase Switch`: manual 1P/3P phase selection when available. The entity is unavailable while charging is active because the charger should be paused before changing phases.
-- `PV Until Unplug`: temporary PV session override.
+- `Solar Until Unplug`: temporary Solar session override.
 - `Fixed Current Until Unplug`: temporary fixed-current session override.
 - `Current Limit`: normal target current.
 - `Fixed Current`: target used in fixed-current mode.
@@ -295,12 +240,8 @@ Useful diagnostics:
 - `Control Reason`
 - `Dominant Limit`
 - `Sensor Invalid Reason`
-- `Write Queue Depth`
-- `Phase Switch Mode Code`
 - `Effective Active Phases`
-- `PV Surplus Input`
-- `Phase Switch Decision`
-- `Phase Switch Commands`
+- `Solar Surplus Input`
 
 ## Troubleshooting basics
 
@@ -309,5 +250,5 @@ If setup or updates fail:
 - Confirm that no other Modbus client is connected to the charger.
 - Confirm that the charger IP address is fixed and reachable.
 - Confirm that `Modbus/TCP` is enabled in the charger web interface.
-- Start with `Charging Control = Off` before enabling active charging control.
-- Check `Client Error`, `Connected`, `Sensor Invalid Reason` and `Write Queue Depth`.
+- Start with `Integration Charging Control = Monitoring Only` before enabling active charging control.
+- Check `Client Error`, `Connected` and `Sensor Invalid Reason`.

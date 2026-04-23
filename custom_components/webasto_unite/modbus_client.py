@@ -158,6 +158,33 @@ class WebastoModbusClient:
                     raise ModbusClientError(f"Failed to write register {register.name}: {err}") from err
                 await self._handle_retry()
 
+    async def read_input_registers_block(self, address: int, count: int) -> list[int]:
+        for attempt in range(1, self.config.retries + 1):
+            try:
+                await self.ensure_connected()
+                async with self._lock:
+                    assert self._client is not None
+                    response = await self._call_with_unit_fallback(
+                        self._client.read_input_registers,
+                        address=address,
+                        count=count,
+                    )
+                if isinstance(response, ExceptionResponse) or response.isError():
+                    raise ModbusClientProtocolError(
+                        f"Read input register block failed at {address} (count={count}): {response}"
+                    )
+                self._mark_ok()
+                return list(response.registers)
+            except (ModbusClientConnectionError, ModbusClientProtocolError, ModbusException, OSError, asyncio.TimeoutError) as err:
+                self._stats.read_failures += 1
+                self._stats.last_error = str(err)
+                if attempt >= self.config.retries:
+                    raise ModbusClientError(
+                        f"Failed to read input register block at {address} (count={count}): {err}"
+                    ) from err
+                await self._handle_retry()
+        raise ModbusClientError(f"Unexpected read failure for input register block at {address} (count={count})")
+
     async def _read_raw(self, register: RegisterDef):
         assert self._client is not None
         if register.register_type == RegisterType.INPUT:

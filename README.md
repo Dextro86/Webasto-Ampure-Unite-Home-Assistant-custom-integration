@@ -6,7 +6,7 @@
 
 Home Assistant custom integration for Webasto Unite and Ampure Unite EV chargers over local Modbus/TCP.
 
-This is a community project developed with significant AI assistance. Active charging control and phase switching should be verified on your own charger, vehicle and firmware before relying on automation.
+This is a community project developed with significant AI assistance. Active charging control should be verified on your own charger and vehicle before relying on automation.
 
 ## Features
 
@@ -14,26 +14,24 @@ This is a community project developed with significant AI assistance. Active cha
 - Keepalive handling
 - Current control through register `5004`
 - Dynamic Load Balancing (DLB)
-- PV surplus charging
-- Manual 1P/3P phase switching through register `405`
-- Experimental automatic PV 1P/3P phase switching
+- Solar charging
 - Optional Lovelace dashboard and automation examples
 
 Supported charge modes:
 
 - `Off`
 - `Normal`
-- `PV`
+- `Solar`
 - `Fixed Current`
 
-PV strategies:
+Solar strategies:
 
-- `Surplus Only`
-- `Minimum + Surplus`
+- `Eco Solar`
+- `Smart Solar`
 
 Temporary session overrides:
 
-- `PV Until Unplug`
+- `Solar Until Unplug`
 - `Fixed Current Until Unplug`
 
 ## Requirements
@@ -43,7 +41,7 @@ Temporary session overrides:
 - The charger has network connectivity and a fixed IP address.
 - `Modbus/TCP` is enabled in the charger's web interface.
 - No other system keeps an active `Modbus/TCP` connection open to the charger.
-- DLB and PV control require suitable Home Assistant sensors.
+- DLB and Solar control require suitable Home Assistant sensors.
 
 ## Installation
 
@@ -68,33 +66,29 @@ Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unit
 
 ## Documentation
 
-- [Configuration guide](docs/configuration.md): setup, one-screen settings layout, sensor choices, DLB, PV charging, phase switching, firmware limits and troubleshooting.
+- [Configuration guide](docs/configuration.md): setup, one-screen settings layout, sensor choices, DLB, Solar charging and troubleshooting.
 - [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
 
-Start conservatively: first confirm monitoring works, then set `Charging Control` to `On`, and only then enable DLB, PV charging or automatic phase switching.
+Start conservatively: first confirm monitoring works, then set `Integration Charging Control` to `Enabled`, and only then enable DLB and Solar charging.
 
 ## Settings Overview
 
 The integration options are grouped into one settings screen with these sections:
 
 - `Connection`: charger network and Modbus settings
-- `General Charging`: installed phases, startup/default mode and current limits
-- `Session Overrides`: temporary per-session Fixed Current and PV Until Unplug behavior when managed control is enabled
+- `Charging`: installed phases, default mode and current limits
+- `Temporary Session Settings`: temporary per-session Fixed Current and Solar Until Unplug behavior when managed control is enabled
 - `Dynamic Load Balancing`: exposes DLB mode, sensor scope, fuse settings and DLB sensors in one section
-- `PV Charging`: exposes PV strategy, measurement source, thresholds and timing settings in one section
-- `Phase Switching`: shown for `3 Phase` installations
+- `Solar Charging`: exposes Solar strategy, input source, thresholds and timing settings in one section
 - `Advanced`: keepalive and communication tuning
 
 This keeps the full configuration in one place while preserving the same validation rules as before.
 
 ## Notes
 
-- Automatic PV 1P/3P phase switching is experimental.
-- Phase switching is treated as runtime-supported only from firmware `3.187.0` or newer.
-- Firmware strings such as `v3.187.0-1.0.156.0` are interpreted by their leading charger firmware part, so this example is treated as `3.187.0`.
-- On older or unrecognized firmware, the integration keeps current control, DLB, PV charging and keepalive active, but it does not attempt manual or automatic Modbus phase switching or phase-switch mismatch recovery.
-- DLB and PV charging are disabled by default and should be enabled only after selecting suitable sensors.
-- For 3-phase DLB, use per-phase current sensors. Grid-power DLB is only suitable as a 1-phase approximation.
+- Automatic and manual phase switching are removed in this stability release.
+- DLB and Solar charging are disabled by default and should be enabled only after selecting suitable sensors.
+- DLB uses per-phase current sensors only. In `1p` setup, only L1 is required; in `3p`, L1/L2/L3 are required.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
 
 ## Repository contents

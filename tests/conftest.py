@@ -85,6 +85,12 @@ core.ServiceCall = object
 core.callback = lambda fn: fn
 sys.modules.setdefault("homeassistant.core", core)
 
+exceptions = types.ModuleType("homeassistant.exceptions")
+class _HomeAssistantError(Exception):
+    pass
+exceptions.HomeAssistantError = _HomeAssistantError
+sys.modules.setdefault("homeassistant.exceptions", exceptions)
+
 data_entry_flow = types.ModuleType("homeassistant.data_entry_flow")
 class _Section:
     def __init__(self, schema, options=None):
@@ -195,6 +201,25 @@ class _SensorEntityDescription:
 sensor.SensorEntity = _SensorEntity
 sensor.SensorEntityDescription = _SensorEntityDescription
 sys.modules.setdefault("homeassistant.components.sensor", sensor)
+
+number = types.ModuleType("homeassistant.components.number")
+class _NumberEntity:
+    pass
+number.NumberEntity = _NumberEntity
+sys.modules.setdefault("homeassistant.components.number", number)
+
+diagnostics = types.ModuleType("homeassistant.components.diagnostics")
+def _async_redact_data(data, to_redact):
+    if isinstance(data, dict):
+        return {
+            key: ("REDACTED" if key in to_redact else _async_redact_data(value, to_redact))
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_async_redact_data(value, to_redact) for value in data]
+    return data
+diagnostics.async_redact_data = _async_redact_data
+sys.modules.setdefault("homeassistant.components.diagnostics", diagnostics)
 
 entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
 entity_platform.AddEntitiesCallback = object

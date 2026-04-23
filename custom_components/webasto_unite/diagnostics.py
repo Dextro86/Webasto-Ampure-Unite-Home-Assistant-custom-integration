@@ -5,25 +5,28 @@ from homeassistant.components.diagnostics import async_redact_data
 
 from .const import DOMAIN
 
-TO_REDACT = {"host"}
+TO_REDACT = {"host", "serial_number", "charge_point_id"}
 
 
 async def async_get_config_entry_diagnostics(hass, entry):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
-        "options": dict(entry.options),
-        "runtime": coordinator.data.as_dict() if coordinator.data is not None else None,
-        "wallbox_summary": coordinator.data.as_dict().get("wallbox") if coordinator.data is not None else None,
+        "options": async_redact_data(dict(entry.options), TO_REDACT),
+        "runtime": async_redact_data(coordinator.data.as_dict(), TO_REDACT) if coordinator.data is not None else None,
+        "wallbox_summary": async_redact_data(coordinator.data.as_dict().get("wallbox"), TO_REDACT) if coordinator.data is not None else None,
         "identity_summary": (
-            {
-                "serial_number": coordinator.data.wallbox.serial_number,
-                "charge_point_id": coordinator.data.wallbox.charge_point_id,
-                "brand": coordinator.data.wallbox.brand,
-                "model_name": coordinator.data.wallbox.model_name,
-                "firmware_version": coordinator.data.wallbox.firmware_version,
-                "charge_point_phase_count": coordinator.data.wallbox.charge_point_phase_count,
-            }
+            async_redact_data(
+                {
+                    "serial_number": coordinator.data.wallbox.serial_number,
+                    "charge_point_id": coordinator.data.wallbox.charge_point_id,
+                    "brand": coordinator.data.wallbox.brand,
+                    "model_name": coordinator.data.wallbox.model_name,
+                    "firmware_version": coordinator.data.wallbox.firmware_version,
+                    "charge_point_phase_count": coordinator.data.wallbox.charge_point_phase_count,
+                },
+                TO_REDACT,
+            )
             if coordinator.data is not None
             else None
         ),
@@ -36,7 +39,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "capability_summary": coordinator.data.capability_summary,
                 "control_reason": coordinator.data.control_reason,
                 "charging_paused": coordinator.data.charging_paused,
-                "pv_until_unplug_active": coordinator.data.pv_until_unplug_active,
+                "solar_until_unplug_active": coordinator.data.solar_until_unplug_active,
                 "fixed_current_until_unplug_active": coordinator.data.fixed_current_until_unplug_active,
                 "keepalive_age_s": coordinator.data.keepalive_age_s,
                 "keepalive_interval_s": coordinator.data.keepalive_interval_s,
