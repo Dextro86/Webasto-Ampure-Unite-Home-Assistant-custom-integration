@@ -424,6 +424,9 @@ class WallboxController:
         if sensors.grid_power_w is None:
             return None
 
+        if self.config.solar_grid_power_direction == "positive_export":
+            return max(0.0, sensors.grid_power_w)
+
         if sensors.grid_power_w < 0:
             return abs(sensors.grid_power_w)
 

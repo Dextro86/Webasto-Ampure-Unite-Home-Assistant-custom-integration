@@ -84,6 +84,20 @@ def test_pv_mode_without_grid_assist_can_disable_when_below_minimum():
     assert decision.charging_enabled is False
 
 
+def test_signed_grid_power_defaults_to_negative_export():
+    controller = make_controller()
+
+    assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=-1800.0)) == 1800.0
+    assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=1800.0)) == 0.0
+
+
+def test_signed_grid_power_can_use_positive_export():
+    controller = make_controller(solar_grid_power_direction="positive_export")
+
+    assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=1800.0)) == 1800.0
+    assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=-1800.0)) == 0.0
+
+
 def test_fixed_current_mode_can_target_fixed_current_without_surplus_dependency():
     controller = make_controller(fixed_current_a=8.0)
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)

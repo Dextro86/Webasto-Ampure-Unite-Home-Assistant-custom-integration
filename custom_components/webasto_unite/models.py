@@ -29,6 +29,11 @@ class SolarInputModel(str, Enum):
     GRID_POWER_DERIVED = "grid_power_derived"
 
 
+class SolarGridPowerDirection(str, Enum):
+    NEGATIVE_EXPORT = "negative_export"
+    POSITIVE_EXPORT = "positive_export"
+
+
 class SolarControlStrategy(str, Enum):
     DISABLED = "disabled"
     ECO_SOLAR = "eco_solar"
@@ -226,6 +231,7 @@ class ControlConfig:
     retries: int = 3
     control_mode: ControlMode = ControlMode.KEEPALIVE_ONLY
     keepalive_interval_s: float = 10.0
+    control_sensor_timeout_s: float = 60.0
     safe_current_a: float = 6.0
     min_current_a: float = 6.0
     max_current_a: float = 16.0
@@ -236,6 +242,7 @@ class ControlConfig:
     dlb_sensor_scope: DlbSensorScope = DlbSensorScope.LOAD_EXCLUDING_CHARGER
     dlb_require_units: bool = False
     solar_input_model: SolarInputModel = SolarInputModel.GRID_POWER_DERIVED
+    solar_grid_power_direction: SolarGridPowerDirection = SolarGridPowerDirection.NEGATIVE_EXPORT
     solar_control_strategy: SolarControlStrategy = SolarControlStrategy.DISABLED
     solar_until_unplug_strategy: SolarOverrideStrategy = SolarOverrideStrategy.INHERIT
     solar_require_units: bool = False
@@ -253,6 +260,7 @@ class ControlConfig:
 
     def __post_init__(self) -> None:
         self.solar_input_model = SolarInputModel(self.solar_input_model)
+        self.solar_grid_power_direction = SolarGridPowerDirection(self.solar_grid_power_direction)
         self.solar_control_strategy = normalize_solar_control_strategy(self.solar_control_strategy)
         self.solar_until_unplug_strategy = normalize_solar_override_strategy(self.solar_until_unplug_strategy)
 

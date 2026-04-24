@@ -98,6 +98,7 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
         mapping = {
             0: "No Vehicle",
             1: "Preparing",
+            2: "Charging",
             3: "Charging",
             4: "Paused",
             7: "Error",

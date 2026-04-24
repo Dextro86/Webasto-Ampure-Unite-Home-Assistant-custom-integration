@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CONF_COMM_TIMEOUT,
     CONF_CONTROL_MODE,
+    CONF_CONTROL_SENSOR_TIMEOUT,
     CONF_DLB_ENABLED,
     CONF_DLB_GRID_POWER_SENSOR,
     CONF_DLB_INPUT_MODEL,
@@ -30,6 +31,7 @@ from .const import (
     CONF_MIN_CURRENT,
     CONF_POLLING_INTERVAL,
     CONF_SOLAR_CONTROL_STRATEGY,
+    CONF_SOLAR_GRID_POWER_DIRECTION,
     CONF_SOLAR_INPUT_MODEL,
     CONF_SOLAR_MIN_CURRENT,
     CONF_SOLAR_MIN_PAUSE,
@@ -50,6 +52,7 @@ from .const import (
     CONF_UNIT_ID,
     CONF_USER_LIMIT,
     DEFAULT_CONTROL_MODE,
+    DEFAULT_CONTROL_SENSOR_TIMEOUT_S,
     DEFAULT_FIXED_CURRENT_A,
     DEFAULT_KEEPALIVE_INTERVAL_S,
     DEFAULT_MAIN_FUSE_A,
@@ -65,6 +68,7 @@ from .const import (
     DEFAULT_RETRIES,
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
+    DEFAULT_SOLAR_GRID_POWER_DIRECTION,
     DEFAULT_STARTUP_CHARGE_MODE,
     DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
@@ -156,6 +160,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             retries=int(merged.get(CONF_RETRIES, DEFAULT_RETRIES)),
             control_mode=ControlMode(merged.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)),
             keepalive_interval_s=float(merged.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)),
+            control_sensor_timeout_s=float(
+                merged.get(CONF_CONTROL_SENSOR_TIMEOUT, DEFAULT_CONTROL_SENSOR_TIMEOUT_S)
+            ),
             safe_current_a=float(merged.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)),
             min_current_a=float(merged.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)),
             max_current_a=float(merged.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)),
@@ -168,6 +175,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             ),
             dlb_require_units=bool(merged.get(CONF_DLB_REQUIRE_UNITS, False)),
             solar_input_model=SolarInputModel(merged.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)),
+            solar_grid_power_direction=merged.get(
+                CONF_SOLAR_GRID_POWER_DIRECTION,
+                DEFAULT_SOLAR_GRID_POWER_DIRECTION,
+            ),
             solar_control_strategy=normalize_solar_control_strategy(
                 merged.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)
             ),
@@ -665,14 +676,17 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 l1=self.sensor_adapter.state_as_current_a(
                     options.get(CONF_DLB_L1_SENSOR),
                     require_supported_unit=self.control_config.dlb_require_units,
+                    max_age_s=self.control_config.control_sensor_timeout_s,
                 ),
                 l2=self.sensor_adapter.state_as_current_a(
                     options.get(CONF_DLB_L2_SENSOR),
                     require_supported_unit=self.control_config.dlb_require_units,
+                    max_age_s=self.control_config.control_sensor_timeout_s,
                 ),
                 l3=self.sensor_adapter.state_as_current_a(
                     options.get(CONF_DLB_L3_SENSOR),
                     require_supported_unit=self.control_config.dlb_require_units,
+                    max_age_s=self.control_config.control_sensor_timeout_s,
                 ),
             )
 
@@ -680,11 +694,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             snapshot.surplus_power_w = self.sensor_adapter.state_as_power_w(
                 options.get(CONF_SOLAR_SURPLUS_SENSOR),
                 require_supported_unit=self.control_config.solar_require_units,
+                max_age_s=self.control_config.control_sensor_timeout_s,
             )
         elif snapshot.grid_power_w is None:
             snapshot.grid_power_w = self.sensor_adapter.state_as_power_w(
                 options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR),
                 require_supported_unit=self.control_config.solar_require_units,
+                max_age_s=self.control_config.control_sensor_timeout_s,
             )
 
         if self.control_config.dlb_input_model == DlbInputModel.PHASE_CURRENTS:
@@ -698,11 +714,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 )
             )
             if any(value is None for value in required_values):
+                stale_entities = self._stale_sensor_entities(
+                    (
+                        options.get(CONF_DLB_L1_SENSOR),
+                        options.get(CONF_DLB_L2_SENSOR),
+                        options.get(CONF_DLB_L3_SENSOR),
+                    )
+                )
                 snapshot.valid = False
-                snapshot.reason_invalid = (
-                    "Required DLB phase sensors unavailable or invalid unit"
-                    if self.control_config.dlb_require_units
-                    else "Required DLB phase sensors unavailable"
+                snapshot.reason_invalid = self._control_sensor_invalid_reason(
+                    "Required DLB phase sensors",
+                    stale=bool(stale_entities),
+                    require_units=self.control_config.dlb_require_units,
                 )
 
         if (
@@ -710,16 +733,42 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and self.control_config.solar_control_strategy != SolarControlStrategy.DISABLED
             and self.controller.resolve_surplus_power(snapshot) is None
         ):
+            solar_entity = (
+                options.get(CONF_SOLAR_SURPLUS_SENSOR)
+                if self.control_config.solar_input_model == SolarInputModel.SURPLUS_SENSOR
+                else options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR)
+            )
             snapshot.solar_input_state = "unavailable"
-            snapshot.reason_invalid = (
-                "Required Solar sensor unavailable or invalid unit"
-                if self.control_config.solar_require_units
-                else "Required Solar sensor unavailable"
+            snapshot.reason_invalid = self._control_sensor_invalid_reason(
+                "Required Solar sensor",
+                stale=self.sensor_adapter.state_is_stale(
+                    solar_entity,
+                    max_age_s=self.control_config.control_sensor_timeout_s,
+                ),
+                require_units=self.control_config.solar_require_units,
             )
         elif self.control_config.solar_control_strategy != SolarControlStrategy.DISABLED:
             snapshot.solar_input_state = "ready"
 
         return snapshot
+
+    @staticmethod
+    def _control_sensor_invalid_reason(prefix: str, *, stale: bool, require_units: bool) -> str:
+        if stale:
+            return f"{prefix} stale"
+        if require_units:
+            return f"{prefix} unavailable or invalid unit"
+        return f"{prefix} unavailable"
+
+    def _stale_sensor_entities(self, entity_ids: tuple[str | None, ...]) -> list[str]:
+        return [
+            entity_id
+            for entity_id in entity_ids
+            if self.sensor_adapter.state_is_stale(
+                entity_id,
+                max_age_s=self.control_config.control_sensor_timeout_s,
+            )
+        ]
 
     def _configured_installed_phases(self) -> str:
         entry = getattr(self, "entry", None)

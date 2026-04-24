@@ -80,7 +80,7 @@ The integration options are grouped into one settings screen with these sections
 - `Temporary Session Settings`: temporary per-session Fixed Current and Solar Until Unplug behavior when managed control is enabled
 - `Dynamic Load Balancing`: exposes DLB mode, sensor scope, fuse settings and DLB sensors in one section
 - `Solar Charging`: exposes Solar strategy, input source, thresholds and timing settings in one section
-- `Advanced`: keepalive and communication tuning
+- `Advanced`: keepalive, control sensor freshness and communication tuning
 
 This keeps the full configuration in one place while preserving the same validation rules as before.
 

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 import asyncio
 import importlib
+from datetime import datetime, timedelta, timezone
 from time import monotonic
 from unittest.mock import AsyncMock
 import pytest
@@ -438,9 +439,10 @@ def test_options_flow_shows_all_pv_fields_without_requiring_second_save():
         assert result["type"] == "form"
         pv_fields = result["data_schema"].args[0]["solar_charging"].schema.args[0]
         assert set(pv_fields) == {
-            "solar_control_strategy",
-            "solar_input_model",
-            "solar_require_units",
+                "solar_control_strategy",
+                "solar_input_model",
+                "solar_grid_power_direction",
+                "solar_require_units",
             "solar_surplus_sensor",
             "solar_grid_power_sensor",
             "solar_start_threshold",
@@ -870,6 +872,102 @@ def test_sensor_adapter_can_require_supported_units_for_dlb_inputs():
     assert adapter.state_as_current_a("sensor.no_unit") == 12.0
     assert adapter.state_as_current_a("sensor.no_unit", require_supported_unit=True) is None
     assert adapter.state_as_current_a("sensor.with_unit", require_supported_unit=True) == 12.0
+
+
+def test_sensor_adapter_rejects_stale_control_sensor_values():
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    fresh = datetime.now(timezone.utc)
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.stale": SimpleNamespace(
+                    state="12.0",
+                    attributes={"unit_of_measurement": "A"},
+                    last_reported=stale,
+                ),
+                "sensor.fresh": SimpleNamespace(
+                    state="12.0",
+                    attributes={"unit_of_measurement": "A"},
+                    last_reported=fresh,
+                ),
+            }.get(entity_id)
+        )
+    )
+    adapter = HaSensorAdapter(hass)
+
+    assert adapter.state_as_current_a("sensor.stale", max_age_s=60.0) is None
+    assert adapter.state_is_stale("sensor.stale", max_age_s=60.0) is True
+    assert adapter.state_as_current_a("sensor.fresh", max_age_s=60.0) == 12.0
+
+
+def test_dlb_snapshot_marks_stale_phase_sensor_invalid():
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.l1": SimpleNamespace(
+                    state="12.0",
+                    attributes={"unit_of_measurement": "A"},
+                    last_reported=stale,
+                ),
+            }.get(entity_id)
+        )
+    )
+
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.hass = hass
+    coordinator.entry = SimpleNamespace(
+        options={"dlb_l1_sensor": "sensor.l1"},
+        data={"installed_phases": "1p"},
+    )
+    coordinator.sensor_adapter = HaSensorAdapter(hass)
+    coordinator.control_config = ControlConfig(
+        dlb_input_model=DlbInputModel.PHASE_CURRENTS,
+        control_sensor_timeout_s=60.0,
+    )
+    coordinator.controller = make_controller()
+
+    snapshot = coordinator._read_sensor_snapshot()
+
+    assert snapshot.valid is False
+    assert snapshot.phase_currents.l1 is None
+    assert snapshot.reason_invalid == "Required DLB phase sensors stale"
+
+
+def test_solar_snapshot_marks_stale_input_sensor_unavailable():
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.solar_surplus": SimpleNamespace(
+                    state="2300",
+                    attributes={"unit_of_measurement": "W"},
+                    last_reported=stale,
+                ),
+            }.get(entity_id)
+        )
+    )
+
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.hass = hass
+    coordinator.entry = SimpleNamespace(
+        options={"solar_surplus_sensor": "sensor.solar_surplus"},
+        data={"installed_phases": "3p"},
+    )
+    coordinator.sensor_adapter = HaSensorAdapter(hass)
+    coordinator.control_config = ControlConfig(
+        dlb_input_model=DlbInputModel.DISABLED,
+        solar_control_strategy=SolarControlStrategy.ECO_SOLAR,
+        solar_input_model=SolarInputModel.SURPLUS_SENSOR,
+        control_sensor_timeout_s=60.0,
+    )
+    coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.ECO_SOLAR)
+
+    snapshot = coordinator._read_sensor_snapshot()
+
+    assert snapshot.surplus_power_w is None
+    assert snapshot.reason_invalid == "Required Solar sensor stale"
+    assert snapshot.solar_input_state == "unavailable"
 
 
 def test_pv_snapshot_requires_units_when_enabled():

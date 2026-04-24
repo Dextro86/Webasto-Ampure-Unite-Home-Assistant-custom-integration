@@ -78,7 +78,7 @@ These settings do not change the configured `Default Mode`. They only define how
 Important current settings:
 
 - `Current Limit`: normal target current for charging.
-- `Fallback Current`: fallback current used when sensor inputs are unavailable or invalid.
+- `Fallback Current`: low safety current used when DLB cannot trust its sensor inputs. `6 A` is recommended.
 - `Fixed Current`: target used by `Fixed Current` mode.
 
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
@@ -86,6 +86,8 @@ The final current target can still be limited by the charger-reported session li
 `Current Limit` is also a general user limit. This means `Fixed Current` and `Fixed Current Until Unplug` can still be capped by `Current Limit`, `Maximum Current`, DLB and charger/session limits. Example: if `Fixed Current` is `16 A` but `Current Limit` is `10 A`, the final target will not exceed `10 A`.
 
 If DLB input becomes unavailable, the integration falls back to `Fallback Current`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured sensors.
+
+External DLB sensors must also be recent. If a required phase-current sensor has not been updated within `Control Sensor Timeout`, the integration treats it as unsafe and falls back to `Fallback Current`. This prevents DLB from trusting stale P1 or template-sensor values after a sensor gateway has stopped updating.
 
 ## Dynamic Load Balancing
 
@@ -108,6 +110,8 @@ DLB can be enabled or disabled. When enabled, it uses phase current sensors only
 - `3p` charger setup: L1, L2 and L3 are required.
 
 Use live measurement sensors, not energy counters. Current sensors should report `A` or `mA`. Energy sensors such as `Wh` or `kWh` are not suitable for DLB because they represent accumulated energy, not current load.
+
+`Require Sensor Units` is recommended. It makes the integration reject unitless or wrongly typed DLB sensors instead of guessing that a plain number is amperes.
 
 Sensor Scope:
 
@@ -134,6 +138,7 @@ Main settings:
 
 - `Solar Strategy`
 - `Solar Input Source`
+- `Grid Power Direction`
 - `Require Solar Sensor Units`
 - `Solar Surplus Sensor`
 - `Start Threshold (W)`
@@ -155,11 +160,17 @@ Solar charging is disabled by default. Enable it only after selecting a suitable
 `Smart Solar` is not pure surplus-only charging. It may charge at `Solar Minimum Current` when there is little or no surplus, as long as the Solar input is valid. Use `Eco Solar` if you want Solar charging to wait until enough surplus is present.
 
 If the configured Solar input becomes unavailable, `Eco Solar` and `Smart Solar` pause by writing `0 A`.
+Solar input must also be recent. If the configured Solar sensor is older than `Control Sensor Timeout`, Solar control treats it as unavailable.
 
 Solar input can be provided in two ways:
 
 - `Solar Surplus Sensor`: select a Home Assistant sensor that directly represents available Solar surplus as current power in `W` or `kW`.
-- `Signed Grid Power Sensor`: select a net grid power sensor where negative values mean export to the grid. For example, `-1800 W` means roughly `1800 W` export.
+- `Signed Grid Power Sensor`: select a live net grid power sensor that reports both import and export using positive and negative values. The integration converts the export side of that sensor into Solar surplus.
+
+`Grid Power Direction` tells the integration which sign means export to the grid:
+
+- `Negative Export`: `-1800 W` means about `1800 W` export. This is the default.
+- `Positive Export`: `1800 W` means about `1800 W` export.
 
 The surplus sensor must represent power that is available now. Do not select a daily energy production sensor or energy import/export counter.
 
@@ -174,7 +185,9 @@ surplus = Solar production - total consumption + charger power
 This avoids the common issue where export drops to zero as soon as the charger starts using the available solar power.
 
 Use current power sensors, not energy counters. `W` and `kW` are valid. `Wh` and `kWh` are not suitable for Solar control because they represent accumulated energy, not current surplus.
-If `Require Solar Sensor Units` is enabled, unitless Solar sensors are ignored to prevent accidental misconfiguration.
+`Require Solar Sensor Units` is recommended. If it is enabled, unitless Solar sensors are ignored to prevent accidental misconfiguration.
+
+Avoid template sensors that keep updating themselves with old source data. `Control Sensor Timeout` can only protect you when the selected sensor's timestamp becomes stale when the underlying source stops updating.
 
 When Solar power is converted to charging current, the integration uses the charger-reported phase voltages when they are plausible. If voltage data is missing or invalid, it falls back to `230 V` per phase.
 
@@ -207,10 +220,12 @@ This section groups lower-level communication settings that most users should le
 Main settings:
 
 - `Keepalive Interval`
+- `Control Sensor Timeout`
 - `Request Timeout`
 - `Retry Attempts`
 
 Keepalive is always enabled by the integration, independent of `Integration Charging Control` being `Enabled` or `Monitoring Only`.
+`Control Sensor Timeout` is the maximum age for external DLB and Solar sensors before the integration stops trusting them. The default is `60 seconds`.
 These values are mainly useful for charger-specific troubleshooting or communication tuning. They do not change the high-level charging strategy.
 
 Useful diagnostics:

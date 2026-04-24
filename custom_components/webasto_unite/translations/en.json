@@ -47,7 +47,7 @@
               "control_mode": "On lets the integration control the charger. Off keeps the integration in monitoring mode with keepalive only.",
               "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
               "user_limit": "Current limit for charging.",
-              "safe_current": "Charging current used when the integration cannot safely rely on its sensor inputs."
+              "safe_current": "Low safety current used when DLB cannot trust its sensor inputs. 6 A is recommended."
             }
           },
           "session_overrides": {
@@ -89,6 +89,7 @@
             "data": {
               "solar_control_strategy": "Solar Strategy",
               "solar_input_model": "Solar Input Source",
+              "solar_grid_power_direction": "Grid Power Direction",
               "solar_require_units": "Require Solar Sensor Units",
               "solar_surplus_sensor": "Solar Surplus Sensor",
               "solar_grid_power_sensor": "Grid Power Sensor",
@@ -102,7 +103,8 @@
             },
             "data_description": {
               "solar_control_strategy": "Choose how strictly the integration should follow available solar surplus.",
-              "solar_input_model": "Choose how solar input is provided to the integration.",
+              "solar_input_model": "Choose how solar input is provided. A Signed Grid Power Sensor reports import and export with positive and negative values.",
+              "solar_grid_power_direction": "Choose which sign means export to the grid. Export is treated as available solar surplus.",
               "solar_require_units": "If enabled, solar sensors must expose a supported unit (W, kW, mW, MW). Unitless values are ignored.",
               "solar_surplus_sensor": "Sensor that reports the currently available solar surplus.",
               "solar_grid_power_sensor": "Signed grid power sensor used to derive solar surplus from import and export.",
@@ -119,11 +121,13 @@
             "name": "Advanced",
             "data": {
               "keepalive_interval": "Keepalive Interval",
+              "control_sensor_timeout": "Control Sensor Timeout",
               "timeout": "Request Timeout",
               "retries": "Retry Attempts"
             },
             "data_description": {
               "keepalive_interval": "How often keepalive writes are sent.",
+              "control_sensor_timeout": "Maximum age for external control sensors before DLB or Solar input is treated as unsafe.",
               "timeout": "How long the integration waits for a charger response.",
               "retries": "How many times the integration retries a failed request."
             }

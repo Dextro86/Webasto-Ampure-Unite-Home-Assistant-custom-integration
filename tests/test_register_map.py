@@ -92,6 +92,7 @@ def test_charging_active_uses_charging_state_register_with_measurement_fallback(
 def test_human_readable_charge_point_state_mapping_uses_conservative_labels():
     assert WebastoSensor._format_charge_point_state(0) == "No Vehicle"
     assert WebastoSensor._format_charge_point_state(1) == "Preparing"
+    assert WebastoSensor._format_charge_point_state(2) == "Charging"
     assert WebastoSensor._format_charge_point_state(3) == "Charging"
     assert WebastoSensor._format_charge_point_state(4) == "Paused"
     assert WebastoSensor._format_charge_point_state(7) == "Error"

@@ -10,7 +10,7 @@ from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, SolarControlStrategy, SolarInputModel, SolarOverrideStrategy, normalize_charge_mode, normalize_solar_control_strategy, normalize_solar_override_strategy
+from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, SolarControlStrategy, SolarGridPowerDirection, SolarInputModel, SolarOverrideStrategy, normalize_charge_mode, normalize_solar_control_strategy, normalize_solar_override_strategy
 
 
 def _solar_mode_label(strategy: str | SolarControlStrategy) -> str:
@@ -43,6 +43,10 @@ DLB_SENSOR_SCOPE_SELECTOR_OPTIONS = [
 SOLAR_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": SolarInputModel.SURPLUS_SENSOR.value, "label": "Solar Surplus Sensor"},
     {"value": SolarInputModel.GRID_POWER_DERIVED.value, "label": "Signed Grid Power Sensor"},
+]
+SOLAR_GRID_POWER_DIRECTION_SELECTOR_OPTIONS = [
+    {"value": SolarGridPowerDirection.NEGATIVE_EXPORT.value, "label": "Negative Export"},
+    {"value": SolarGridPowerDirection.POSITIVE_EXPORT.value, "label": "Positive Export"},
 ]
 SOLAR_CONTROL_STRATEGY_OPTIONS = [
     {"value": SolarControlStrategy.DISABLED.value, "label": "Disabled"},
@@ -391,7 +395,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         dlb_fields: dict[Any, Any] = {
             vol.Optional(CONF_DLB_ENABLED, default=current.get(CONF_DLB_ENABLED, False)): bool,
             vol.Optional(CONF_DLB_SENSOR_SCOPE, default=current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=DLB_SENSOR_SCOPE_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_DLB_REQUIRE_UNITS, default=current.get(CONF_DLB_REQUIRE_UNITS, False)): bool,
+            vol.Optional(CONF_DLB_REQUIRE_UNITS, default=current.get(CONF_DLB_REQUIRE_UNITS, True)): bool,
             vol.Optional(CONF_MAIN_FUSE, default=current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)): _float_selector(MIN_CURRENT_A, 200.0, 0.1),
             vol.Optional(CONF_SAFETY_MARGIN, default=current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)): _float_selector(0.0, 50.0, 0.1),
             _optional_field(CONF_DLB_L1_SENSOR, _entity_selector(), current.get(CONF_DLB_L1_SENSOR)): _entity_selector(),
@@ -401,7 +405,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         dlb_defaults: dict[str, Any] = {
             CONF_DLB_ENABLED: current.get(CONF_DLB_ENABLED, False),
             CONF_DLB_SENSOR_SCOPE: current.get(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value),
-            CONF_DLB_REQUIRE_UNITS: current.get(CONF_DLB_REQUIRE_UNITS, False),
+            CONF_DLB_REQUIRE_UNITS: current.get(CONF_DLB_REQUIRE_UNITS, True),
             CONF_MAIN_FUSE: current.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A),
             CONF_SAFETY_MARGIN: current.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A),
             CONF_DLB_L1_SENSOR: current.get(CONF_DLB_L1_SENSOR),
@@ -412,7 +416,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         solar_fields: dict[Any, Any] = {
             vol.Optional(CONF_SOLAR_CONTROL_STRATEGY, default=current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_CONTROL_STRATEGY_OPTIONS)),
             vol.Optional(CONF_SOLAR_INPUT_MODEL, default=current.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_INPUT_MODEL_SELECTOR_OPTIONS)),
-            vol.Optional(CONF_SOLAR_REQUIRE_UNITS, default=current.get(CONF_SOLAR_REQUIRE_UNITS, False)): bool,
+            vol.Optional(CONF_SOLAR_GRID_POWER_DIRECTION, default=current.get(CONF_SOLAR_GRID_POWER_DIRECTION, DEFAULT_SOLAR_GRID_POWER_DIRECTION)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_GRID_POWER_DIRECTION_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_SOLAR_REQUIRE_UNITS, default=current.get(CONF_SOLAR_REQUIRE_UNITS, True)): bool,
             _optional_field(CONF_SOLAR_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_SOLAR_SURPLUS_SENSOR)): _entity_selector(),
             _optional_field(CONF_SOLAR_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_SOLAR_GRID_POWER_SENSOR)): _entity_selector(),
             vol.Optional(CONF_SOLAR_START_THRESHOLD, default=current.get(CONF_SOLAR_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
@@ -426,7 +431,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         solar_defaults: dict[str, Any] = {
             CONF_SOLAR_CONTROL_STRATEGY: current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value),
             CONF_SOLAR_INPUT_MODEL: current.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value),
-            CONF_SOLAR_REQUIRE_UNITS: current.get(CONF_SOLAR_REQUIRE_UNITS, False),
+            CONF_SOLAR_GRID_POWER_DIRECTION: current.get(CONF_SOLAR_GRID_POWER_DIRECTION, DEFAULT_SOLAR_GRID_POWER_DIRECTION),
+            CONF_SOLAR_REQUIRE_UNITS: current.get(CONF_SOLAR_REQUIRE_UNITS, True),
             CONF_SOLAR_SURPLUS_SENSOR: current.get(CONF_SOLAR_SURPLUS_SENSOR),
             CONF_SOLAR_GRID_POWER_SENSOR: current.get(CONF_SOLAR_GRID_POWER_SENSOR),
             CONF_SOLAR_START_THRESHOLD: current.get(CONF_SOLAR_START_THRESHOLD, 1800.0),
@@ -440,12 +446,20 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         solar_defaults = _compact_section_defaults(solar_defaults)
         advanced_defaults = {
             CONF_KEEPALIVE_INTERVAL: current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S),
+            CONF_CONTROL_SENSOR_TIMEOUT: current.get(
+                CONF_CONTROL_SENSOR_TIMEOUT,
+                DEFAULT_CONTROL_SENSOR_TIMEOUT_S,
+            ),
             CONF_TIMEOUT: current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S),
             CONF_RETRIES: current.get(CONF_RETRIES, DEFAULT_RETRIES),
         }
         advanced_schema = vol.Schema(
             {
                 vol.Optional(CONF_KEEPALIVE_INTERVAL, default=current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
+                vol.Optional(
+                    CONF_CONTROL_SENSOR_TIMEOUT,
+                    default=current.get(CONF_CONTROL_SENSOR_TIMEOUT, DEFAULT_CONTROL_SENSOR_TIMEOUT_S),
+                ): _float_selector(10.0, MAX_SECONDS, 1.0),
                 vol.Optional(CONF_TIMEOUT, default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)): _float_selector(MIN_SECONDS, 60.0, 0.1),
                 vol.Optional(CONF_RETRIES, default=current.get(CONF_RETRIES, DEFAULT_RETRIES)): _int_selector(1, MAX_RETRIES),
             }
@@ -468,6 +482,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_TIMEOUT, DEFAULT_TIMEOUT_S)
         validated.setdefault(CONF_RETRIES, DEFAULT_RETRIES)
         validated.setdefault(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)
+        validated.setdefault(CONF_CONTROL_SENSOR_TIMEOUT, DEFAULT_CONTROL_SENSOR_TIMEOUT_S)
         validated.setdefault(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)
         validated.setdefault(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)
         validated.setdefault(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)
@@ -479,6 +494,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)
         validated.setdefault(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)
         validated.setdefault(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)
+        validated.setdefault(CONF_SOLAR_GRID_POWER_DIRECTION, DEFAULT_SOLAR_GRID_POWER_DIRECTION)
         validated.setdefault(CONF_SOLAR_REQUIRE_UNITS, False)
         validated.setdefault(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)
         validated.setdefault(CONF_SOLAR_START_THRESHOLD, 1800.0)
@@ -500,6 +516,11 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_TIMEOUT] = _bounded_float(MIN_SECONDS, 60.0, CONF_TIMEOUT)(validated[CONF_TIMEOUT])
         validated[CONF_RETRIES] = _bounded_int(1, MAX_RETRIES, CONF_RETRIES)(validated[CONF_RETRIES])
         validated[CONF_KEEPALIVE_INTERVAL] = _bounded_float(1.0, MAX_SECONDS, CONF_KEEPALIVE_INTERVAL)(validated[CONF_KEEPALIVE_INTERVAL])
+        validated[CONF_CONTROL_SENSOR_TIMEOUT] = _bounded_float(
+            10.0,
+            MAX_SECONDS,
+            CONF_CONTROL_SENSOR_TIMEOUT,
+        )(validated[CONF_CONTROL_SENSOR_TIMEOUT])
         validated[CONF_SAFE_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_SAFE_CURRENT)(validated[CONF_SAFE_CURRENT])
         validated[CONF_MIN_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_MIN_CURRENT)(validated[CONF_MIN_CURRENT])
         validated[CONF_MAX_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_MAX_CURRENT)(validated[CONF_MAX_CURRENT])
@@ -524,6 +545,9 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         if CONF_SOLAR_GRID_POWER_SENSOR in validated:
             validated.pop(CONF_DLB_GRID_POWER_SENSOR, None)
         validated[CONF_SOLAR_CONTROL_STRATEGY] = normalize_solar_control_strategy(validated[CONF_SOLAR_CONTROL_STRATEGY]).value
+        validated[CONF_SOLAR_GRID_POWER_DIRECTION] = SolarGridPowerDirection(
+            validated[CONF_SOLAR_GRID_POWER_DIRECTION]
+        ).value
         validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
         validated = _validate_init_options(validated)
         validated = _validate_dlb_options(validated, self.entry_data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P))
