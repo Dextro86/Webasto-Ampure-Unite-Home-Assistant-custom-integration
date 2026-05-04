@@ -235,7 +235,6 @@ class ControlConfig:
     safe_current_a: float = 6.0
     min_current_a: float = 6.0
     max_current_a: float = 16.0
-    user_limit_a: float = 16.0
     main_fuse_a: float = 25.0
     safety_margin_a: float = 2.0
     dlb_input_model: DlbInputModel = DlbInputModel.DISABLED

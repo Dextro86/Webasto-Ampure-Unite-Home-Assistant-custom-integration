@@ -13,24 +13,25 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
-            WebastoCurrentLimitNumber(coordinator),
+            WebastoMaximumCurrentNumber(coordinator),
             WebastoFixedCurrentNumber(coordinator),
         ]
     )
 
 
-class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
-    _attr_name = "Current Limit"
+class WebastoMaximumCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
+    _attr_name = "Maximum Current"
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
+        # Keep the old unique ID so existing HA entity IDs are not orphaned.
         self._attr_unique_id = f"{coordinator.entry.entry_id}_current_limit"
 
     @property
     def native_value(self):
-        return self.coordinator.control_config.user_limit_a
+        return self.coordinator.control_config.max_current_a
 
     @property
     def native_min_value(self) -> float:
@@ -38,10 +39,10 @@ class WebastoCurrentLimitNumber(WebastoUniteCoordinatorEntity, NumberEntity):
 
     @property
     def native_max_value(self) -> float:
-        return self.coordinator.control_config.max_current_a
+        return 32.0
 
     async def async_set_native_value(self, value: float) -> None:
-        self.coordinator.set_user_limit(float(value))
+        self.coordinator.set_max_current(float(value))
         await self.coordinator.async_request_refresh()
 
 

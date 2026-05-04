@@ -22,17 +22,16 @@ from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
 from custom_components.webasto_unite.diagnostics import async_get_config_entry_diagnostics
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, DlbInputModel, HaSensorSnapshot, PhaseCurrents, SolarControlStrategy, SolarInputModel, RuntimeSnapshot, WallboxState
-from custom_components.webasto_unite.number import WebastoCurrentLimitNumber, WebastoFixedCurrentNumber
+from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoFixedCurrentNumber
 from custom_components.webasto_unite.sensor import WebastoSensor
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
-from custom_components.webasto_unite.switch import WebastoChargingSwitch
+from custom_components.webasto_unite.switch import WebastoChargingSwitch, WebastoFixedCurrentUntilUnplugSwitch, WebastoSolarUntilUnplugSwitch
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
 
 
 def make_controller(**kwargs):
     defaults = dict(
-        user_limit_a=16.0,
         max_current_a=16.0,
         min_current_a=6.0,
         stable_cycles_before_write=1,
@@ -65,7 +64,6 @@ def default_init_input(**overrides):
         "installed_phases": "3p",
         "min_current": 6.0,
         "max_current": 16.0,
-        "user_limit": 16.0,
         "safe_current": 6.0,
         "control_mode": "keepalive_only",
         "startup_charge_mode": "normal",
@@ -193,7 +191,6 @@ def test_reported_current_matching_target_suppresses_unnecessary_write():
 def test_reported_current_mismatch_respects_write_throttle_after_recent_write():
     controller = WallboxController(
         ControlConfig(
-            user_limit_a=16.0,
             max_current_a=16.0,
             min_current_a=6.0,
             stable_cycles_before_write=1,
@@ -243,7 +240,6 @@ def test_init_options_reject_inconsistent_current_limits():
             {
                 "min_current": 10.0,
                 "max_current": 8.0,
-                "user_limit": 9.0,
                 "safe_current": 7.0,
             }
         )
@@ -395,7 +391,8 @@ def test_options_flow_section_defaults_do_not_include_none_entity_values():
                     "installed_phases": "3p",
                     "control_mode": "keepalive_only",
                     "startup_charge_mode": "normal",
-                    "user_limit": 16.0,
+                    "min_current": 6.0,
+                    "max_current": 16.0,
                     "safe_current": 6.0,
                 },
                 "dynamic_load_balancing": {
@@ -462,7 +459,7 @@ def test_options_flow_rejects_pv_min_current_above_max_current():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
         result = await flow.async_step_init(
-            default_options_input(max_current=10.0, user_limit=10.0, safe_current=6.0, solar_min_current=12.0)
+            default_options_input(max_current=10.0, safe_current=6.0, solar_min_current=12.0)
         )
 
         assert result["type"] == "form"
@@ -490,7 +487,8 @@ def test_options_flow_accepts_nested_section_input():
                     "installed_phases": "3p",
                     "control_mode": "keepalive_only",
                     "startup_charge_mode": "normal",
-                    "user_limit": 16.0,
+                    "min_current": 6.0,
+                    "max_current": 16.0,
                     "safe_current": 6.0,
                 },
                 "dynamic_load_balancing": {
@@ -537,11 +535,11 @@ def test_runtime_current_setters_reject_out_of_range_values():
     coordinator.control_config = ControlConfig(min_current_a=6.0, max_current_a=16.0)
 
     try:
-        coordinator.set_user_limit(32.0)
+        coordinator.set_max_current(40.0)
     except ValueError as err:
-        assert "Current Limit must be between 6 A and 16 A" in str(err)
+        assert "Maximum Current must be between 6 A and 32 A" in str(err)
     else:
-        raise AssertionError("Expected Current Limit validation to fail")
+        raise AssertionError("Expected Maximum Current validation to fail")
 
     try:
         coordinator.set_fixed_current(0.0)
@@ -556,7 +554,7 @@ def test_runtime_current_setters_reject_fractional_amp_values():
     coordinator.control_config = ControlConfig(min_current_a=6.0, max_current_a=16.0)
 
     with pytest.raises(ValueError, match="whole amp value"):
-        coordinator.set_user_limit(10.5)
+        coordinator.set_max_current(10.5)
 
     with pytest.raises(ValueError, match="whole amp value"):
         coordinator.set_fixed_current(7.2)
@@ -587,10 +585,10 @@ def test_options_flow_rejects_fractional_current_targets():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        result = await flow.async_step_init(default_options_input(user_limit=10.5))
+        result = await flow.async_step_init(default_options_input(max_current=10.5))
 
         assert result["type"] == "form"
-        assert result["errors"]["base"] == "user_limit_out_of_range"
+        assert result["errors"]["base"] == "invalid_config"
 
     asyncio.run(_run())
 
@@ -909,6 +907,20 @@ def test_options_flow_shows_min_and_max_current_in_charging_section():
         fields = result["data_schema"].args[0]["general_charging"].schema.args[0]
         assert "min_current" in fields
         assert "max_current" in fields
+        assert "user_limit" not in fields
+
+    asyncio.run(_run())
+
+
+def test_options_flow_migrates_legacy_user_limit_into_max_current():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init(default_options_input(max_current=32.0, user_limit=20.0))
+
+        assert result["type"] == "create_entry"
+        assert result["data"]["max_current"] == 20
+        assert "user_limit" not in result["data"]
 
     asyncio.run(_run())
 
@@ -917,11 +929,10 @@ def test_options_flow_allows_20a_current_when_max_current_is_20a():
     async def _run():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
-        result = await flow.async_step_init(default_options_input(max_current=20.0, user_limit=20.0))
+        result = await flow.async_step_init(default_options_input(max_current=20.0))
 
         assert result["type"] == "create_entry"
         assert result["data"]["max_current"] == 20
-        assert result["data"]["user_limit"] == 20
 
     asyncio.run(_run())
 
@@ -954,6 +965,32 @@ def test_charging_switch_is_available_in_managed_control_mode():
     charging_switch = WebastoChargingSwitch(coordinator)
 
     assert charging_switch.available is True
+
+
+def test_session_override_switches_are_unavailable_in_monitoring_only_mode():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.KEEPALIVE_ONLY,
+            solar_control_strategy=SolarControlStrategy.ECO_SOLAR,
+        )
+        coordinator.set_solar_until_unplug = AsyncMock()
+        coordinator.set_fixed_current_until_unplug = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+
+        solar_switch = WebastoSolarUntilUnplugSwitch(coordinator)
+        fixed_switch = WebastoFixedCurrentUntilUnplugSwitch(coordinator)
+
+        assert solar_switch.available is False
+        assert fixed_switch.available is False
+        await solar_switch.async_turn_on()
+        await fixed_switch.async_turn_on()
+        coordinator.set_solar_until_unplug.assert_not_called()
+        coordinator.set_fixed_current_until_unplug.assert_not_called()
+        coordinator.async_request_refresh.assert_not_called()
+
+    asyncio.run(_run())
 
 
 def test_dlb_snapshot_marks_stale_phase_sensor_invalid():
@@ -1659,17 +1696,16 @@ def test_number_entities_use_runtime_current_limits():
         control_config=ControlConfig(
             min_current_a=8.0,
             max_current_a=16.0,
-            user_limit_a=12.0,
             fixed_current_a=10.0,
         ),
         async_request_refresh=AsyncMock(),
     )
 
-    current_limit = WebastoCurrentLimitNumber(coordinator)
+    current_limit = WebastoMaximumCurrentNumber(coordinator)
     fixed_current = WebastoFixedCurrentNumber(coordinator)
 
     assert current_limit.native_min_value == 8.0
-    assert current_limit.native_max_value == 16.0
+    assert current_limit.native_max_value == 32.0
     assert fixed_current.native_min_value == 8.0
     assert fixed_current.native_max_value == 16.0
 
@@ -2068,7 +2104,6 @@ def test_coordinator_solar_runtime_uses_adaptive_start_then_observed_three_phase
                 "solar_input_model": "surplus_sensor",
                 "solar_surplus_sensor": "sensor.solar_surplus",
                 "control_mode": "managed_control",
-                "user_limit": 16.0,
                 "min_current": 6.0,
                 "max_current": 16.0,
                 "fixed_current": 6.0,
@@ -2083,7 +2118,6 @@ def test_coordinator_solar_runtime_uses_adaptive_start_then_observed_three_phase
             control_mode=ControlMode.MANAGED_CONTROL,
             solar_control_strategy=SolarControlStrategy.ECO_SOLAR,
             solar_input_model=SolarInputModel.SURPLUS_SENSOR,
-            user_limit_a=16.0,
             min_current_a=6.0,
             max_current_a=16.0,
             fixed_current_a=6.0,
@@ -2181,7 +2215,6 @@ def test_coordinator_caches_observed_session_phase_for_later_solar_restarts():
             control_mode=ControlMode.MANAGED_CONTROL,
             solar_control_strategy=SolarControlStrategy.ECO_SOLAR,
             solar_input_model=SolarInputModel.SURPLUS_SENSOR,
-            user_limit_a=16.0,
             min_current_a=6.0,
             max_current_a=16.0,
             fixed_current_a=6.0,

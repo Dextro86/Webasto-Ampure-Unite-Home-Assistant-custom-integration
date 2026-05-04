@@ -8,18 +8,16 @@ cards:
         name: Charging On/Off
       - entity: select.webasto_unite_charge_mode
         name: Charge Mode
-      - entity: select.webasto_unite_phase_switch
-        name: Manual Phase Switch
       - entity: sensor.webasto_unite_operating_state
         name: Charging Behavior
       - entity: sensor.webasto_unite_effective_mode
         name: Active Mode
-      - entity: switch.webasto_unite_pv_until_unplug
-        name: PV Until Unplug
+      - entity: switch.webasto_unite_solar_until_unplug
+        name: Solar Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
         name: Fixed Current Until Unplug
       - entity: number.webasto_unite_current_limit
-        name: Current Limit
+        name: Maximum Current
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
 
@@ -68,17 +66,13 @@ cards:
         name: Fallback Active
 
   - type: entities
-    title: Webasto Unite PV & Phase Switching
+    title: Webasto Unite Solar
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_pv_surplus_input
-        name: PV Surplus Input
-      - entity: select.webasto_unite_phase_switch
-        name: Manual Phase Switch
-      - entity: sensor.webasto_unite_phase_switch_decision
-        name: Phase Switch Decision
-      - entity: sensor.webasto_unite_phase_switch_count
-        name: Phase Switch Commands
+      - entity: sensor.webasto_unite_solar_surplus_input
+        name: Solar Surplus Input
+      - entity: sensor.webasto_unite_solar_input_state
+        name: Solar Input State
 
   - type: entities
     title: Webasto Unite Phase Details

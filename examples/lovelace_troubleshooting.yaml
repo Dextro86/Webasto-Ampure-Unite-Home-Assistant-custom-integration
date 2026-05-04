@@ -12,12 +12,12 @@ cards:
         name: Charging Behavior
       - entity: sensor.webasto_unite_effective_mode
         name: Active Mode
-      - entity: switch.webasto_unite_pv_until_unplug
-        name: PV Until Unplug
+      - entity: switch.webasto_unite_solar_until_unplug
+        name: Solar Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
         name: Fixed Current Until Unplug
       - entity: number.webasto_unite_current_limit
-        name: Current Limit
+        name: Maximum Current
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
       - entity: sensor.webasto_unite_control_reason
@@ -60,11 +60,13 @@ cards:
         name: Current L3
 
   - type: entities
-    title: PV
+    title: Solar
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_pv_surplus_input
-        name: PV Surplus Input
+      - entity: sensor.webasto_unite_solar_surplus_input
+        name: Solar Surplus Input
+      - entity: sensor.webasto_unite_solar_input_state
+        name: Solar Input State
 
   - type: entities
     title: Charger Context

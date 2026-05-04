@@ -13,9 +13,9 @@ set_mode:
       description: Charge Mode to apply.
       required: true
       example: "solar"
-set_user_limit:
-  name: Set Current Limit
-  description: Set the default Current Limit used by normal charging mode.
+set_max_current:
+  name: Set Maximum Current
+  description: Set the Maximum Current used by normal charging mode.
   fields:
     entry_id:
       name: Entry ID
@@ -24,7 +24,21 @@ set_user_limit:
       example: "abc123"
     current_a:
       name: Current
-      description: Current Limit in amperes.
+      description: Maximum Current in amperes.
+      required: true
+      example: 20
+set_user_limit:
+  name: Set Maximum Current
+  description: Legacy service alias. Sets the Maximum Current used by normal charging mode.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
+    current_a:
+      name: Current
+      description: Maximum Current in amperes.
       required: true
       example: 10
 trigger_reconnect:

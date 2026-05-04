@@ -56,7 +56,7 @@ class WebastoSolarUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity)
     @property
     def available(self) -> bool:
         return (
-            super().available
+            self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
             and self.coordinator.control_config.solar_control_strategy != SolarControlStrategy.DISABLED
         )
 
@@ -68,10 +68,14 @@ class WebastoSolarUntilUnplugSwitch(WebastoUniteCoordinatorEntity, SwitchEntity)
         return data.solar_until_unplug_active
 
     async def async_turn_on(self, **kwargs):
+        if not self.available:
+            return
         self.coordinator.set_solar_until_unplug(True)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
+        if not self.available:
+            return
         self.coordinator.set_solar_until_unplug(False)
         await self.coordinator.async_request_refresh()
 
@@ -84,6 +88,10 @@ class WebastoFixedCurrentUntilUnplugSwitch(WebastoUniteCoordinatorEntity, Switch
         self._attr_unique_id = f"{coordinator.entry.entry_id}_fixed_current_until_unplug"
 
     @property
+    def available(self) -> bool:
+        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+
+    @property
     def is_on(self):
         data = self.coordinator.data
         if data is None:
@@ -91,9 +99,13 @@ class WebastoFixedCurrentUntilUnplugSwitch(WebastoUniteCoordinatorEntity, Switch
         return data.fixed_current_until_unplug_active
 
     async def async_turn_on(self, **kwargs):
+        if not self.available:
+            return
         self.coordinator.set_fixed_current_until_unplug(True)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
+        if not self.available:
+            return
         self.coordinator.set_fixed_current_until_unplug(False)
         await self.coordinator.async_request_refresh()

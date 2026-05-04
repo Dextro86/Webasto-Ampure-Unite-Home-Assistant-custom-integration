@@ -24,13 +24,13 @@
               "host": "Host",
               "port": "Port",
               "unit_id": "Unit ID",
-              "polling_interval": "Polling Interval"
+              "polling_interval": "Polling Interval (s)"
             },
             "data_description": {
               "host": "IP address or host name of the charger.",
               "port": "Modbus/TCP port of the charger.",
               "unit_id": "Modbus unit ID used by the charger.",
-              "polling_interval": "Interval for charger state refreshes."
+              "polling_interval": "Interval in seconds for charger state refreshes."
             }
           },
           "general_charging": {
@@ -39,29 +39,27 @@
               "installed_phases": "Charger Installation",
               "control_mode": "Integration Charging Control",
               "startup_charge_mode": "Default Mode",
-              "min_current": "Minimum Current",
-              "max_current": "Maximum Current",
-              "user_limit": "Current Limit",
-              "safe_current": "Fallback Current"
+              "min_current": "Minimum Current (A)",
+              "max_current": "Maximum Current (A)",
+              "safe_current": "Fallback Current (A)"
             },
             "data_description": {
               "installed_phases": "Physical charger setup: 1-phase or 3-phase.",
               "control_mode": "On lets the integration control the charger. Off keeps the integration in monitoring mode with keepalive only.",
               "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
-              "min_current": "Lowest current the integration may request. Charging below 6 A is normally not supported.",
-              "max_current": "Highest current the integration may request. Set this to match the charger and installation limit.",
-              "user_limit": "Current limit for charging.",
-              "safe_current": "Low safety current used when DLB cannot trust its sensor inputs. 6 A is recommended."
+              "min_current": "Lowest current in amperes the integration may request. Charging below 6 A is normally not supported.",
+              "max_current": "Normal charging target and highest current in amperes the integration may request. Set this to match the charger and installation limit.",
+              "safe_current": "Low safety current in amperes used when DLB cannot trust its sensor inputs. 6 A is recommended."
             }
           },
           "session_overrides": {
             "name": "Temporary Session Settings",
             "data": {
-              "fixed_current": "Fixed Current Until Unplug",
+              "fixed_current": "Fixed Current Until Unplug (A)",
               "solar_until_unplug_strategy": "Solar Until Unplug Mode"
             },
             "data_description": {
-              "fixed_current": "Charging current used when Fixed Current Until Unplug is active.",
+              "fixed_current": "Charging current in amperes used when Fixed Current Until Unplug is active.",
               "solar_until_unplug_strategy": "Solar mode used when Solar Until Unplug is active."
             }
           },
@@ -71,8 +69,8 @@
               "dlb_enabled": "Enable DLB",
               "dlb_sensor_scope": "Sensor Scope",
               "dlb_require_units": "Require Sensor Units",
-              "main_fuse": "Main Fuse",
-              "safety_margin": "Safety Margin",
+              "main_fuse": "Main Fuse (A)",
+              "safety_margin": "Safety Margin (A)",
               "dlb_l1_sensor": "L1 Current Sensor",
               "dlb_l2_sensor": "L2 Current Sensor",
               "dlb_l3_sensor": "L3 Current Sensor"
@@ -81,8 +79,8 @@
               "dlb_enabled": "Lets the integration reduce charging current when the available connection capacity becomes too low.",
               "dlb_sensor_scope": "Choose Excluded if your current sensors do not include the charger load. Choose Included if they do.",
               "dlb_require_units": "If enabled, current sensors must expose a supported unit. Unitless values are ignored.",
-              "main_fuse": "Maximum current available for the full electrical connection.",
-              "safety_margin": "Extra margin kept below the configured main fuse limit.",
+              "main_fuse": "Maximum current in amperes available for the full electrical connection.",
+              "safety_margin": "Extra margin in amperes kept below the configured main fuse limit.",
               "dlb_l1_sensor": "Current sensor for phase L1.",
               "dlb_l2_sensor": "Current sensor for phase L2.",
               "dlb_l3_sensor": "Current sensor for phase L3."
@@ -99,11 +97,11 @@
               "solar_grid_power_sensor": "Grid Power Sensor",
               "solar_start_threshold": "Start Threshold (W)",
               "solar_stop_threshold": "Stop Threshold (W)",
-              "solar_start_delay": "Solar Start Delay",
-              "solar_stop_delay": "Solar Stop Delay",
-              "solar_min_runtime": "Solar Minimum Runtime",
-              "solar_min_pause": "Solar Minimum Pause",
-              "solar_min_current": "Solar Minimum Current"
+              "solar_start_delay": "Solar Start Delay (s)",
+              "solar_stop_delay": "Solar Stop Delay (s)",
+              "solar_min_runtime": "Solar Minimum Runtime (s)",
+              "solar_min_pause": "Solar Minimum Pause (s)",
+              "solar_min_current": "Solar Minimum Current (A)"
             },
             "data_description": {
               "solar_control_strategy": "Choose how strictly the integration should follow available solar surplus.",
@@ -114,25 +112,25 @@
               "solar_grid_power_sensor": "Signed grid power sensor used to derive solar surplus from import and export.",
               "solar_start_threshold": "Minimum solar surplus required before charging may start.",
               "solar_stop_threshold": "Solar surplus level below which charging may stop again.",
-              "solar_start_delay": "How long solar surplus must stay high enough before charging starts.",
-              "solar_stop_delay": "How long solar surplus must stay too low before charging stops.",
-              "solar_min_runtime": "Minimum time charging should keep running after a solar start.",
-              "solar_min_pause": "Minimum pause before charging may start again on solar.",
-              "solar_min_current": "Minimum charging current used by Smart Solar."
+              "solar_start_delay": "Time in seconds solar surplus must stay high enough before charging starts.",
+              "solar_stop_delay": "Time in seconds solar surplus must stay too low before charging stops.",
+              "solar_min_runtime": "Minimum time in seconds charging should keep running after a solar start.",
+              "solar_min_pause": "Minimum pause in seconds before charging may start again on solar.",
+              "solar_min_current": "Minimum charging current in amperes used by Smart Solar."
             }
           },
           "advanced": {
             "name": "Advanced",
             "data": {
-              "keepalive_interval": "Keepalive Interval",
-              "control_sensor_timeout": "Control Sensor Timeout",
-              "timeout": "Request Timeout",
+              "keepalive_interval": "Keepalive Interval (s)",
+              "control_sensor_timeout": "Control Sensor Timeout (s)",
+              "timeout": "Request Timeout (s)",
               "retries": "Retry Attempts"
             },
             "data_description": {
-              "keepalive_interval": "How often keepalive writes are sent.",
-              "control_sensor_timeout": "Maximum age for external control sensors before DLB or Solar input is treated as unsafe.",
-              "timeout": "How long the integration waits for a charger response.",
+              "keepalive_interval": "Interval in seconds between keepalive writes.",
+              "control_sensor_timeout": "Maximum sensor age in seconds before DLB or Solar input is treated as unsafe.",
+              "timeout": "How many seconds the integration waits for a charger response.",
               "retries": "How many times the integration retries a failed request."
             }
           }
@@ -142,7 +140,6 @@
     "error": {
       "invalid_config": "The provided configuration is invalid.",
       "min_exceeds_max": "Minimum current must be less than or equal to maximum current.",
-      "user_limit_out_of_range": "The default current limit must be between the configured minimum and maximum current.",
       "safe_current_out_of_range": "The safe current must be between the configured minimum and maximum current.",
       "host_required": "Host is required.",
       "port_out_of_range": "Port must be between 1 and 65535.",

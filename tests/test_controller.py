@@ -5,7 +5,6 @@ from time import monotonic
 
 def make_controller(**kwargs):
     defaults = dict(
-        user_limit_a=16.0,
         max_current_a=16.0,
         main_fuse_a=25.0,
         safety_margin_a=2.0,
@@ -118,6 +117,20 @@ def test_signed_grid_power_defaults_to_negative_export():
         )
         == 3000.0
     )
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=1000.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 500.0
+    )
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=2000.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 0.0
+    )
 
 
 def test_signed_grid_power_can_use_positive_export():
@@ -131,6 +144,20 @@ def test_signed_grid_power_can_use_positive_export():
             WallboxState(charging_active=True, active_power_w=1500.0),
         )
         == 3000.0
+    )
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=-1000.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 500.0
+    )
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=-2000.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 0.0
     )
 
 
@@ -151,7 +178,6 @@ def test_smart_solar_signed_grid_power_adds_current_charger_power_on_active_1p_s
         solar_control_strategy="min_plus_surplus",
         solar_min_current_a=6.0,
         max_current_a=20.0,
-        user_limit_a=20.0,
     )
     wallbox = WallboxState(
         installed_phases=1,
@@ -544,11 +570,10 @@ def test_transition_to_off_writes_zero_current_when_vehicle_connected():
     assert off_decision.should_write is True
 
 
-def test_normal_mode_loads_to_user_limit_but_is_still_limited_by_dlb():
+def test_normal_mode_loads_to_max_current_but_is_still_limited_by_dlb():
     controller = make_controller(
         dlb_input_model="phase_currents",
         max_current_a=20.0,
-        user_limit_a=16.0,
         dlb_sensor_scope="load_excluding_charger",
     )
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)

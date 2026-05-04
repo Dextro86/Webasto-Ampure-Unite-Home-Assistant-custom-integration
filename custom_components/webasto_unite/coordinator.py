@@ -72,7 +72,6 @@ from .const import (
     DEFAULT_STARTUP_CHARGE_MODE,
     DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
-    DEFAULT_USER_LIMIT_A,
     DOMAIN,
     STORAGE_KEY_CHARGING_STATE,
 )
@@ -165,8 +164,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             ),
             safe_current_a=float(merged.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)),
             min_current_a=float(merged.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)),
-            max_current_a=float(merged.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)),
-            user_limit_a=float(merged.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)),
+            max_current_a=self._resolve_configured_max_current(merged),
             main_fuse_a=float(merged.get(CONF_MAIN_FUSE, DEFAULT_MAIN_FUSE_A)),
             safety_margin_a=float(merged.get(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)),
             dlb_input_model=_resolve_dlb_input_model_from_options(merged),
@@ -216,6 +214,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             name=DOMAIN,
             update_interval=timedelta(seconds=self.control_config.polling_interval_s),
         )
+
+    @staticmethod
+    def _resolve_configured_max_current(options: dict) -> float:
+        max_current = float(options.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A))
+        if CONF_USER_LIMIT not in options:
+            return max_current
+        try:
+            return min(max_current, float(options[CONF_USER_LIMIT]))
+        except (TypeError, ValueError):
+            return max_current
 
     def _ensure_runtime_defaults(self) -> None:
         # Defensive fallback for partially constructed coordinator instances used
@@ -379,8 +387,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._solar_until_unplug_active = False
         self._reset_solar_runtime_state()
 
+    def set_max_current(self, current_a: float) -> None:
+        self.control_config.max_current_a = self._validate_max_current(current_a)
+
     def set_user_limit(self, current_a: float) -> None:
-        self.control_config.user_limit_a = self._validate_runtime_current(current_a, "Current Limit")
+        # Backward-compatible service alias.
+        self.set_max_current(current_a)
 
     def set_fixed_current(self, current_a: float) -> None:
         self.control_config.fixed_current_a = self._validate_runtime_current(current_a, "Fixed Current")
@@ -394,6 +406,17 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             raise ValueError(
                 f"{label} must be between {self.control_config.min_current_a:g} A "
                 f"and {self.control_config.max_current_a:g} A"
+            )
+        return float(rounded)
+
+    def _validate_max_current(self, current_a: float) -> float:
+        current = float(current_a)
+        rounded = round(current)
+        if abs(current - rounded) > 1e-6:
+            raise ValueError("Maximum Current must be a whole amp value")
+        if not self.control_config.min_current_a <= current <= 32.0:
+            raise ValueError(
+                f"Maximum Current must be between {self.control_config.min_current_a:g} A and 32 A"
             )
         return float(rounded)
 

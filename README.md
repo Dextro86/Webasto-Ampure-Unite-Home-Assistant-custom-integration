@@ -40,7 +40,8 @@ Temporary session overrides:
 - HACS is installed if you want to install through HACS.
 - The charger has network connectivity and a fixed IP address.
 - `Modbus/TCP` is enabled in the charger's web interface.
-- No other system keeps an active `Modbus/TCP` connection open to the charger.
+- The Modbus/TCP port is normally `502`; the Webasto/Ampure Unite unit ID is often `255`.
+- No other system keeps an active `Modbus/TCP` connection open to the charger. The charger appears to work reliably with only one active Modbus master.
 - DLB and Solar control require suitable Home Assistant sensors.
 
 ## Installation
@@ -71,6 +72,8 @@ Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unit
 
 Start conservatively: first confirm monitoring works, then set `Integration Charging Control` to `Enabled`, and only then enable DLB and Solar charging.
 
+`Integration Charging Control = Monitoring Only` is the safest first setup. In this mode the integration keeps the charger alive and monitors all values, but it does not write charging-current commands.
+
 ## Settings Overview
 
 The integration options are grouped into one settings screen with these sections:
@@ -86,10 +89,31 @@ This keeps the full configuration in one place while preserving the same validat
 
 ## Notes
 
-- Automatic and manual phase switching are removed in this stability release.
+- Automatic and manual phase switching are removed in this stability release. Remove old phase-switching dashboard controls, services and automations from custom dashboards.
 - DLB and Solar charging are disabled by default and should be enabled only after selecting suitable sensors.
 - DLB uses per-phase current sensors only. In `1p` setup, only L1 is required; in `3p`, L1/L2/L3 are required.
+- DLB and Solar input sensors must be live power/current sensors. If a required sensor stops updating for longer than `Control Sensor Timeout (s)`, the integration falls back safely instead of trusting stale values.
+- For Solar with a signed grid power sensor, choose the sign direction by looking at the sensor while exporting and not charging: negative export means export is below zero, positive export means export is above zero.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
+
+## Diagnostics and Troubleshooting
+
+If the charger does not behave as expected, first check these entities:
+
+- `Connected` and `Client Error`: Modbus connection status.
+- `Final Target`: current the integration is currently requesting.
+- `Control Reason`: why the current target was chosen.
+- `Fallback Active` and `Sensor Invalid Reason`: whether DLB/Solar input is missing, stale or unsafe.
+- `DLB Limit`: current limit calculated by Dynamic Load Balancing.
+- `Solar Input State` and `Solar Surplus Input`: whether Solar input is valid and how much surplus the integration sees.
+
+Common causes:
+
+- Another Modbus client is connected to the charger.
+- The charger IP address changed.
+- Modbus/TCP is disabled in the charger web interface.
+- A P1, grid power or template sensor stopped updating while Home Assistant kept showing the last value.
+- A Solar signed grid power sensor has the wrong `Grid Power Direction`.
 
 ## Repository contents
 

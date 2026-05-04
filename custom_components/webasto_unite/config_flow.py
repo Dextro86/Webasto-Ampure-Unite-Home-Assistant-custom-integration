@@ -132,16 +132,28 @@ def _compact_section_defaults(values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 
+def _migrate_legacy_user_limit(values: dict[str, Any]) -> dict[str, Any]:
+    """Fold the old separate Current Limit into Maximum Current."""
+    if CONF_USER_LIMIT not in values:
+        return values
+    migrated = dict(values)
+    try:
+        old_max_current = float(migrated.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A))
+        old_user_limit = float(migrated[CONF_USER_LIMIT])
+        migrated[CONF_MAX_CURRENT] = min(old_max_current, old_user_limit)
+    except (TypeError, ValueError):
+        pass
+    migrated.pop(CONF_USER_LIMIT, None)
+    return migrated
+
+
 def _validate_init_options(options: dict[str, Any]) -> dict[str, Any]:
     min_current = int(options[CONF_MIN_CURRENT])
     max_current = int(options[CONF_MAX_CURRENT])
-    user_limit = int(options[CONF_USER_LIMIT])
     safe_current = int(options[CONF_SAFE_CURRENT])
 
     if min_current > max_current:
         raise vol.Invalid(f"{CONF_MIN_CURRENT} must be less than or equal to {CONF_MAX_CURRENT}")
-    if not min_current <= user_limit <= max_current:
-        raise vol.Invalid(f"{CONF_USER_LIMIT} must be between {CONF_MIN_CURRENT} and {CONF_MAX_CURRENT}")
     if not min_current <= safe_current <= max_current:
         raise vol.Invalid(f"{CONF_SAFE_CURRENT} must be between {CONF_MIN_CURRENT} and {CONF_MAX_CURRENT}")
     options[CONF_STARTUP_CHARGE_MODE] = normalize_charge_mode(
@@ -230,8 +242,6 @@ _validate_pv_options = _validate_solar_options
 
 def _validation_error_key(err: Exception) -> str:
     message = str(err)
-    if CONF_USER_LIMIT in message:
-        return "user_limit_out_of_range"
     if CONF_SAFE_CURRENT in message:
         return "safe_current_out_of_range"
     if CONF_SOLAR_MIN_CURRENT in message and CONF_MAX_CURRENT in message:
@@ -308,11 +318,11 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         return flattened
 
     def _current_values(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
-        current = {**self._config_entry.data, **self.options}
+        current = _migrate_legacy_user_limit({**self._config_entry.data, **self.options})
         flattened: dict[str, Any] = {}
         if user_input:
             flattened = self._flatten_section_input(user_input)
-            current.update(flattened)
+            current.update(_migrate_legacy_user_limit(flattened))
         if CONF_SOLAR_GRID_POWER_SENSOR not in current and CONF_DLB_GRID_POWER_SENSOR in current:
             current[CONF_SOLAR_GRID_POWER_SENSOR] = current.get(CONF_DLB_GRID_POWER_SENSOR)
         if current.get(CONF_DLB_INPUT_MODEL) == "grid_power":
@@ -353,7 +363,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             CONF_STARTUP_CHARGE_MODE: current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE),
             CONF_MIN_CURRENT: current.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A),
             CONF_MAX_CURRENT: current.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A),
-            CONF_USER_LIMIT: current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A),
             CONF_SAFE_CURRENT: current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A),
         }
         general_schema = vol.Schema(
@@ -380,7 +389,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Optional(CONF_MIN_CURRENT, default=current.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
                 vol.Optional(CONF_MAX_CURRENT, default=current.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
-                vol.Optional(CONF_USER_LIMIT, default=current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
                 vol.Optional(CONF_SAFE_CURRENT, default=current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
             }
         )
@@ -490,7 +498,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)
         validated.setdefault(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)
         validated.setdefault(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)
-        validated.setdefault(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)
         validated.setdefault(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)
         validated.setdefault(CONF_DLB_ENABLED, False)
         validated.setdefault(CONF_DLB_SENSOR_SCOPE, DlbSensorScope.LOAD_EXCLUDING_CHARGER.value)
@@ -528,7 +535,6 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_SAFE_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_SAFE_CURRENT)(validated[CONF_SAFE_CURRENT])
         validated[CONF_MIN_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_MIN_CURRENT)(validated[CONF_MIN_CURRENT])
         validated[CONF_MAX_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_MAX_CURRENT)(validated[CONF_MAX_CURRENT])
-        validated[CONF_USER_LIMIT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_USER_LIMIT)(validated[CONF_USER_LIMIT])
         validated[CONF_MAIN_FUSE] = _bounded_float(MIN_CURRENT_A, 200.0, CONF_MAIN_FUSE)(validated[CONF_MAIN_FUSE])
         validated[CONF_SAFETY_MARGIN] = _bounded_float(0.0, 50.0, CONF_SAFETY_MARGIN)(validated[CONF_SAFETY_MARGIN])
         validated[CONF_SOLAR_START_THRESHOLD] = _bounded_float(MIN_POWER_W, MAX_POWER_W, CONF_SOLAR_START_THRESHOLD)(validated[CONF_SOLAR_START_THRESHOLD])

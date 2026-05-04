@@ -1,8 +1,8 @@
-alias: Webasto Unite - Disable PV Until Unplug
+alias: Webasto Unite - Disable Solar Until Unplug
 mode: single
 trigger: []
 condition: []
 action:
-  - service: webasto_unite.disable_pv_until_unplug
+  - service: webasto_unite.disable_solar_until_unplug
     data:
       entry_id: YOUR_CONFIG_ENTRY_ID

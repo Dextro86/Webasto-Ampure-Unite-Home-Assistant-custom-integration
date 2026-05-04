@@ -245,7 +245,7 @@ class WallboxController:
         wallbox: WallboxState,
     ) -> tuple[float | None, ControlReason]:
         if mode == ChargeMode.NORMAL:
-            return self.config.user_limit_a, ControlReason.NORMAL_MODE
+            return self.config.max_current_a, ControlReason.NORMAL_MODE
         if mode == ChargeMode.FIXED_CURRENT:
             return self.config.fixed_current_a, ControlReason.FIXED_CURRENT_MODE
         if mode == ChargeMode.SOLAR:
@@ -256,7 +256,7 @@ class WallboxController:
                 wallbox,
             )
             return pv_result.target_current_a, pv_result.reason
-        return self.config.user_limit_a, ControlReason.NORMAL_MODE
+        return self.config.max_current_a, ControlReason.NORMAL_MODE
 
     def _evaluate_solar_mode(
         self,
@@ -430,12 +430,9 @@ class WallboxController:
 
         charger_power_w = self._trusted_charger_power_w(wallbox)
         if self.config.solar_grid_power_direction == "positive_export":
-            return max(0.0, sensors.grid_power_w) + charger_power_w
+            return max(0.0, sensors.grid_power_w + charger_power_w)
 
-        if sensors.grid_power_w < 0:
-            return abs(sensors.grid_power_w) + charger_power_w
-
-        return charger_power_w
+        return max(0.0, charger_power_w - sensors.grid_power_w)
 
     @staticmethod
     def _trusted_charger_power_w(wallbox: WallboxState | None) -> float:
@@ -454,7 +451,6 @@ class WallboxController:
 
         limits: list[tuple[float, ControlReason | None]] = [
             (mode_target_a, None),
-            (self.config.user_limit_a, None),
             (self.config.max_current_a, None),
         ]
 

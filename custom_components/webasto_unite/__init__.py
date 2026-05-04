@@ -16,6 +16,7 @@ from .const import (
     SERVICE_ENABLE_SOLAR_UNTIL_UNPLUG,
     DOMAIN,
     PLATFORMS,
+    SERVICE_SET_MAX_CURRENT,
     SERVICE_SET_MODE,
     SERVICE_SET_USER_LIMIT,
     SERVICE_TRIGGER_RECONNECT,
@@ -70,7 +71,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_set_limit(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
-        coordinator.set_user_limit(call.data["current_a"])
+        coordinator.set_max_current(call.data["current_a"])
         await coordinator.async_request_refresh()
 
     async def handle_reconnect(call: ServiceCall) -> None:
@@ -98,6 +99,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await coordinator.async_request_refresh()
 
     hass.services.async_register(DOMAIN, SERVICE_SET_MODE, handle_set_mode, schema=_SERVICE_SCHEMA_MODE)
+    hass.services.async_register(DOMAIN, SERVICE_SET_MAX_CURRENT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_SET_USER_LIMIT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_TRIGGER_RECONNECT, handle_reconnect, schema=_SERVICE_SCHEMA_RECONNECT)
     hass.services.async_register(

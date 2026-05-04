@@ -15,7 +15,6 @@ DEFAULT_STARTUP_CHARGE_MODE = "normal"
 DEFAULT_SAFE_CURRENT_A = 6.0
 DEFAULT_MIN_CURRENT_A = 6.0
 DEFAULT_MAX_CURRENT_A = 16.0
-DEFAULT_USER_LIMIT_A = 16.0
 DEFAULT_FIXED_CURRENT_A = 6.0
 DEFAULT_SOLAR_START_DELAY_S = 0.0
 DEFAULT_SOLAR_STOP_DELAY_S = 0.0
@@ -45,6 +44,7 @@ CONF_CONTROL_SENSOR_TIMEOUT = "control_sensor_timeout"
 CONF_SAFE_CURRENT = "safe_current"
 CONF_MIN_CURRENT = "min_current"
 CONF_MAX_CURRENT = "max_current"
+# Legacy option key, migrated to CONF_MAX_CURRENT.
 CONF_USER_LIMIT = "user_limit"
 CONF_MAIN_FUSE = "main_fuse"
 CONF_SAFETY_MARGIN = "safety_margin"
@@ -77,6 +77,7 @@ CONF_CHARGE_MODE = "charge_mode"
 STORAGE_KEY_CHARGING_STATE = "charging_state"
 
 SERVICE_SET_MODE = "set_mode"
+SERVICE_SET_MAX_CURRENT = "set_max_current"
 SERVICE_SET_USER_LIMIT = "set_user_limit"
 SERVICE_TRIGGER_RECONNECT = "trigger_reconnect"
 SERVICE_ENABLE_SOLAR_UNTIL_UNPLUG = "enable_solar_until_unplug"
