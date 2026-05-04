@@ -74,6 +74,28 @@ def test_dlb_3p_configuration_tracks_active_charging_phase_dynamically():
     assert decision.dlb_limit_a == 20.0
 
 
+def test_dlb_3p_configuration_only_requires_active_phase_sensor_while_1p_charging():
+    controller = make_controller(
+        dlb_input_model="phase_currents",
+        dlb_sensor_scope="total_including_charger",
+    )
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        charging_active=True,
+        phase_currents=PhaseCurrents(l1=10.0, l2=0.0, l3=0.0),
+    )
+    sensors = HaSensorSnapshot(
+        phase_currents=PhaseCurrents(l1=20.0, l2=None, l3=None),
+        valid=True,
+    )
+
+    decision = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+
+    assert decision.fallback_active is False
+    assert decision.dlb_limit_a == 13.0
+
+
 def test_pv_mode_without_grid_assist_can_disable_when_below_minimum():
     controller = make_controller(solar_start_threshold_w=1800.0, solar_stop_threshold_w=1200.0)
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
@@ -89,6 +111,13 @@ def test_signed_grid_power_defaults_to_negative_export():
 
     assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=-1800.0)) == 1800.0
     assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=1800.0)) == 0.0
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=-1500.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 3000.0
+    )
 
 
 def test_signed_grid_power_can_use_positive_export():
@@ -96,6 +125,46 @@ def test_signed_grid_power_can_use_positive_export():
 
     assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=1800.0)) == 1800.0
     assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=-1800.0)) == 0.0
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=1500.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 3000.0
+    )
+
+
+def test_signed_grid_power_does_not_add_charger_power_when_not_charging():
+    controller = make_controller()
+
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=-1500.0),
+            WallboxState(charging_active=False, active_power_w=1500.0),
+        )
+        == 1500.0
+    )
+
+
+def test_smart_solar_signed_grid_power_adds_current_charger_power_on_active_1p_session():
+    controller = make_controller(
+        solar_control_strategy="min_plus_surplus",
+        solar_min_current_a=6.0,
+        max_current_a=20.0,
+        user_limit_a=20.0,
+    )
+    wallbox = WallboxState(
+        installed_phases=1,
+        vehicle_connected=True,
+        charging_active=True,
+        active_power_w=1500.0,
+        voltage_l1_v=230.0,
+    )
+    sensors = HaSensorSnapshot(grid_power_w=-1500.0, valid=True)
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.mode_target_a == 13.043478260869565
 
 
 def test_fixed_current_mode_can_target_fixed_current_without_surplus_dependency():

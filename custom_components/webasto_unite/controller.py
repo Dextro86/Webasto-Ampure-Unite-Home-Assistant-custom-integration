@@ -272,7 +272,7 @@ class WallboxController:
                 reason=ControlReason.BELOW_MIN_CURRENT,
             )
 
-        surplus_w = self.resolve_surplus_power(sensors)
+        surplus_w = self.resolve_surplus_power(sensors, wallbox)
 
         if pv_strategy == SolarControlStrategy.MIN_PLUS_SURPLUS:
             if surplus_w is None:
@@ -417,20 +417,31 @@ class WallboxController:
             return base_strategy
         return SolarControlStrategy(until_unplug_strategy.value)
 
-    def resolve_surplus_power(self, sensors: HaSensorSnapshot) -> float | None:
+    def resolve_surplus_power(
+        self,
+        sensors: HaSensorSnapshot,
+        wallbox: WallboxState | None = None,
+    ) -> float | None:
         if sensors.surplus_power_w is not None:
             return max(0.0, sensors.surplus_power_w)
 
         if sensors.grid_power_w is None:
             return None
 
+        charger_power_w = self._trusted_charger_power_w(wallbox)
         if self.config.solar_grid_power_direction == "positive_export":
-            return max(0.0, sensors.grid_power_w)
+            return max(0.0, sensors.grid_power_w) + charger_power_w
 
         if sensors.grid_power_w < 0:
-            return abs(sensors.grid_power_w)
+            return abs(sensors.grid_power_w) + charger_power_w
 
-        return 0.0
+        return charger_power_w
+
+    @staticmethod
+    def _trusted_charger_power_w(wallbox: WallboxState | None) -> float:
+        if wallbox is None or not wallbox.charging_active:
+            return 0.0
+        return max(0.0, wallbox.active_power_w or 0.0)
 
     def _combine_limits(
         self,

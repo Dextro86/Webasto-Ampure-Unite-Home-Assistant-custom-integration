@@ -900,6 +900,62 @@ def test_sensor_adapter_rejects_stale_control_sensor_values():
     assert adapter.state_as_current_a("sensor.fresh", max_age_s=60.0) == 12.0
 
 
+def test_options_flow_shows_min_and_max_current_in_charging_section():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init()
+
+        fields = result["data_schema"].args[0]["general_charging"].schema.args[0]
+        assert "min_current" in fields
+        assert "max_current" in fields
+
+    asyncio.run(_run())
+
+
+def test_options_flow_allows_20a_current_when_max_current_is_20a():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init(default_options_input(max_current=20.0, user_limit=20.0))
+
+        assert result["type"] == "create_entry"
+        assert result["data"]["max_current"] == 20
+        assert result["data"]["user_limit"] == 20
+
+    asyncio.run(_run())
+
+
+def test_charging_switch_is_unavailable_in_monitoring_only_mode():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.KEEPALIVE_ONLY)
+        coordinator._charging_paused = False
+        coordinator.async_set_charging_enabled = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+
+        charging_switch = WebastoChargingSwitch(coordinator)
+
+        assert charging_switch.available is False
+        await charging_switch.async_turn_off()
+        coordinator.async_set_charging_enabled.assert_not_called()
+        coordinator.async_request_refresh.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_charging_switch_is_available_in_managed_control_mode():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry()
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+    coordinator._charging_paused = False
+
+    charging_switch = WebastoChargingSwitch(coordinator)
+
+    assert charging_switch.available is True
+
+
 def test_dlb_snapshot_marks_stale_phase_sensor_invalid():
     stale = datetime.now(timezone.utc) - timedelta(seconds=120)
     hass = SimpleNamespace(
@@ -932,6 +988,62 @@ def test_dlb_snapshot_marks_stale_phase_sensor_invalid():
     assert snapshot.valid is False
     assert snapshot.phase_currents.l1 is None
     assert snapshot.reason_invalid == "Required DLB phase sensors stale"
+
+
+def test_dlb_snapshot_ignores_stale_inactive_phase_sensors_while_1p_charging_on_3p_installation():
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    fresh = datetime.now(timezone.utc)
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.l1": SimpleNamespace(
+                    state="12.0",
+                    attributes={"unit_of_measurement": "A"},
+                    last_reported=fresh,
+                ),
+                "sensor.l2": SimpleNamespace(
+                    state="0.0",
+                    attributes={"unit_of_measurement": "A"},
+                    last_reported=stale,
+                ),
+                "sensor.l3": SimpleNamespace(
+                    state="0.0",
+                    attributes={"unit_of_measurement": "A"},
+                    last_reported=stale,
+                ),
+            }.get(entity_id)
+        )
+    )
+
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.hass = hass
+    coordinator.entry = SimpleNamespace(
+        options={
+            "dlb_l1_sensor": "sensor.l1",
+            "dlb_l2_sensor": "sensor.l2",
+            "dlb_l3_sensor": "sensor.l3",
+        },
+        data={"installed_phases": "3p"},
+    )
+    coordinator.sensor_adapter = HaSensorAdapter(hass)
+    coordinator.control_config = ControlConfig(
+        dlb_input_model=DlbInputModel.PHASE_CURRENTS,
+        control_sensor_timeout_s=60.0,
+        dlb_require_units=True,
+    )
+    coordinator.controller = make_controller()
+    wallbox = WallboxState(
+        charging_active=True,
+        phase_currents=PhaseCurrents(l1=6.0, l2=0.0, l3=0.0),
+    )
+
+    snapshot = coordinator._read_sensor_snapshot(wallbox)
+
+    assert snapshot.valid is True
+    assert snapshot.phase_currents.l1 == 12.0
+    assert snapshot.phase_currents.l2 is None
+    assert snapshot.phase_currents.l3 is None
+    assert snapshot.reason_invalid is None
 
 
 def test_solar_snapshot_marks_stale_input_sensor_unavailable():

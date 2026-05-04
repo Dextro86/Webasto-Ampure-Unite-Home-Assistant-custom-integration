@@ -6,7 +6,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, SolarControlStrategy
+from .models import ControlMode, SolarControlStrategy
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -26,14 +26,22 @@ class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"{coordinator.entry.entry_id}_charging_allowed"
 
     @property
+    def available(self) -> bool:
+        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+
+    @property
     def is_on(self):
         return self.coordinator.charging_enabled
 
     async def async_turn_on(self, **kwargs):
+        if not self.available:
+            return
         await self.coordinator.async_set_charging_enabled(True)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
+        if not self.available:
+            return
         await self.coordinator.async_set_charging_enabled(False)
         await self.coordinator.async_request_refresh()
 

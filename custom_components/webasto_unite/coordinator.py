@@ -436,8 +436,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             # Read Home Assistant sensor inputs only after wallbox/session state
             # has been updated for this poll, so the controller sees one
             # consistent view of the current cycle.
-            sensors = self._read_sensor_snapshot()
-            solar_surplus_w = self.controller.resolve_surplus_power(sensors)
+            sensors = self._read_sensor_snapshot(wallbox)
+            solar_surplus_w = self.controller.resolve_surplus_power(sensors, wallbox)
             solar_strategy = self.controller.resolve_effective_solar_strategy(
                 self.control_config.solar_control_strategy,
                 self.control_config.solar_until_unplug_strategy,
@@ -666,7 +666,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             return "solar"
         return "normal"
 
-    def _read_sensor_snapshot(self) -> HaSensorSnapshot:
+    def _read_sensor_snapshot(self, wallbox: WallboxState | None = None) -> HaSensorSnapshot:
         options = self.entry.options
         snapshot = HaSensorSnapshot(valid=True)
         snapshot.solar_input_state = "disabled"
@@ -704,22 +704,23 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
 
         if self.control_config.dlb_input_model == DlbInputModel.PHASE_CURRENTS:
+            required_indices = self._required_dlb_sensor_indices(wallbox)
+            phase_values = (
+                snapshot.phase_currents.l1,
+                snapshot.phase_currents.l2,
+                snapshot.phase_currents.l3,
+            )
+            phase_entities = (
+                options.get(CONF_DLB_L1_SENSOR),
+                options.get(CONF_DLB_L2_SENSOR),
+                options.get(CONF_DLB_L3_SENSOR),
+            )
             required_values = (
-                (snapshot.phase_currents.l1,)
-                if self._configured_phase_count() == 1
-                else (
-                    snapshot.phase_currents.l1,
-                    snapshot.phase_currents.l2,
-                    snapshot.phase_currents.l3,
-                )
+                tuple(phase_values[idx] for idx in required_indices)
             )
             if any(value is None for value in required_values):
                 stale_entities = self._stale_sensor_entities(
-                    (
-                        options.get(CONF_DLB_L1_SENSOR),
-                        options.get(CONF_DLB_L2_SENSOR),
-                        options.get(CONF_DLB_L3_SENSOR),
-                    )
+                    tuple(phase_entities[idx] for idx in required_indices)
                 )
                 snapshot.valid = False
                 snapshot.reason_invalid = self._control_sensor_invalid_reason(
@@ -731,7 +732,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if (
             snapshot.reason_invalid is None
             and self.control_config.solar_control_strategy != SolarControlStrategy.DISABLED
-            and self.controller.resolve_surplus_power(snapshot) is None
+            and self.controller.resolve_surplus_power(snapshot, wallbox) is None
         ):
             solar_entity = (
                 options.get(CONF_SOLAR_SURPLUS_SENSOR)
@@ -751,6 +752,24 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             snapshot.solar_input_state = "ready"
 
         return snapshot
+
+    def _required_dlb_sensor_indices(self, wallbox: WallboxState | None) -> tuple[int, ...]:
+        if self._configured_phase_count() == 1:
+            return (0,)
+        if wallbox is None or not wallbox.charging_active:
+            return (0, 1, 2)
+        active_indices = tuple(
+            idx
+            for idx, value in enumerate(
+                (
+                    wallbox.phase_currents.l1,
+                    wallbox.phase_currents.l2,
+                    wallbox.phase_currents.l3,
+                )
+            )
+            if value is not None and value >= 0.5
+        )
+        return active_indices or (0, 1, 2)
 
     @staticmethod
     def _control_sensor_invalid_reason(prefix: str, *, stale: bool, require_units: bool) -> str:

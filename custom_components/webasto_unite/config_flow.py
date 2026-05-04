@@ -351,6 +351,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             CONF_INSTALLED_PHASES: current.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P),
             CONF_CONTROL_MODE: current.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE),
             CONF_STARTUP_CHARGE_MODE: current.get(CONF_STARTUP_CHARGE_MODE, DEFAULT_STARTUP_CHARGE_MODE),
+            CONF_MIN_CURRENT: current.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A),
+            CONF_MAX_CURRENT: current.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A),
             CONF_USER_LIMIT: current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A),
             CONF_SAFE_CURRENT: current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A),
         }
@@ -376,6 +378,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                         ]
                     )
                 ),
+                vol.Optional(CONF_MIN_CURRENT, default=current.get(CONF_MIN_CURRENT, DEFAULT_MIN_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
+                vol.Optional(CONF_MAX_CURRENT, default=current.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
                 vol.Optional(CONF_USER_LIMIT, default=current.get(CONF_USER_LIMIT, DEFAULT_USER_LIMIT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
                 vol.Optional(CONF_SAFE_CURRENT, default=current.get(CONF_SAFE_CURRENT, DEFAULT_SAFE_CURRENT_A)): _int_selector(int(MIN_CURRENT_A), int(MAX_CURRENT_A)),
             }

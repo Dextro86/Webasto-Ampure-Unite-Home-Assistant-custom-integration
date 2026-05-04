@@ -39,6 +39,8 @@
               "installed_phases": "Charger Installation",
               "control_mode": "Integration Charging Control",
               "startup_charge_mode": "Default Mode",
+              "min_current": "Minimum Current",
+              "max_current": "Maximum Current",
               "user_limit": "Current Limit",
               "safe_current": "Fallback Current"
             },
@@ -46,6 +48,8 @@
               "installed_phases": "Physical charger setup: 1-phase or 3-phase.",
               "control_mode": "On lets the integration control the charger. Off keeps the integration in monitoring mode with keepalive only.",
               "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
+              "min_current": "Lowest current the integration may request. Charging below 6 A is normally not supported.",
+              "max_current": "Highest current the integration may request. Set this to match the charger and installation limit.",
               "user_limit": "Current limit for charging.",
               "safe_current": "Low safety current used when DLB cannot trust its sensor inputs. 6 A is recommended."
             }

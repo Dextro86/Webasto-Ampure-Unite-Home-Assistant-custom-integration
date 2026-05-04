@@ -42,8 +42,6 @@ class DlbEngine:
             charger_l1 = self._charger_current(charger_phase_currents.l1 if charger_phase_currents else None)
             return DlbResult(max(0.0, fuse - c.l1 + charger_l1 - margin), True, ControlReason.DLB_LIMITED)
         grid_currents = [c.l1, c.l2, c.l3]
-        if any(v is None for v in grid_currents):
-            return DlbResult(self.config.safe_current_a, False, ControlReason.SENSOR_UNAVAILABLE)
         charger_currents = [
             self._charger_current(charger_phase_currents.l1 if charger_phase_currents else None),
             self._charger_current(charger_phase_currents.l2 if charger_phase_currents else None),
@@ -52,6 +50,8 @@ class DlbEngine:
         active_indices = self._active_phase_indices(charger_phase_currents)
         if not active_indices:
             active_indices = [0, 1, 2]
+        if any(grid_currents[idx] is None for idx in active_indices):
+            return DlbResult(self.config.safe_current_a, False, ControlReason.SENSOR_UNAVAILABLE)
         available = min(
             fuse - float(grid_currents[idx]) + charger_currents[idx] - margin
             for idx in active_indices

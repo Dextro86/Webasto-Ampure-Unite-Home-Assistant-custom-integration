@@ -44,6 +44,8 @@ Main settings:
 - `Charger Installation`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
 - `Integration Charging Control`: whether the integration may actively control the charger or stay in monitoring-only mode.
 - `Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
+- `Minimum Current`: lowest current the integration may request. EV charging normally starts at `6 A`.
+- `Maximum Current`: highest current the integration may request. Set this to match the charger and installation limit.
 - `Current Limit`: normal target current for charging.
 - `Fallback Current`: fallback current used when the integration cannot safely rely on its sensor inputs.
 
@@ -62,6 +64,8 @@ Restart behavior is intentionally split in two parts:
 
 This means a Home Assistant restart does not automatically resume charging if charging was previously turned off. It also means temporary runtime session settings are not restored after restart.
 
+`Charging On/Off` is only available when `Integration Charging Control` is `Enabled`. In `Monitoring Only` mode the integration keeps the charger alive and monitors it, but it does not write charging-current commands.
+
 ## Temporary Session Settings
 
 This section is only shown when `Integration Charging Control` is set to `Enabled`.
@@ -77,6 +81,8 @@ These settings do not change the configured `Default Mode`. They only define how
 
 Important current settings:
 
+- `Minimum Current`: lower control bound. Values below `6 A` normally mean no valid EV charging.
+- `Maximum Current`: upper control bound. Increase this if your charger and installation safely support more than the default `16 A`.
 - `Current Limit`: normal target current for charging.
 - `Fallback Current`: low safety current used when DLB cannot trust its sensor inputs. `6 A` is recommended.
 - `Fixed Current`: target used by `Fixed Current` mode.
@@ -108,6 +114,8 @@ DLB can be enabled or disabled. When enabled, it uses phase current sensors only
 
 - `1p` charger setup: L1 is required.
 - `3p` charger setup: L1, L2 and L3 are required.
+
+During active charging, DLB only requires fresh sensor data for the phases the charger is actually using. For example: a 1-phase car on a 3-phase charger can keep using L1 safely even if L2/L3 are idle and do not update. Before active phases are known, the integration remains conservative and requires all configured phases.
 
 Use live measurement sensors, not energy counters. Current sensors should report `A` or `mA`. Energy sensors such as `Wh` or `kWh` are not suitable for DLB because they represent accumulated energy, not current load.
 
@@ -165,12 +173,14 @@ Solar input must also be recent. If the configured Solar sensor is older than `C
 Solar input can be provided in two ways:
 
 - `Solar Surplus Sensor`: select a Home Assistant sensor that directly represents available Solar surplus as current power in `W` or `kW`.
-- `Signed Grid Power Sensor`: select a live net grid power sensor that reports both import and export using positive and negative values. The integration converts the export side of that sensor into Solar surplus.
+- `Signed Grid Power Sensor`: select a live net grid power sensor that reports both import and export using positive and negative values. The integration converts the export side of that sensor into Solar surplus. While the charger is actively charging, the integration adds the charger's measured power back to the export value, so Smart Solar can keep increasing current instead of getting stuck at the minimum current.
 
 `Grid Power Direction` tells the integration which sign means export to the grid:
 
 - `Negative Export`: `-1800 W` means about `1800 W` export. This is the default.
 - `Positive Export`: `1800 W` means about `1800 W` export.
+
+Example with `Negative Export`: if the grid sensor reports `-1500 W` while the charger itself is using `1500 W`, the integration treats this as roughly `3000 W` available Solar input.
 
 The surplus sensor must represent power that is available now. Do not select a daily energy production sensor or energy import/export counter.
 
@@ -238,7 +248,7 @@ Useful diagnostics:
 Daily-use entities:
 
 - `Charge Mode`: selected base charging mode.
-- `Charging On/Off`: user switch for whether charging is allowed.
+- `Charging On/Off`: user switch for whether charging is allowed. Unavailable when `Integration Charging Control` is `Monitoring Only`.
 - `Solar Until Unplug`: temporary Solar session override.
 - `Fixed Current Until Unplug`: temporary fixed-current session override.
 - `Current Limit`: normal target current.
