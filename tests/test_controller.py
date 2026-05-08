@@ -190,7 +190,8 @@ def test_smart_solar_signed_grid_power_adds_current_charger_power_on_active_1p_s
 
     decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
 
-    assert decision.mode_target_a == 13.043478260869565
+    assert round(decision.mode_target_a, 1) == 19.0
+    assert decision.final_target_a == 19.0
 
 
 def test_fixed_current_mode_can_target_fixed_current_without_surplus_dependency():
@@ -223,7 +224,33 @@ def test_pv_mode_min_plus_surplus_uses_minimum_current_without_surplus():
     assert decision.final_target_a == 6.0
 
 
-def test_pv_mode_min_plus_surplus_scales_above_minimum_when_surplus_is_high():
+def test_smart_solar_uses_minimum_or_total_solar_target_without_adding_both():
+    controller = make_controller(
+        solar_control_strategy="smart_solar",
+        solar_min_current_a=6.0,
+        max_current_a=32.0,
+    )
+    wallbox = WallboxState(
+        installed_phases=3,
+        phases_in_use=3,
+        charging_active=True,
+        vehicle_connected=True,
+    )
+    sensors = HaSensorSnapshot(
+        phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0),
+        surplus_power_w=3000.0,
+        valid=True,
+    )
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.charging_enabled is True
+    assert decision.reason == ControlReason.SOLAR_MODE
+    assert decision.mode_target_a == 6.0
+    assert decision.final_target_a == 6.0
+
+
+def test_pv_mode_min_plus_surplus_adds_surplus_current_to_minimum_on_1p():
     controller = make_controller(solar_control_strategy="min_plus_surplus", solar_min_current_a=6.0)
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
     sensors = HaSensorSnapshot(
@@ -236,8 +263,34 @@ def test_pv_mode_min_plus_surplus_scales_above_minimum_when_surplus_is_high():
 
     assert decision.charging_enabled is True
     assert decision.reason == ControlReason.SOLAR_MODE
-    assert decision.mode_target_a == 10.0
-    assert decision.final_target_a == 10.0
+    assert decision.mode_target_a == 16.0
+    assert decision.final_target_a == 16.0
+
+
+def test_pv_mode_min_plus_surplus_adds_surplus_current_to_minimum_on_3p():
+    controller = make_controller(
+        solar_control_strategy="min_plus_surplus",
+        solar_min_current_a=6.0,
+        max_current_a=32.0,
+    )
+    wallbox = WallboxState(
+        installed_phases=3,
+        phases_in_use=3,
+        charging_active=True,
+        vehicle_connected=True,
+    )
+    sensors = HaSensorSnapshot(
+        phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0),
+        surplus_power_w=3000.0,
+        valid=True,
+    )
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.charging_enabled is True
+    assert decision.reason == ControlReason.SOLAR_MODE
+    assert decision.mode_target_a == 10.347826086956522
+    assert decision.final_target_a == 10.3
 
 
 def test_pv_mode_min_plus_surplus_uses_measured_phase_voltage_when_available():
@@ -256,8 +309,8 @@ def test_pv_mode_min_plus_surplus_uses_measured_phase_voltage_when_available():
     decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
 
     assert decision.charging_enabled is True
-    assert decision.mode_target_a == 10.0
-    assert decision.final_target_a == 10.0
+    assert decision.mode_target_a == 16.0
+    assert decision.final_target_a == 16.0
 
 
 def test_pv_mode_falls_back_to_nominal_voltage_for_implausible_voltage():
@@ -267,7 +320,7 @@ def test_pv_mode_falls_back_to_nominal_voltage_for_implausible_voltage():
 
     decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
 
-    assert decision.mode_target_a == 10.0
+    assert decision.mode_target_a == 16.0
 
 
 def test_pv_mode_uses_effective_active_phases_while_charging():
@@ -284,8 +337,8 @@ def test_pv_mode_uses_effective_active_phases_while_charging():
 
     assert decision.charging_enabled is True
     assert decision.reason == ControlReason.SOLAR_MODE
-    assert decision.mode_target_a == 10.0
-    assert decision.final_target_a == 10.0
+    assert decision.mode_target_a == 16.0
+    assert decision.final_target_a == 16.0
 
 
 def test_pv_mode_on_3p_configuration_uses_adaptive_1p_assumption_before_charging_starts():

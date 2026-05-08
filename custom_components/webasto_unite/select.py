@@ -13,6 +13,8 @@ def _solar_mode_label(strategy: SolarControlStrategy) -> str:
     strategy = SolarControlStrategy(strategy)
     if strategy == SolarControlStrategy.SMART_SOLAR:
         return "Smart Solar"
+    if strategy == SolarControlStrategy.SOLAR_BOOST:
+        return "Solar Boost"
     if strategy == SolarControlStrategy.ECO_SOLAR:
         return "Eco Solar"
     return "Solar"

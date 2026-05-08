@@ -28,6 +28,7 @@ Solar strategies:
 
 - `Eco Solar`
 - `Smart Solar`
+- `Solar Boost`
 
 Temporary session overrides:
 

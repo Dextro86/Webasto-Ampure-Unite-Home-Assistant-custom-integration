@@ -39,7 +39,8 @@ class SolarControlStrategy(str, Enum):
     ECO_SOLAR = "eco_solar"
     SURPLUS = ECO_SOLAR
     SMART_SOLAR = "smart_solar"
-    MIN_PLUS_SURPLUS = SMART_SOLAR
+    SOLAR_BOOST = "solar_boost"
+    MIN_PLUS_SURPLUS = SOLAR_BOOST
     MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
@@ -48,7 +49,8 @@ class SolarOverrideStrategy(str, Enum):
     ECO_SOLAR = "eco_solar"
     SURPLUS = ECO_SOLAR
     SMART_SOLAR = "smart_solar"
-    MIN_PLUS_SURPLUS = SMART_SOLAR
+    SOLAR_BOOST = "solar_boost"
+    MIN_PLUS_SURPLUS = SOLAR_BOOST
     MIN_ALWAYS_PLUS_SURPLUS = "min_always_plus_surplus"
 
 
@@ -65,8 +67,10 @@ def normalize_solar_control_strategy(value: str | "SolarControlStrategy") -> Sol
     raw = value.value if isinstance(value, SolarControlStrategy) else str(value)
     if raw in {"surplus", SolarControlStrategy.ECO_SOLAR.value}:
         return SolarControlStrategy.ECO_SOLAR
-    if raw in {"min_plus_surplus", SolarControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, SolarControlStrategy.SMART_SOLAR.value}:
+    if raw == SolarControlStrategy.SMART_SOLAR.value:
         return SolarControlStrategy.SMART_SOLAR
+    if raw in {"min_plus_surplus", SolarControlStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, SolarControlStrategy.SOLAR_BOOST.value}:
+        return SolarControlStrategy.SOLAR_BOOST
     return SolarControlStrategy(raw)
 
 
@@ -74,8 +78,10 @@ def normalize_solar_override_strategy(value: str | "SolarOverrideStrategy") -> S
     raw = value.value if isinstance(value, SolarOverrideStrategy) else str(value)
     if raw in {"surplus", SolarOverrideStrategy.ECO_SOLAR.value}:
         return SolarOverrideStrategy.ECO_SOLAR
-    if raw in {"min_plus_surplus", SolarOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, SolarOverrideStrategy.SMART_SOLAR.value}:
+    if raw == SolarOverrideStrategy.SMART_SOLAR.value:
         return SolarOverrideStrategy.SMART_SOLAR
+    if raw in {"min_plus_surplus", SolarOverrideStrategy.MIN_ALWAYS_PLUS_SURPLUS.value, SolarOverrideStrategy.SOLAR_BOOST.value}:
+        return SolarOverrideStrategy.SOLAR_BOOST
     return SolarOverrideStrategy(raw)
 
 

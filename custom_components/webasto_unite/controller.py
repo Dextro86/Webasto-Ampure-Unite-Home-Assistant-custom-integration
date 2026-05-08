@@ -274,7 +274,10 @@ class WallboxController:
 
         surplus_w = self.resolve_surplus_power(sensors, wallbox)
 
-        if pv_strategy == SolarControlStrategy.MIN_PLUS_SURPLUS:
+        if pv_strategy in (
+            SolarControlStrategy.SMART_SOLAR,
+            SolarControlStrategy.SOLAR_BOOST,
+        ):
             if surplus_w is None:
                 return SolarResult(
                     target_current_a=None,
@@ -289,8 +292,12 @@ class WallboxController:
                 wallbox.voltage_l3_v,
             )
             surplus_target = surplus_w / voltage_sum_v
+            if pv_strategy == SolarControlStrategy.SMART_SOLAR:
+                target_current = max(self.config.solar_min_current_a, surplus_target)
+            else:
+                target_current = self.config.solar_min_current_a + surplus_target
             return SolarResult(
-                target_current_a=max(self.config.solar_min_current_a, surplus_target),
+                target_current_a=target_current,
                 valid=True,
                 reason=ControlReason.SOLAR_MODE,
             )

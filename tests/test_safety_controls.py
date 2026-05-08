@@ -784,7 +784,7 @@ def test_legacy_pv_min_always_plus_surplus_strategy_normalizes_to_min_plus_surpl
         }
     )
 
-    assert result["solar_control_strategy"] == "smart_solar"
+    assert result["solar_control_strategy"] == "solar_boost"
 
 
 def test_disabled_pv_strategy_allows_empty_pv_sensor_configuration():
@@ -2037,13 +2037,13 @@ def test_operating_state_reports_min_plus_surplus():
     assert coordinator._build_operating_state(decision) == "smart_solar"
 
 
-def test_legacy_min_always_operating_state_normalizes_to_min_plus_surplus():
+def test_operating_state_reports_solar_boost():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator._mode = ChargeMode.SOLAR
     coordinator._charging_paused = False
     coordinator._solar_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig(solar_control_strategy="smart_solar")
+    coordinator.control_config = ControlConfig(solar_control_strategy="solar_boost")
 
     decision = SimpleNamespace(
         fallback_active=False,
@@ -2051,7 +2051,24 @@ def test_legacy_min_always_operating_state_normalizes_to_min_plus_surplus():
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "smart_solar"
+    assert coordinator._build_operating_state(decision) == "solar_boost"
+
+
+def test_legacy_min_always_operating_state_normalizes_to_min_plus_surplus():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._mode = ChargeMode.SOLAR
+    coordinator._charging_paused = False
+    coordinator._solar_until_unplug_active = False
+    coordinator._fixed_current_until_unplug_active = False
+    coordinator.control_config = ControlConfig(solar_control_strategy="min_always_plus_surplus")
+
+    decision = SimpleNamespace(
+        fallback_active=False,
+        reason=ControlReason.SOLAR_MODE,
+        dominant_limit_reason=None,
+    )
+
+    assert coordinator._build_operating_state(decision) == "solar_boost"
 
 
 def test_operating_state_reports_fallback_before_mode():

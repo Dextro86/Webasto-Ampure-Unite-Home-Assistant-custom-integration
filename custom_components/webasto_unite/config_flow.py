@@ -19,6 +19,8 @@ def _solar_mode_label(strategy: str | SolarControlStrategy) -> str:
         return "Eco Solar"
     if normalized == SolarControlStrategy.SMART_SOLAR:
         return "Smart Solar"
+    if normalized == SolarControlStrategy.SOLAR_BOOST:
+        return "Solar Boost"
     return "Solar"
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
@@ -52,11 +54,13 @@ SOLAR_CONTROL_STRATEGY_OPTIONS = [
     {"value": SolarControlStrategy.DISABLED.value, "label": "Disabled"},
     {"value": SolarControlStrategy.ECO_SOLAR.value, "label": "Eco Solar"},
     {"value": SolarControlStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
+    {"value": SolarControlStrategy.SOLAR_BOOST.value, "label": "Solar Boost"},
 ]
 SOLAR_OVERRIDE_STRATEGY_OPTIONS = [
     {"value": SolarOverrideStrategy.INHERIT.value, "label": "Use Solar Strategy"},
     {"value": SolarOverrideStrategy.ECO_SOLAR.value, "label": "Eco Solar"},
     {"value": SolarOverrideStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
+    {"value": SolarOverrideStrategy.SOLAR_BOOST.value, "label": "Solar Boost"},
 ]
 MIN_CURRENT_A = 6.0
 MAX_CURRENT_A = 32.0
@@ -225,6 +229,7 @@ def _validate_solar_options(options: dict[str, Any]) -> dict[str, Any]:
     strategy = options[CONF_SOLAR_CONTROL_STRATEGY]
     if strategy in (
         SolarControlStrategy.SURPLUS.value,
+        SolarControlStrategy.SMART_SOLAR.value,
         SolarControlStrategy.MIN_PLUS_SURPLUS.value,
     ):
         model = options[CONF_SOLAR_INPUT_MODEL]

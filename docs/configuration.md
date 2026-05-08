@@ -58,7 +58,7 @@ Recommended first setup:
 2. Confirm that monitoring, connection state, currents and power values look correct.
 3. Switch `Integration Charging Control` to `Enabled` only after the monitored values are plausible.
 
-If you want the integration to return to Solar charging after a Home Assistant restart, set `Default Mode` to the Solar option. The label of that option follows the configured Solar strategy, so it appears as `Eco Solar` or `Smart Solar`. Solar must still be configured with a valid Solar strategy and sensor setup; otherwise startup falls back to `Normal`.
+If you want the integration to return to Solar charging after a Home Assistant restart, set `Default Mode` to the Solar option. The label of that option follows the configured Solar strategy, so it appears as `Eco Solar`, `Smart Solar` or `Solar Boost`. Solar must still be configured with a valid Solar strategy and sensor setup; otherwise startup falls back to `Normal`.
 
 Restart behavior is intentionally split in two parts:
 
@@ -163,13 +163,38 @@ Solar Strategy:
 
 - `Disabled`: do not use Solar charging.
 - `Eco Solar`: charge only when enough surplus is available.
-- `Smart Solar`: keep charging at minimum current and add surplus when available, but pause if the configured Solar input is unavailable.
+- `Smart Solar`: charge at least at `Solar Minimum Current (A)` when Solar input is valid, and increase only when the total Solar input supports more than that minimum.
+- `Solar Boost`: charge at `Solar Minimum Current (A)` and add available Solar surplus on top, but pause if the configured Solar input is unavailable.
 
 Solar charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
 
-`Smart Solar` is not pure surplus-only charging. It may charge at `Solar Minimum Current (A)` when there is little or no surplus, as long as the Solar input is valid. Use `Eco Solar` if you want Solar charging to wait until enough surplus is present.
+`Smart Solar` is not pure surplus-only charging. It may charge at `Solar Minimum Current (A)` when there is little or no surplus, as long as the Solar input is valid. It raises current when the calculated Solar input supports more than the minimum. Use `Eco Solar` if you want Solar charging to wait until enough surplus is present.
 
-If the configured Solar input becomes unavailable, `Eco Solar` and `Smart Solar` pause by writing `0 A`.
+Smart Solar target calculation:
+
+```text
+target current = max(Solar Minimum Current (A), Solar Surplus Input / active phase voltage sum)
+```
+
+Solar Boost target calculation:
+
+```text
+target current = Solar Minimum Current (A) + Solar Surplus Input / active phase voltage sum
+```
+
+Solar Boost examples:
+
+```text
+1p, Solar Minimum Current = 6 A, Solar Surplus Input = 2300 W
+target = 6 + (2300 / 230) = about 16 A
+
+3p, Solar Minimum Current = 6 A, Solar Surplus Input = 3000 W
+target = 6 + (3000 / (230 * 3)) = about 10.3 A per phase
+```
+
+The final current can still be capped by `Maximum Current (A)`, DLB, safety behavior and charger/session limits.
+
+If the configured Solar input becomes unavailable, `Eco Solar`, `Smart Solar` and `Solar Boost` pause by writing `0 A`.
 Solar input must also be recent. If the configured Solar sensor is older than `Control Sensor Timeout (s)`, Solar control treats it as unavailable.
 
 Solar input can be provided in two ways:
@@ -203,7 +228,7 @@ With `Positive Export`:
 - Sensor `-1000 W`, charger `1500 W` -> Solar input is `500 W`.
 - Sensor `-2000 W`, charger `1500 W` -> Solar input is `0 W`.
 
-The charger-power correction is important. Without it, export can drop as soon as charging starts, making Smart Solar appear stuck at the minimum current even though there is still Solar power available.
+The charger-power correction is important. Without it, export can drop as soon as charging starts, making Smart Solar add too little surplus current even though there is still Solar power available.
 
 The surplus sensor must represent power that is available now. Do not select a daily energy production sensor or energy import/export counter.
 

@@ -686,6 +686,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 return "eco_solar"
             if self.control_config.solar_control_strategy == SolarControlStrategy.SMART_SOLAR:
                 return "smart_solar"
+            if self.control_config.solar_control_strategy == SolarControlStrategy.SOLAR_BOOST:
+                return "solar_boost"
             return "solar"
         return "normal"
 

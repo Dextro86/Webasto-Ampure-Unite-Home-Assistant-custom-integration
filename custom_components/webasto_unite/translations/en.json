@@ -116,7 +116,7 @@
               "solar_stop_delay": "Time in seconds solar surplus must stay too low before charging stops.",
               "solar_min_runtime": "Minimum time in seconds charging should keep running after a solar start.",
               "solar_min_pause": "Minimum pause in seconds before charging may start again on solar.",
-              "solar_min_current": "Minimum charging current in amperes used by Smart Solar."
+              "solar_min_current": "Baseline charging current in amperes used by Smart Solar and Solar Boost."
             }
           },
           "advanced": {

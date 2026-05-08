@@ -168,6 +168,7 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "solar_until_unplug": "Solar Until Unplug",
                 "eco_solar": "Eco Solar",
                 "smart_solar": "Smart Solar",
+                "solar_boost": "Solar Boost",
                 "solar": "Solar",
                 "dlb_limited": "DLB Limited",
                 "validated_with_optional_gaps": "Validated with Optional Gaps",
