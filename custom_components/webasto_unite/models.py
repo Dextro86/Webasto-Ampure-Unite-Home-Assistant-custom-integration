@@ -34,6 +34,11 @@ class SolarGridPowerDirection(str, Enum):
     POSITIVE_EXPORT = "positive_export"
 
 
+class SolarSensorFailureBehavior(str, Enum):
+    PAUSE = "pause"
+    CONTINUE_MINIMUM = "continue_minimum"
+
+
 class SolarControlStrategy(str, Enum):
     DISABLED = "disabled"
     ECO_SOLAR = "eco_solar"
@@ -250,6 +255,7 @@ class ControlConfig:
     solar_grid_power_direction: SolarGridPowerDirection = SolarGridPowerDirection.NEGATIVE_EXPORT
     solar_control_strategy: SolarControlStrategy = SolarControlStrategy.DISABLED
     solar_until_unplug_strategy: SolarOverrideStrategy = SolarOverrideStrategy.INHERIT
+    solar_sensor_failure_behavior: SolarSensorFailureBehavior = SolarSensorFailureBehavior.PAUSE
     solar_require_units: bool = False
     solar_start_threshold_w: float = 1800.0
     solar_stop_threshold_w: float = 1200.0
@@ -268,6 +274,7 @@ class ControlConfig:
         self.solar_grid_power_direction = SolarGridPowerDirection(self.solar_grid_power_direction)
         self.solar_control_strategy = normalize_solar_control_strategy(self.solar_control_strategy)
         self.solar_until_unplug_strategy = normalize_solar_override_strategy(self.solar_until_unplug_strategy)
+        self.solar_sensor_failure_behavior = SolarSensorFailureBehavior(self.solar_sensor_failure_behavior)
 
     @property
     def pv_input_model(self) -> SolarInputModel:

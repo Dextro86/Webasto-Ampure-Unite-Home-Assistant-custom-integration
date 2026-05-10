@@ -149,6 +149,7 @@ Main settings:
 - `Solar Strategy`
 - `Solar Input Source`
 - `Grid Power Direction`
+- `Solar Sensor Failure Behavior`
 - `Require Solar Sensor Units`
 - `Solar Surplus Sensor`
 - `Start Threshold (W)`
@@ -164,7 +165,7 @@ Solar Strategy:
 - `Disabled`: do not use Solar charging.
 - `Eco Solar`: charge only when enough surplus is available.
 - `Smart Solar`: charge at least at `Solar Minimum Current (A)` when Solar input is valid, and increase only when the total Solar input supports more than that minimum.
-- `Solar Boost`: charge at `Solar Minimum Current (A)` and add available Solar surplus on top, but pause if the configured Solar input is unavailable.
+- `Solar Boost`: charge at `Solar Minimum Current (A)` and add available Solar surplus on top.
 
 Solar charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
 
@@ -194,7 +195,12 @@ target = 6 + (3000 / (230 * 3)) = about 10.3 A per phase
 
 The final current can still be capped by `Maximum Current (A)`, DLB, safety behavior and charger/session limits.
 
-If the configured Solar input becomes unavailable, `Eco Solar`, `Smart Solar` and `Solar Boost` pause by writing `0 A`.
+Solar Sensor Failure Behavior:
+
+- `Pause charging`: recommended default. `Smart Solar` and `Solar Boost` pause by writing `0 A` when Solar input is stale, unavailable or invalid.
+- `Continue at Solar Minimum Current`: `Smart Solar` and `Solar Boost` keep charging at `Solar Minimum Current (A)` when Solar input cannot be trusted. This may use grid power.
+
+`Eco Solar` always pauses on Solar input failure because it is surplus-only charging.
 Solar input must also be recent. If the configured Solar sensor is older than `Control Sensor Timeout (s)`, Solar control treats it as unavailable.
 
 Solar input can be provided in two ways:

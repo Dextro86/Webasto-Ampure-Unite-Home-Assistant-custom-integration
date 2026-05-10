@@ -13,6 +13,7 @@ from .models import (
     HaSensorSnapshot,
     SolarControlStrategy,
     SolarOverrideStrategy,
+    SolarSensorFailureBehavior,
     SolarResult,
     WallboxState,
     normalize_solar_control_strategy,
@@ -279,6 +280,12 @@ class WallboxController:
             SolarControlStrategy.SOLAR_BOOST,
         ):
             if surplus_w is None:
+                if self.config.solar_sensor_failure_behavior == SolarSensorFailureBehavior.CONTINUE_MINIMUM:
+                    return SolarResult(
+                        target_current_a=self.config.solar_min_current_a,
+                        valid=True,
+                        reason=ControlReason.SOLAR_MODE,
+                    )
                 return SolarResult(
                     target_current_a=None,
                     valid=False,

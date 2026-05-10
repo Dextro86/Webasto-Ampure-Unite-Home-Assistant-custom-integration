@@ -94,6 +94,7 @@ This keeps the full configuration in one place while preserving the same validat
 - DLB and Solar charging are disabled by default and should be enabled only after selecting suitable sensors.
 - DLB uses per-phase current sensors only. In `1p` setup, only L1 is required; in `3p`, L1/L2/L3 are required.
 - DLB and Solar input sensors must be live power/current sensors. If a required sensor stops updating for longer than `Control Sensor Timeout (s)`, the integration falls back safely instead of trusting stale values.
+- `Eco Solar` always pauses when Solar input is unavailable. `Smart Solar` and `Solar Boost` can optionally continue at `Solar Minimum Current`, but the default remains pause for safety.
 - For Solar with a signed grid power sensor, choose the sign direction by looking at the sensor while exporting and not charging: negative export means export is below zero, positive export means export is above zero.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
 

@@ -460,6 +460,57 @@ def test_pv_mode_min_plus_surplus_pauses_when_sensor_is_unavailable():
     assert decision.final_target_a is None
 
 
+def test_smart_solar_can_continue_at_minimum_when_sensor_is_unavailable():
+    controller = make_controller(
+        solar_control_strategy="smart_solar",
+        solar_sensor_failure_behavior="continue_minimum",
+        solar_min_current_a=6.0,
+    )
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True)
+    sensors = HaSensorSnapshot(phase_currents=PhaseCurrents(l1=0.0, l2=0.0, l3=0.0), valid=True)
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.charging_enabled is True
+    assert decision.reason == ControlReason.SOLAR_MODE
+    assert decision.mode_target_a == 6.0
+    assert decision.final_target_a == 6.0
+
+
+def test_solar_boost_can_continue_at_minimum_when_sensor_is_unavailable():
+    controller = make_controller(
+        solar_control_strategy="solar_boost",
+        solar_sensor_failure_behavior="continue_minimum",
+        solar_min_current_a=6.0,
+    )
+    wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
+    sensors = HaSensorSnapshot(valid=True)
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.charging_enabled is True
+    assert decision.reason == ControlReason.SOLAR_MODE
+    assert decision.mode_target_a == 6.0
+    assert decision.final_target_a == 6.0
+
+
+def test_eco_solar_always_pauses_when_sensor_is_unavailable():
+    controller = make_controller(
+        solar_control_strategy="surplus",
+        solar_sensor_failure_behavior="continue_minimum",
+        solar_min_current_a=6.0,
+    )
+    wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
+    sensors = HaSensorSnapshot(valid=True)
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.charging_enabled is False
+    assert decision.reason == ControlReason.SENSOR_UNAVAILABLE
+    assert decision.mode_target_a is None
+    assert decision.final_target_a is None
+
+
 def test_pv_surplus_mode_requires_enough_power_for_min_current_on_3p():
     controller = make_controller(
         solar_control_strategy="surplus",

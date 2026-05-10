@@ -10,7 +10,7 @@ from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .const import *
-from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, SolarControlStrategy, SolarGridPowerDirection, SolarInputModel, SolarOverrideStrategy, normalize_charge_mode, normalize_solar_control_strategy, normalize_solar_override_strategy
+from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, SolarControlStrategy, SolarGridPowerDirection, SolarInputModel, SolarOverrideStrategy, SolarSensorFailureBehavior, normalize_charge_mode, normalize_solar_control_strategy, normalize_solar_override_strategy
 
 
 def _solar_mode_label(strategy: str | SolarControlStrategy) -> str:
@@ -55,6 +55,10 @@ SOLAR_CONTROL_STRATEGY_OPTIONS = [
     {"value": SolarControlStrategy.ECO_SOLAR.value, "label": "Eco Solar"},
     {"value": SolarControlStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
     {"value": SolarControlStrategy.SOLAR_BOOST.value, "label": "Solar Boost"},
+]
+SOLAR_SENSOR_FAILURE_BEHAVIOR_OPTIONS = [
+    {"value": SolarSensorFailureBehavior.PAUSE.value, "label": "Pause charging"},
+    {"value": SolarSensorFailureBehavior.CONTINUE_MINIMUM.value, "label": "Continue at Solar Minimum Current"},
 ]
 SOLAR_OVERRIDE_STRATEGY_OPTIONS = [
     {"value": SolarOverrideStrategy.INHERIT.value, "label": "Use Solar Strategy"},
@@ -144,7 +148,10 @@ def _migrate_legacy_user_limit(values: dict[str, Any]) -> dict[str, Any]:
     try:
         old_max_current = float(migrated.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT_A))
         old_user_limit = float(migrated[CONF_USER_LIMIT])
-        migrated[CONF_MAX_CURRENT] = min(old_max_current, old_user_limit)
+        if CONF_MAX_CURRENT not in values or old_max_current == DEFAULT_MAX_CURRENT_A:
+            migrated[CONF_MAX_CURRENT] = old_user_limit
+        else:
+            migrated[CONF_MAX_CURRENT] = min(old_max_current, old_user_limit)
     except (TypeError, ValueError):
         pass
     migrated.pop(CONF_USER_LIMIT, None)
@@ -208,6 +215,9 @@ def _validate_solar_options(options: dict[str, Any]) -> dict[str, Any]:
     ).value
     options[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(
         options.get(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)
+    ).value
+    options[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR] = SolarSensorFailureBehavior(
+        options.get(CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR, DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR)
     ).value
     start_threshold = float(options[CONF_SOLAR_START_THRESHOLD])
     stop_threshold = float(options[CONF_SOLAR_STOP_THRESHOLD])
@@ -327,6 +337,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         flattened: dict[str, Any] = {}
         if user_input:
             flattened = self._flatten_section_input(user_input)
+            current.pop(CONF_USER_LIMIT, None)
             current.update(_migrate_legacy_user_limit(flattened))
         if CONF_SOLAR_GRID_POWER_SENSOR not in current and CONF_DLB_GRID_POWER_SENSOR in current:
             current[CONF_SOLAR_GRID_POWER_SENSOR] = current.get(CONF_DLB_GRID_POWER_SENSOR)
@@ -343,6 +354,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             current[CONF_SOLAR_CONTROL_STRATEGY] = normalize_solar_control_strategy(current[CONF_SOLAR_CONTROL_STRATEGY]).value
         if CONF_SOLAR_UNTIL_UNPLUG_STRATEGY in current:
             current[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(current[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
+        if CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR in current:
+            current[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR] = SolarSensorFailureBehavior(current[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR]).value
         return current
 
     def _build_init_schema(self, current: dict[str, Any]) -> vol.Schema:
@@ -434,6 +447,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_SOLAR_CONTROL_STRATEGY, default=current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_CONTROL_STRATEGY_OPTIONS)),
             vol.Optional(CONF_SOLAR_INPUT_MODEL, default=current.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_INPUT_MODEL_SELECTOR_OPTIONS)),
             vol.Optional(CONF_SOLAR_GRID_POWER_DIRECTION, default=current.get(CONF_SOLAR_GRID_POWER_DIRECTION, DEFAULT_SOLAR_GRID_POWER_DIRECTION)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_GRID_POWER_DIRECTION_SELECTOR_OPTIONS)),
+            vol.Optional(CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR, default=current.get(CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR, DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR)): selector.SelectSelector(selector.SelectSelectorConfig(options=SOLAR_SENSOR_FAILURE_BEHAVIOR_OPTIONS)),
             vol.Optional(CONF_SOLAR_REQUIRE_UNITS, default=current.get(CONF_SOLAR_REQUIRE_UNITS, True)): bool,
             _optional_field(CONF_SOLAR_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_SOLAR_SURPLUS_SENSOR)): _entity_selector(),
             _optional_field(CONF_SOLAR_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_SOLAR_GRID_POWER_SENSOR)): _entity_selector(),
@@ -449,6 +463,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             CONF_SOLAR_CONTROL_STRATEGY: current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value),
             CONF_SOLAR_INPUT_MODEL: current.get(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value),
             CONF_SOLAR_GRID_POWER_DIRECTION: current.get(CONF_SOLAR_GRID_POWER_DIRECTION, DEFAULT_SOLAR_GRID_POWER_DIRECTION),
+            CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR: current.get(CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR, DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR),
             CONF_SOLAR_REQUIRE_UNITS: current.get(CONF_SOLAR_REQUIRE_UNITS, True),
             CONF_SOLAR_SURPLUS_SENSOR: current.get(CONF_SOLAR_SURPLUS_SENSOR),
             CONF_SOLAR_GRID_POWER_SENSOR: current.get(CONF_SOLAR_GRID_POWER_SENSOR),
@@ -511,6 +526,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_SAFETY_MARGIN, DEFAULT_SAFETY_MARGIN_A)
         validated.setdefault(CONF_SOLAR_INPUT_MODEL, SolarInputModel.GRID_POWER_DERIVED.value)
         validated.setdefault(CONF_SOLAR_GRID_POWER_DIRECTION, DEFAULT_SOLAR_GRID_POWER_DIRECTION)
+        validated.setdefault(CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR, DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR)
         validated.setdefault(CONF_SOLAR_REQUIRE_UNITS, False)
         validated.setdefault(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)
         validated.setdefault(CONF_SOLAR_START_THRESHOLD, 1800.0)
@@ -563,7 +579,11 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_SOLAR_GRID_POWER_DIRECTION] = SolarGridPowerDirection(
             validated[CONF_SOLAR_GRID_POWER_DIRECTION]
         ).value
+        validated[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR] = SolarSensorFailureBehavior(
+            validated[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR]
+        ).value
         validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
+        validated.pop(CONF_USER_LIMIT, None)
         validated = _validate_init_options(validated)
         validated = _validate_dlb_options(validated, self.entry_data.get(CONF_INSTALLED_PHASES, PHASE_MODE_3P))
         validated = _validate_solar_options(validated)
@@ -573,6 +593,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
+                self.options.pop(CONF_USER_LIMIT, None)
                 self.options.update(self._validate_all_options(dict(user_input)))
                 return self.async_create_entry(title="", data=self.options)
             except vol.Invalid as err:

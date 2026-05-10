@@ -37,6 +37,7 @@ from .const import (
     CONF_SOLAR_MIN_PAUSE,
     CONF_SOLAR_MIN_RUNTIME,
     CONF_SOLAR_REQUIRE_UNITS,
+    CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR,
     CONF_SOLAR_START_DELAY,
     CONF_SOLAR_START_THRESHOLD,
     CONF_SOLAR_STOP_DELAY,
@@ -69,6 +70,7 @@ from .const import (
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
     DEFAULT_SOLAR_GRID_POWER_DIRECTION,
+    DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR,
     DEFAULT_STARTUP_CHARGE_MODE,
     DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
@@ -90,6 +92,7 @@ from .models import (
     SolarControlStrategy,
     SolarInputModel,
     SolarOverrideStrategy,
+    SolarSensorFailureBehavior,
     RuntimeSnapshot,
     WallboxState,
     normalize_charge_mode,
@@ -182,6 +185,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             ),
             solar_until_unplug_strategy=normalize_solar_override_strategy(
                 merged.get(CONF_SOLAR_UNTIL_UNPLUG_STRATEGY, SolarOverrideStrategy.INHERIT.value)
+            ),
+            solar_sensor_failure_behavior=SolarSensorFailureBehavior(
+                merged.get(CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR, DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR)
             ),
             solar_require_units=bool(merged.get(CONF_SOLAR_REQUIRE_UNITS, False)),
             solar_start_threshold_w=float(merged.get(CONF_SOLAR_START_THRESHOLD, 1800.0)),

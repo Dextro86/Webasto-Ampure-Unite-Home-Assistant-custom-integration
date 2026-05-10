@@ -97,6 +97,7 @@ def default_pv_input(**overrides):
     data = {
         "solar_control_strategy": "disabled",
         "solar_input_model": "grid_power_derived",
+        "solar_sensor_failure_behavior": "pause",
         "solar_require_units": False,
         "solar_surplus_sensor": None,
         "solar_start_threshold": 1800.0,
@@ -436,10 +437,11 @@ def test_options_flow_shows_all_pv_fields_without_requiring_second_save():
         assert result["type"] == "form"
         pv_fields = result["data_schema"].args[0]["solar_charging"].schema.args[0]
         assert set(pv_fields) == {
-                "solar_control_strategy",
-                "solar_input_model",
-                "solar_grid_power_direction",
-                "solar_require_units",
+            "solar_control_strategy",
+            "solar_input_model",
+            "solar_grid_power_direction",
+            "solar_sensor_failure_behavior",
+            "solar_require_units",
             "solar_surplus_sensor",
             "solar_grid_power_sensor",
             "solar_start_threshold",
@@ -464,6 +466,20 @@ def test_options_flow_rejects_pv_min_current_above_max_current():
 
         assert result["type"] == "form"
         assert result["errors"]["base"] == "solar_min_current_out_of_range"
+
+    asyncio.run(_run())
+
+
+def test_options_flow_saves_solar_sensor_failure_behavior():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init(
+            default_options_input(solar_sensor_failure_behavior="continue_minimum")
+        )
+
+        assert result["type"] == "create_entry"
+        assert result["data"]["solar_sensor_failure_behavior"] == "continue_minimum"
 
     asyncio.run(_run())
 
@@ -917,6 +933,34 @@ def test_options_flow_migrates_legacy_user_limit_into_max_current():
         flow = WebastoUniteOptionsFlow(make_config_entry())
 
         result = await flow.async_step_init(default_options_input(max_current=32.0, user_limit=20.0))
+
+        assert result["type"] == "create_entry"
+        assert result["data"]["max_current"] == 20
+        assert "user_limit" not in result["data"]
+
+    asyncio.run(_run())
+
+
+def test_options_flow_migrates_legacy_user_limit_above_old_default_into_max_current():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(make_config_entry())
+
+        result = await flow.async_step_init(default_options_input(max_current=16.0, user_limit=20.0))
+
+        assert result["type"] == "create_entry"
+        assert result["data"]["max_current"] == 20
+        assert "user_limit" not in result["data"]
+
+    asyncio.run(_run())
+
+
+def test_options_flow_user_max_current_input_overrides_stale_legacy_user_limit():
+    async def _run():
+        flow = WebastoUniteOptionsFlow(
+            make_config_entry(options=default_options_input(max_current=16.0, user_limit=16.0))
+        )
+
+        result = await flow.async_step_init(default_options_input(max_current=20.0))
 
         assert result["type"] == "create_entry"
         assert result["data"]["max_current"] == 20
