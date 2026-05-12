@@ -95,6 +95,7 @@ This keeps the full configuration in one place while preserving the same validat
 - DLB uses per-phase current sensors only. In `1p` setup, only L1 is required; in `3p`, L1/L2/L3 are required.
 - DLB and Solar input sensors must be live power/current sensors. If a required sensor stops updating for longer than `Control Sensor Timeout (s)`, the integration falls back safely instead of trusting stale values.
 - `Eco Solar` always pauses when Solar input is unavailable. `Smart Solar` and `Solar Boost` can optionally continue at `Solar Minimum Current`, but the default remains pause for safety.
+- Solar current increases are smoothed and ramp-limited internally to reduce bouncing; DLB and safety limits can still reduce current immediately.
 - For Solar with a signed grid power sensor, choose the sign direction by looking at the sensor while exporting and not charging: negative export means export is below zero, positive export means export is above zero.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
 
@@ -108,6 +109,7 @@ If the charger does not behave as expected, first check these entities:
 - `Fallback Active` and `Sensor Invalid Reason`: whether DLB/Solar input is missing, stale or unsafe.
 - `DLB Limit`: current limit calculated by Dynamic Load Balancing.
 - `Solar Input State` and `Solar Surplus Input`: whether Solar input is valid and how much surplus the integration sees.
+- `Solar Raw Input`, `Solar Filtered Input`, `Solar Target`, `Solar Phase Count`, `Solar Phase Source` and `Solar Voltage Sum`: diagnostic values for Solar control behavior.
 
 Common causes:
 

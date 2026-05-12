@@ -36,6 +36,14 @@ class PvRuntimeState:
     stop_condition_since: float | None = None
     last_transition_monotonic: float = 0.0
     last_stop_monotonic: float = 0.0
+    raw_surplus_w: float | None = None
+    filtered_surplus_w: float | None = None
+    filtered_surplus_monotonic: float | None = None
+    target_current_a: float | None = None
+    phase_count: int | None = None
+    phase_source: str | None = None
+    voltage_sum_v: float | None = None
+    last_target_current_a: float | None = None
 
 
 @dataclass(slots=True)
@@ -80,7 +88,7 @@ class WallboxController:
             self.reset_solar_state()
 
         installed_phases = self._resolve_installed_phases(wallbox)
-        pv_phase_count = self._resolve_solar_phase_count(mode, wallbox)
+        pv_phase_count, pv_phase_source = self._resolve_solar_phase_context(mode, wallbox)
         dlb_result = self.dlb.calculate_available_current(
             sensors,
             installed_phases,
@@ -97,6 +105,7 @@ class WallboxController:
             pv_phase_count,
             effective_pv_strategy,
             wallbox,
+            pv_phase_source,
         )
 
         final_target, dominant_limit_reason = self._combine_limits(
@@ -104,6 +113,8 @@ class WallboxController:
             mode_target_a=mode_target,
             dlb_limit_a=dlb_result.available_current_a,
         )
+        if mode == ChargeMode.SOLAR:
+            final_target = self._apply_solar_ramp_limit(final_target, wallbox)
 
         fallback_active = not dlb_result.valid
         if fallback_active:
@@ -179,6 +190,14 @@ class WallboxController:
         self.solar_state.stop_condition_since = None
         self.solar_state.last_transition_monotonic = 0.0
         self.solar_state.last_stop_monotonic = 0.0
+        self.solar_state.raw_surplus_w = None
+        self.solar_state.filtered_surplus_w = None
+        self.solar_state.filtered_surplus_monotonic = None
+        self.solar_state.target_current_a = None
+        self.solar_state.phase_count = None
+        self.solar_state.phase_source = None
+        self.solar_state.voltage_sum_v = None
+        self.solar_state.last_target_current_a = None
 
     def reset_session_phase_observation(self) -> None:
         self.observed_session_phase_count = None
@@ -215,9 +234,9 @@ class WallboxController:
             return wallbox.installed_phases
         return 3
 
-    def _resolve_solar_phase_count(self, mode: ChargeMode, wallbox: WallboxState) -> int:
+    def _resolve_solar_phase_context(self, mode: ChargeMode, wallbox: WallboxState) -> tuple[int, str]:
         if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
-            return wallbox.phases_in_use
+            return wallbox.phases_in_use, "wallbox_active_phases"
         installed_phases = self._resolve_installed_phases(wallbox)
         if (
             mode == ChargeMode.SOLAR
@@ -225,7 +244,7 @@ class WallboxController:
             and installed_phases == 3
             and self.observed_session_phase_count in (1, 3)
         ):
-            return self.observed_session_phase_count
+            return self.observed_session_phase_count, "observed_session_phases"
         if (
             mode == ChargeMode.SOLAR
             and not wallbox.charging_active
@@ -234,8 +253,8 @@ class WallboxController:
         ):
             # Pre-start phase count is unknown; use a conservative 1P assumption
             # so 1P vehicles on 3P installations can still start on PV.
-            return 1
-        return installed_phases
+            return 1, "pre_start_1p_assumption"
+        return installed_phases, "installed_phases"
 
     def _mode_target(
         self,
@@ -244,6 +263,7 @@ class WallboxController:
         installed_phases: int,
         pv_strategy: SolarControlStrategy,
         wallbox: WallboxState,
+        phase_source: str | None = None,
     ) -> tuple[float | None, ControlReason]:
         if mode == ChargeMode.NORMAL:
             return self.config.max_current_a, ControlReason.NORMAL_MODE
@@ -255,6 +275,7 @@ class WallboxController:
                 installed_phases,
                 normalize_solar_control_strategy(pv_strategy),
                 wallbox,
+                phase_source,
             )
             return pv_result.target_current_a, pv_result.reason
         return self.config.max_current_a, ControlReason.NORMAL_MODE
@@ -265,8 +286,10 @@ class WallboxController:
         installed_phases: int,
         pv_strategy: SolarControlStrategy,
         wallbox: WallboxState,
+        phase_source: str | None = None,
     ) -> SolarResult:
         if pv_strategy == SolarControlStrategy.DISABLED:
+            self._clear_solar_calculation_diagnostics()
             return SolarResult(
                 target_current_a=None,
                 valid=True,
@@ -280,17 +303,26 @@ class WallboxController:
             SolarControlStrategy.SOLAR_BOOST,
         ):
             if surplus_w is None:
+                self._reset_solar_surplus_filter()
                 if self.config.solar_sensor_failure_behavior == SolarSensorFailureBehavior.CONTINUE_MINIMUM:
+                    self._set_solar_calculation_diagnostics(
+                        target_current_a=self.config.solar_min_current_a,
+                        phase_count=installed_phases,
+                        phase_source=phase_source,
+                        voltage_sum_v=None,
+                    )
                     return SolarResult(
                         target_current_a=self.config.solar_min_current_a,
                         valid=True,
                         reason=ControlReason.SOLAR_MODE,
                     )
+                self._clear_solar_calculation_diagnostics()
                 return SolarResult(
                     target_current_a=None,
                     valid=False,
                     reason=ControlReason.SENSOR_UNAVAILABLE,
                 )
+            surplus_w = self._filtered_solar_surplus(surplus_w)
 
             voltage_sum_v = voltage_sum_for_phases(
                 installed_phases,
@@ -303,6 +335,12 @@ class WallboxController:
                 target_current = max(self.config.solar_min_current_a, surplus_target)
             else:
                 target_current = self.config.solar_min_current_a + surplus_target
+            self._set_solar_calculation_diagnostics(
+                target_current_a=target_current,
+                phase_count=installed_phases,
+                phase_source=phase_source,
+                voltage_sum_v=voltage_sum_v,
+            )
             return SolarResult(
                 target_current_a=target_current,
                 valid=True,
@@ -310,7 +348,8 @@ class WallboxController:
             )
 
         if pv_strategy == SolarControlStrategy.SURPLUS:
-            return self._evaluate_eco_solar_mode(sensors, installed_phases, surplus_w, wallbox)
+            return self._evaluate_eco_solar_mode(sensors, installed_phases, surplus_w, wallbox, phase_source)
+        self._clear_solar_calculation_diagnostics()
         return SolarResult(
             target_current_a=None,
             valid=True,
@@ -323,10 +362,13 @@ class WallboxController:
         installed_phases: int,
         surplus_w: float | None,
         wallbox: WallboxState,
+        phase_source: str | None = None,
     ) -> SolarResult:
         now = monotonic()
 
         if surplus_w is None:
+            self._reset_solar_surplus_filter()
+            self._clear_solar_calculation_diagnostics()
             self.solar_state.start_condition_since = None
             self.solar_state.stop_condition_since = None
             return SolarResult(
@@ -334,6 +376,7 @@ class WallboxController:
                 valid=False,
                 reason=ControlReason.SENSOR_UNAVAILABLE,
             )
+        surplus_w = self._filtered_solar_surplus(surplus_w)
 
         voltage_sum_v = voltage_sum_for_phases(
             installed_phases,
@@ -350,6 +393,12 @@ class WallboxController:
             self.solar_state.start_condition_since = None
             if surplus_w >= effective_stop_threshold_w:
                 self.solar_state.stop_condition_since = None
+                self._set_solar_calculation_diagnostics(
+                    target_current_a=max(target_current, self.config.solar_min_current_a),
+                    phase_count=installed_phases,
+                    phase_source=phase_source,
+                    voltage_sum_v=voltage_sum_v,
+                )
                 return SolarResult(
                     target_current_a=max(target_current, self.config.solar_min_current_a),
                     valid=True,
@@ -358,6 +407,12 @@ class WallboxController:
 
             runtime_elapsed = now - self.solar_state.last_transition_monotonic
             if runtime_elapsed < self.config.solar_min_runtime_s:
+                self._set_solar_calculation_diagnostics(
+                    target_current_a=self.config.solar_min_current_a,
+                    phase_count=installed_phases,
+                    phase_source=phase_source,
+                    voltage_sum_v=voltage_sum_v,
+                )
                 return SolarResult(
                     target_current_a=self.config.solar_min_current_a,
                     valid=True,
@@ -368,6 +423,12 @@ class WallboxController:
                 self.solar_state.stop_condition_since = now
 
             if (now - self.solar_state.stop_condition_since) < self.config.solar_stop_delay_s:
+                self._set_solar_calculation_diagnostics(
+                    target_current_a=self.config.solar_min_current_a,
+                    phase_count=installed_phases,
+                    phase_source=phase_source,
+                    voltage_sum_v=voltage_sum_v,
+                )
                 return SolarResult(
                     target_current_a=self.config.solar_min_current_a,
                     valid=True,
@@ -378,6 +439,12 @@ class WallboxController:
             self.solar_state.stop_condition_since = None
             self.solar_state.last_transition_monotonic = now
             self.solar_state.last_stop_monotonic = now
+            self._set_solar_calculation_diagnostics(
+                target_current_a=None,
+                phase_count=installed_phases,
+                phase_source=phase_source,
+                voltage_sum_v=voltage_sum_v,
+            )
             return SolarResult(
                 target_current_a=None,
                 valid=True,
@@ -387,6 +454,12 @@ class WallboxController:
         self.solar_state.stop_condition_since = None
         if surplus_w < effective_start_threshold_w:
             self.solar_state.start_condition_since = None
+            self._set_solar_calculation_diagnostics(
+                target_current_a=None,
+                phase_count=installed_phases,
+                phase_source=phase_source,
+                voltage_sum_v=voltage_sum_v,
+            )
             return SolarResult(
                 target_current_a=None,
                 valid=True,
@@ -394,6 +467,12 @@ class WallboxController:
             )
 
         if (now - self.solar_state.last_stop_monotonic) < self.config.solar_min_pause_s:
+            self._set_solar_calculation_diagnostics(
+                target_current_a=None,
+                phase_count=installed_phases,
+                phase_source=phase_source,
+                voltage_sum_v=voltage_sum_v,
+            )
             return SolarResult(
                 target_current_a=None,
                 valid=True,
@@ -404,6 +483,12 @@ class WallboxController:
             self.solar_state.start_condition_since = now
 
         if (now - self.solar_state.start_condition_since) < self.config.solar_start_delay_s:
+            self._set_solar_calculation_diagnostics(
+                target_current_a=None,
+                phase_count=installed_phases,
+                phase_source=phase_source,
+                voltage_sum_v=voltage_sum_v,
+            )
             return SolarResult(
                 target_current_a=None,
                 valid=True,
@@ -413,6 +498,12 @@ class WallboxController:
         self.solar_state.active = True
         self.solar_state.start_condition_since = None
         self.solar_state.last_transition_monotonic = now
+        self._set_solar_calculation_diagnostics(
+            target_current_a=max(target_current, self.config.solar_min_current_a),
+            phase_count=installed_phases,
+            phase_source=phase_source,
+            voltage_sum_v=voltage_sum_v,
+        )
         return SolarResult(
             target_current_a=max(target_current, self.config.solar_min_current_a),
             valid=True,
@@ -437,16 +528,103 @@ class WallboxController:
         wallbox: WallboxState | None = None,
     ) -> float | None:
         if sensors.surplus_power_w is not None:
-            return max(0.0, sensors.surplus_power_w)
+            raw_surplus_w = max(0.0, sensors.surplus_power_w)
+            self.solar_state.raw_surplus_w = raw_surplus_w
+            return self._apply_export_deadband(raw_surplus_w)
 
         if sensors.grid_power_w is None:
+            self.solar_state.raw_surplus_w = None
             return None
 
         charger_power_w = self._trusted_charger_power_w(wallbox)
         if self.config.solar_grid_power_direction == "positive_export":
-            return max(0.0, sensors.grid_power_w + charger_power_w)
+            signed_export_w = sensors.grid_power_w
+        else:
+            signed_export_w = -sensors.grid_power_w
 
-        return max(0.0, charger_power_w - sensors.grid_power_w)
+        self.solar_state.raw_surplus_w = max(0.0, charger_power_w + signed_export_w)
+        signed_export_w = self._apply_signed_grid_deadband(signed_export_w)
+        return max(0.0, charger_power_w + signed_export_w)
+
+    def _set_solar_calculation_diagnostics(
+        self,
+        *,
+        target_current_a: float | None,
+        phase_count: int | None,
+        phase_source: str | None,
+        voltage_sum_v: float | None,
+    ) -> None:
+        self.solar_state.target_current_a = target_current_a
+        self.solar_state.phase_count = phase_count
+        self.solar_state.phase_source = phase_source
+        self.solar_state.voltage_sum_v = voltage_sum_v
+
+    def _clear_solar_calculation_diagnostics(self) -> None:
+        self.solar_state.target_current_a = None
+        self.solar_state.phase_count = None
+        self.solar_state.phase_source = None
+        self.solar_state.voltage_sum_v = None
+
+    def _filtered_solar_surplus(self, surplus_w: float) -> float:
+        smoothing_time_s = max(0.0, self.config.solar_smoothing_time_s)
+        now = monotonic()
+        previous = self.solar_state.filtered_surplus_w
+        previous_time = self.solar_state.filtered_surplus_monotonic
+        if smoothing_time_s <= 0.0 or previous is None or previous_time is None:
+            self.solar_state.filtered_surplus_w = surplus_w
+            self.solar_state.filtered_surplus_monotonic = now
+            return surplus_w
+
+        elapsed_s = max(0.0, now - previous_time)
+        alpha = elapsed_s / (smoothing_time_s + elapsed_s) if elapsed_s > 0.0 else 0.0
+        filtered = previous + alpha * (surplus_w - previous)
+        self.solar_state.filtered_surplus_w = filtered
+        self.solar_state.filtered_surplus_monotonic = now
+        return filtered
+
+    def _reset_solar_surplus_filter(self) -> None:
+        self.solar_state.filtered_surplus_w = None
+        self.solar_state.filtered_surplus_monotonic = None
+
+    def _apply_solar_ramp_limit(
+        self,
+        target_current_a: float | None,
+        wallbox: WallboxState,
+    ) -> float | None:
+        if target_current_a is None:
+            self.solar_state.last_target_current_a = None
+            return None
+
+        ramp_up_a = max(0.0, self.config.solar_ramp_up_current_a)
+        if ramp_up_a <= 0.0:
+            self.solar_state.last_target_current_a = target_current_a
+            return target_current_a
+
+        baseline = self.solar_state.last_target_current_a
+        if baseline is None:
+            baseline = self.write_state.last_written_current_a
+        if baseline is None and wallbox.current_limit_a is not None:
+            baseline = wallbox.current_limit_a
+
+        if baseline is None or target_current_a <= baseline:
+            limited = target_current_a
+        else:
+            limited = min(target_current_a, max(self.config.min_current_a, baseline + ramp_up_a))
+
+        self.solar_state.last_target_current_a = limited
+        return round(limited, 1)
+
+    def _apply_signed_grid_deadband(self, signed_export_w: float) -> float:
+        if 0.0 < signed_export_w < self.config.solar_export_deadband_w:
+            return 0.0
+        if -self.config.solar_import_deadband_w < signed_export_w < 0.0:
+            return 0.0
+        return signed_export_w
+
+    def _apply_export_deadband(self, surplus_w: float) -> float:
+        if 0.0 < surplus_w < self.config.solar_export_deadband_w:
+            return 0.0
+        return surplus_w
 
     @staticmethod
     def _trusted_charger_power_w(wallbox: WallboxState | None) -> float:

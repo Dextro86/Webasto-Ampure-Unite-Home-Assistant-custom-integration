@@ -53,6 +53,12 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "mode_target_a": coordinator.data.mode_target_a,
                 "dlb_limit_a": coordinator.data.dlb_limit_a,
                 "final_target_a": coordinator.data.final_target_a,
+                "solar_raw_surplus_w": coordinator.data.solar_raw_surplus_w,
+                "solar_filtered_surplus_w": coordinator.data.solar_filtered_surplus_w,
+                "solar_target_current_a": coordinator.data.solar_target_current_a,
+                "solar_phase_count": coordinator.data.solar_phase_count,
+                "solar_phase_source": coordinator.data.solar_phase_source,
+                "solar_voltage_sum_v": coordinator.data.solar_voltage_sum_v,
                 "pending_write_kind": coordinator.data.pending_write_kind,
             }
             if coordinator.data is not None

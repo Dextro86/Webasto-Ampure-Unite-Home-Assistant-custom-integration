@@ -2215,7 +2215,7 @@ def test_coordinator_solar_runtime_uses_adaptive_start_then_observed_three_phase
         second_snapshot = await coordinator._async_update_data()
 
         assert first_snapshot.mode_target_a == 10.0
-        assert first_snapshot.final_target_a == 10.0
+        assert first_snapshot.final_target_a == 6.0
         assert first_snapshot.wallbox.phases_in_use is None
         assert first_snapshot.solar_input_state == "ready"
 

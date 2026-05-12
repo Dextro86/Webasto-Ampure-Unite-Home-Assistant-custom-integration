@@ -1,4 +1,5 @@
 from custom_components.webasto_unite.controller import WallboxController
+from custom_components.webasto_unite import controller as controller_module
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, HaSensorSnapshot, PhaseCurrents, WallboxState, ControlReason, SolarControlStrategy, SolarOverrideStrategy, normalize_solar_control_strategy, normalize_solar_override_strategy
 from time import monotonic
 
@@ -173,6 +174,92 @@ def test_signed_grid_power_does_not_add_charger_power_when_not_charging():
     )
 
 
+def test_signed_grid_power_deadband_ignores_small_import_and_export():
+    controller = make_controller()
+
+    assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=-100.0)) == 0.0
+    assert controller.resolve_surplus_power(HaSensorSnapshot(surplus_power_w=200.0)) == 0.0
+    assert (
+        controller.resolve_surplus_power(
+            HaSensorSnapshot(grid_power_w=100.0),
+            WallboxState(charging_active=True, active_power_w=1500.0),
+        )
+        == 1500.0
+    )
+
+
+def test_solar_surplus_smoothing_reduces_short_spikes(monkeypatch):
+    now = 1000.0
+    monkeypatch.setattr(controller_module, "monotonic", lambda: now)
+    controller = make_controller(
+        solar_control_strategy="solar_boost",
+        solar_min_current_a=6.0,
+        solar_smoothing_time_s=20.0,
+        solar_ramp_up_current_a=0.0,
+    )
+    wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
+
+    first = controller.evaluate(
+        ChargeMode.SOLAR,
+        wallbox,
+        HaSensorSnapshot(surplus_power_w=0.0, valid=True),
+    )
+    assert first.final_target_a == 6.0
+
+    now = 1002.0
+    second = controller.evaluate(
+        ChargeMode.SOLAR,
+        wallbox,
+        HaSensorSnapshot(surplus_power_w=2300.0, valid=True),
+    )
+
+    assert second.mode_target_a < 16.0
+    assert second.final_target_a == 6.9
+
+
+def test_solar_ramp_up_limits_current_increase():
+    controller = make_controller(
+        solar_control_strategy="solar_boost",
+        solar_min_current_a=6.0,
+        solar_smoothing_time_s=0.0,
+        solar_ramp_up_current_a=1.0,
+    )
+    controller.mark_current_written(6.0)
+    wallbox = WallboxState(installed_phases=1, vehicle_connected=True, current_limit_a=6.0)
+    sensors = HaSensorSnapshot(surplus_power_w=2300.0, valid=True)
+
+    first = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+    second = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert first.mode_target_a == 16.0
+    assert first.final_target_a == 7.0
+    assert second.mode_target_a == 16.0
+    assert second.final_target_a == 8.0
+
+
+def test_dlb_can_still_reduce_immediately_during_solar_ramp():
+    controller = make_controller(
+        solar_control_strategy="solar_boost",
+        solar_min_current_a=6.0,
+        solar_smoothing_time_s=0.0,
+        solar_ramp_up_current_a=1.0,
+        dlb_input_model="phase_currents",
+    )
+    controller.solar_state.last_target_current_a = 16.0
+    wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
+    sensors = HaSensorSnapshot(
+        surplus_power_w=2300.0,
+        phase_currents=PhaseCurrents(l1=16.0),
+        valid=True,
+    )
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.mode_target_a == 16.0
+    assert decision.final_target_a == 7.0
+    assert decision.reason == ControlReason.DLB_LIMITED
+
+
 def test_smart_solar_signed_grid_power_adds_current_charger_power_on_active_1p_session():
     controller = make_controller(
         solar_control_strategy="min_plus_surplus",
@@ -291,6 +378,8 @@ def test_pv_mode_min_plus_surplus_adds_surplus_current_to_minimum_on_3p():
     assert decision.reason == ControlReason.SOLAR_MODE
     assert decision.mode_target_a == 10.347826086956522
     assert decision.final_target_a == 10.3
+    assert controller.solar_state.phase_count == 3
+    assert controller.solar_state.phase_source == "wallbox_active_phases"
 
 
 def test_pv_mode_min_plus_surplus_uses_measured_phase_voltage_when_available():
@@ -357,6 +446,8 @@ def test_pv_mode_on_3p_configuration_uses_adaptive_1p_assumption_before_charging
     assert decision.reason == ControlReason.SOLAR_MODE
     assert decision.mode_target_a == 10.0
     assert decision.final_target_a == 10.0
+    assert controller.solar_state.phase_count == 1
+    assert controller.solar_state.phase_source == "pre_start_1p_assumption"
 
 
 def test_pv_mode_on_3p_configuration_uses_observed_3p_while_charging():
@@ -405,6 +496,8 @@ def test_pv_mode_reuses_observed_session_phase_count_for_later_starts():
     assert decision.reason == ControlReason.BELOW_MIN_CURRENT
     assert decision.mode_target_a is None
     assert decision.final_target_a is None
+    assert controller.solar_state.phase_count == 3
+    assert controller.solar_state.phase_source == "observed_session_phases"
 
 
 def test_session_phase_observation_requires_two_matching_polls():

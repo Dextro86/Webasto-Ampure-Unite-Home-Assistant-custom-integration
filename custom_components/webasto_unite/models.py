@@ -264,6 +264,10 @@ class ControlConfig:
     solar_min_runtime_s: float = 0.0
     solar_min_pause_s: float = 0.0
     solar_min_current_a: float = 6.0
+    solar_smoothing_time_s: float = 20.0
+    solar_import_deadband_w: float = 150.0
+    solar_export_deadband_w: float = 250.0
+    solar_ramp_up_current_a: float = 1.0
     fixed_current_a: float = 6.0
     min_seconds_between_writes: float = 5.0
     min_current_change_a: float = 1.0
@@ -393,6 +397,12 @@ class RuntimeSnapshot:
     final_target_a: Optional[float] = None
     mode_target_a: Optional[float] = None
     solar_surplus_w: Optional[float] = None
+    solar_raw_surplus_w: Optional[float] = None
+    solar_filtered_surplus_w: Optional[float] = None
+    solar_target_current_a: Optional[float] = None
+    solar_phase_count: Optional[int] = None
+    solar_phase_source: Optional[str] = None
+    solar_voltage_sum_v: Optional[float] = None
     solar_input_state: Optional[str] = None
     dominant_limit_reason: Optional[str] = None
     fallback_active: bool = False
@@ -437,6 +447,12 @@ class RuntimeSnapshot:
             "final_target_a": self.final_target_a,
             "mode_target_a": self.mode_target_a,
             "solar_surplus_w": self.solar_surplus_w,
+            "solar_raw_surplus_w": self.solar_raw_surplus_w,
+            "solar_filtered_surplus_w": self.solar_filtered_surplus_w,
+            "solar_target_current_a": self.solar_target_current_a,
+            "solar_phase_count": self.solar_phase_count,
+            "solar_phase_source": self.solar_phase_source,
+            "solar_voltage_sum_v": self.solar_voltage_sum_v,
             "solar_input_state": self.solar_input_state,
             "dominant_limit_reason": self.dominant_limit_reason,
             "fallback_active": self.fallback_active,

@@ -195,6 +195,16 @@ target = 6 + (3000 / (230 * 3)) = about 10.3 A per phase
 
 The final current can still be capped by `Maximum Current (A)`, DLB, safety behavior and charger/session limits.
 
+Solar control is intentionally conservative. The integration smooths Solar input internally, ignores very small import/export changes around zero and ramps Solar current increases gradually. This reduces current bouncing from short clouds, P1 timing differences and sensor jitter. DLB and safety limits can still reduce the current immediately.
+
+Solar diagnostic sensors expose the calculation path:
+
+- `Solar Raw Input`: interpreted Solar input before deadband and smoothing.
+- `Solar Surplus Input`: Solar input after deadband, before smoothing.
+- `Solar Filtered Input`: Solar input after smoothing.
+- `Solar Target`: Solar current target before DLB, maximum current and charger/session limits.
+- `Solar Phase Count`, `Solar Phase Source` and `Solar Voltage Sum`: phase and voltage basis used for the Solar current calculation.
+
 Solar Sensor Failure Behavior:
 
 - `Pause charging`: recommended default. `Smart Solar` and `Solar Boost` pause by writing `0 A` when Solar input is stale, unavailable or invalid.
