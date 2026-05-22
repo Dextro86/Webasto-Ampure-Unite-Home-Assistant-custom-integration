@@ -41,6 +41,44 @@ class HaSensorAdapter:
             max_age_s=max_age_s,
         )
 
+    def stale_zero_state_as_power_w(
+        self,
+        entity_id: str | None,
+        *,
+        require_supported_unit: bool = False,
+        max_age_s: float | None = None,
+    ) -> float | None:
+        """Return 0 W for stale zero-value export-only surplus sensors.
+
+        A stale positive surplus value is unsafe and is still rejected.
+        """
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable", None):
+            return None
+        if not self.state_is_stale(entity_id, max_age_s=max_age_s, state=state):
+            return self.state_as_power_w(
+                entity_id,
+                require_supported_unit=require_supported_unit,
+                max_age_s=max_age_s,
+            )
+        try:
+            value = float(state.state)
+        except (TypeError, ValueError):
+            return None
+        unit = state.attributes.get("unit_of_measurement")
+        normalized = self._normalize_sensor_value(
+            entity_id,
+            "power",
+            value,
+            unit,
+            require_supported_unit=require_supported_unit,
+        )
+        if normalized is not None and abs(normalized) <= 0.001:
+            return 0.0
+        return None
+
     def _state_as_float(
         self,
         entity_id: str | None,

@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy, UnitOfPower, UnitOfTime, UnitOfElectricPotential
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -24,36 +24,37 @@ SENSORS = (
     WebastoSensorDescription(key="effective_mode", name="Active Mode", value_key="effective_mode"),
     WebastoSensorDescription(key="charge_point_state_text", name="Charge Point State", value_key="charge_point_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="charging_state_text", name="Charging State", value_key="charge_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="iec61851_state", name="IEC 61851 State", value_key="iec61851_state", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="equipment_state_text", name="Equipment State", value_key="evse_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="cable_state_text", name="Cable State", value_key="cable_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="evse_fault_code", name="EVSE Fault Code", value_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="effective_active_phases", name="Effective Active Phases", value_key="phases_in_use", entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="active_power", name="Active Power", value_key="active_power_w", native_unit_of_measurement=UnitOfPower.WATT),
-    WebastoSensorDescription(key="active_power_l1", name="Active Power L1", value_key="active_power_l1_w", native_unit_of_measurement=UnitOfPower.WATT),
-    WebastoSensorDescription(key="active_power_l2", name="Active Power L2", value_key="active_power_l2_w", native_unit_of_measurement=UnitOfPower.WATT),
-    WebastoSensorDescription(key="active_power_l3", name="Active Power L3", value_key="active_power_l3_w", native_unit_of_measurement=UnitOfPower.WATT),
-    WebastoSensorDescription(key="current_l1", name="Current L1", value_key="current_l1_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="current_l2", name="Current L2", value_key="current_l2_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="current_l3", name="Current L3", value_key="current_l3_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="actual_current", name="Max Phase Current", value_key="actual_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="voltage_l1", name="Voltage L1", value_key="voltage_l1_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT),
-    WebastoSensorDescription(key="voltage_l2", name="Voltage L2", value_key="voltage_l2_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT),
-    WebastoSensorDescription(key="voltage_l3", name="Voltage L3", value_key="voltage_l3_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT),
-    WebastoSensorDescription(key="configured_limit", name="Reported Current Limit", value_key="current_limit_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="safe_current", name="Safe Current", value_key="safe_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="session_max_current", name="Session Max Current", value_key="session_max_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="session_energy", name="Session Energy", value_key="session_energy_kwh", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR),
-    WebastoSensorDescription(key="energy_meter", name="Energy Meter", value_key="energy_meter_kwh", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR),
+    WebastoSensorDescription(key="active_power", name="Active Power", value_key="active_power_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="active_power_l1", name="Active Power L1", value_key="active_power_l1_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="active_power_l2", name="Active Power L2", value_key="active_power_l2_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="active_power_l3", name="Active Power L3", value_key="active_power_l3_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="current_l1", name="Current L1", value_key="current_l1_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="current_l2", name="Current L2", value_key="current_l2_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="current_l3", name="Current L3", value_key="current_l3_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="actual_current", name="Max Phase Current", value_key="actual_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="voltage_l1", name="Voltage L1", value_key="voltage_l1_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="voltage_l2", name="Voltage L2", value_key="voltage_l2_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="voltage_l3", name="Voltage L3", value_key="voltage_l3_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="configured_limit", name="Reported Current Limit", value_key="current_limit_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="safe_current", name="Safe Current", value_key="safe_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="session_max_current", name="Session Max Current", value_key="session_max_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="session_energy", name="Session Energy", value_key="session_energy_kwh", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL),
+    WebastoSensorDescription(key="energy_meter", name="Energy Meter", value_key="energy_meter_kwh", native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR, device_class=SensorDeviceClass.ENERGY, state_class=SensorStateClass.TOTAL_INCREASING),
     WebastoSensorDescription(key="session_duration", name="Session Duration", value_key="session_duration_s", native_unit_of_measurement=UnitOfTime.SECONDS, entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="dlb_limit", name="DLB Limit", value_key="dlb_limit_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="final_target", name="Final Target", value_key="final_target_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE),
-    WebastoSensorDescription(key="solar_surplus_input", name="Solar Surplus Input", value_key="solar_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="solar_raw_input", name="Solar Raw Input", value_key="solar_raw_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="solar_filtered_input", name="Solar Filtered Input", value_key="solar_filtered_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="solar_target", name="Solar Target", value_key="solar_target_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="dlb_limit", name="DLB Limit", value_key="dlb_limit_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="final_target", name="Final Target", value_key="final_target_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="solar_surplus_input", name="Solar Surplus Input", value_key="solar_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="solar_raw_input", name="Solar Raw Input", value_key="solar_raw_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="solar_filtered_input", name="Solar Filtered Input", value_key="solar_filtered_surplus_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="solar_target", name="Solar Target", value_key="solar_target_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="solar_phase_count", name="Solar Phase Count", value_key="solar_phase_count", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="solar_phase_source", name="Solar Phase Source", value_key="solar_phase_source", entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="solar_voltage_sum", name="Solar Voltage Sum", value_key="solar_voltage_sum_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="solar_voltage_sum", name="Solar Voltage Sum", value_key="solar_voltage_sum_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="solar_input_state", name="Solar Input State", value_key="solar_input_state", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="reason", name="Control Reason", value_key="control_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="limit_reason", name="Dominant Limit", value_key="dominant_limit_reason", entity_category=EntityCategory.DIAGNOSTIC),
@@ -83,6 +84,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             return self._format_charge_point_state(data.wallbox.charge_point_state_raw)
         if self.entity_description.key == "charging_state_text":
             return self._format_charge_state(data.wallbox.charge_state_raw)
+        if self.entity_description.key == "iec61851_state":
+            return self._derive_iec61851_state(data.wallbox)
         if self.entity_description.key == "equipment_state_text":
             return self._format_equipment_state(data.wallbox.evse_state_raw)
         if self.entity_description.key == "cable_state_text":
@@ -99,16 +102,47 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             )
         return None
 
+    @property
+    def extra_state_attributes(self):
+        if self.entity_description.key != "iec61851_state" or self.coordinator.data is None:
+            return None
+        wallbox = self.coordinator.data.wallbox
+        return {
+            "source": "derived",
+            "charge_point_state": self._format_charge_point_state(wallbox.charge_point_state_raw),
+            "charging_state": self._format_charge_state(wallbox.charge_state_raw),
+            "cable_state": self._format_cable_state(wallbox.cable_state_raw),
+            "charge_point_state_raw": wallbox.charge_point_state_raw,
+            "charging_state_raw": wallbox.charge_state_raw,
+            "cable_state_raw": wallbox.cable_state_raw,
+        }
+
+    @staticmethod
+    def _derive_iec61851_state(wallbox) -> str:
+        if wallbox.charge_point_state_raw == 8 or wallbox.evse_state_raw == 2:
+            return "E"
+        if wallbox.charge_point_state_raw == 7:
+            return "F"
+        if wallbox.charge_state_raw == 1 or wallbox.charging_active:
+            return "C"
+        if not wallbox.vehicle_connected:
+            return "A"
+        if wallbox.vehicle_connected:
+            return "B"
+        return "Unknown"
+
     @staticmethod
     def _format_charge_point_state(raw_value):
         mapping = {
-            0: "No Vehicle",
+            0: "Available",
             1: "Preparing",
             2: "Charging",
-            3: "Charging",
-            4: "Paused",
-            7: "Error",
-            8: "Reserved",
+            3: "SuspendedEVSE",
+            4: "SuspendedEV",
+            5: "Finishing",
+            6: "Reserved",
+            7: "Unavailable",
+            8: "Faulted",
         }
         return WebastoSensor._format_raw_state_label(raw_value, mapping)
 
@@ -123,19 +157,21 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
     @staticmethod
     def _format_equipment_state(raw_value):
         mapping = {
-            0: "Starting",
+            0: "Initializing",
             1: "Running",
-            2: "Error",
+            2: "Fault",
+            3: "Disabled",
+            4: "Updating",
         }
         return WebastoSensor._format_raw_state_label(raw_value, mapping)
 
     @staticmethod
     def _format_cable_state(raw_value):
         mapping = {
-            0: "No Cable",
-            1: "Cable Attached",
-            2: "Vehicle Connected",
-            3: "Vehicle Connected Locked",
+            0: "Cable Not Connected",
+            1: "Cable Connected, Vehicle Not Connected",
+            2: "Cable Connected, Vehicle Connected",
+            3: "Cable Connected, Vehicle Connected, Cable Locked",
         }
         return WebastoSensor._format_raw_state_label(raw_value, mapping)
 
@@ -194,7 +230,7 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "wallbox_active_phases": "Wallbox Active Phases",
                 "observed_session_phases": "Observed Session Phases",
                 "pre_start_1p_assumption": "Pre-start 1P Assumption",
-                "installed_phases": "Installed Phases",
+                "installed_phases": "Charger Configuration",
                 "normal": "Normal",
                 "ready": "Ready",
                 "unavailable": "Unavailable",

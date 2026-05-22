@@ -189,17 +189,48 @@ class _SwitchEntity:
 switch.SwitchEntity = _SwitchEntity
 sys.modules.setdefault("homeassistant.components.switch", switch)
 
+button = types.ModuleType("homeassistant.components.button")
+class _ButtonEntity:
+    pass
+button.ButtonEntity = _ButtonEntity
+sys.modules.setdefault("homeassistant.components.button", button)
+
+binary_sensor = types.ModuleType("homeassistant.components.binary_sensor")
+class _BinarySensorEntity:
+    pass
+binary_sensor.BinarySensorEntity = _BinarySensorEntity
+sys.modules.setdefault("homeassistant.components.binary_sensor", binary_sensor)
+
+select = types.ModuleType("homeassistant.components.select")
+class _SelectEntity:
+    pass
+select.SelectEntity = _SelectEntity
+sys.modules.setdefault("homeassistant.components.select", select)
+
 sensor = types.ModuleType("homeassistant.components.sensor")
 class _SensorEntity:
     pass
+class _SensorDeviceClass:
+    CURRENT = "current"
+    ENERGY = "energy"
+    POWER = "power"
+    VOLTAGE = "voltage"
+class _SensorStateClass:
+    MEASUREMENT = "measurement"
+    TOTAL = "total"
+    TOTAL_INCREASING = "total_increasing"
 @dataclass(frozen=True)
 class _SensorEntityDescription:
     key: str | None = None
     name: str | None = None
     entity_category: str | None = None
     native_unit_of_measurement: str | None = None
+    device_class: str | None = None
+    state_class: str | None = None
 sensor.SensorEntity = _SensorEntity
 sensor.SensorEntityDescription = _SensorEntityDescription
+sensor.SensorDeviceClass = _SensorDeviceClass
+sensor.SensorStateClass = _SensorStateClass
 sys.modules.setdefault("homeassistant.components.sensor", sensor)
 
 number = types.ModuleType("homeassistant.components.number")

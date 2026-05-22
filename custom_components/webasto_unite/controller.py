@@ -12,6 +12,7 @@ from .models import (
     ControlReason,
     HaSensorSnapshot,
     SolarControlStrategy,
+    SolarInputModel,
     SolarOverrideStrategy,
     SolarSensorFailureBehavior,
     SolarResult,
@@ -537,7 +538,11 @@ class WallboxController:
             return None
 
         charger_power_w = self._trusted_charger_power_w(wallbox)
-        if self.config.solar_grid_power_direction == "positive_export":
+        if self.config.solar_input_model == SolarInputModel.DSMR_IMPORT_EXPORT:
+            # DSMR import/export is normalized by the coordinator as import - export,
+            # so export is always the negative direction regardless of UI sign setting.
+            signed_export_w = -sensors.grid_power_w
+        elif self.config.solar_grid_power_direction == "positive_export":
             signed_export_w = sensors.grid_power_w
         else:
             signed_export_w = -sensors.grid_power_w

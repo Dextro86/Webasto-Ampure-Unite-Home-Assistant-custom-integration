@@ -25,8 +25,8 @@ def _solar_mode_label(strategy: str | SolarControlStrategy) -> str:
 
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
-    {"value": PHASE_MODE_1P, "label": "1 Phase"},
-    {"value": PHASE_MODE_3P, "label": "3 Phases"},
+    {"value": PHASE_MODE_1P, "label": "1P"},
+    {"value": PHASE_MODE_3P, "label": "3P"},
 ]
 CONTROL_MODE_SELECTOR_OPTIONS = [
     {"value": ControlMode.MANAGED_CONTROL.value, "label": "Enabled"},
@@ -45,6 +45,7 @@ DLB_SENSOR_SCOPE_SELECTOR_OPTIONS = [
 SOLAR_INPUT_MODEL_SELECTOR_OPTIONS = [
     {"value": SolarInputModel.SURPLUS_SENSOR.value, "label": "Solar Surplus Sensor"},
     {"value": SolarInputModel.GRID_POWER_DERIVED.value, "label": "Signed Grid Power Sensor"},
+    {"value": SolarInputModel.DSMR_IMPORT_EXPORT.value, "label": "DSMR Import/Export Sensors"},
 ]
 SOLAR_GRID_POWER_DIRECTION_SELECTOR_OPTIONS = [
     {"value": SolarGridPowerDirection.NEGATIVE_EXPORT.value, "label": "Negative Export"},
@@ -249,6 +250,10 @@ def _validate_solar_options(options: dict[str, Any]) -> dict[str, Any]:
             options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR)
         ):
             raise vol.Invalid("A grid power sensor is required when solar mode derives surplus from grid power")
+        if model == SolarInputModel.DSMR_IMPORT_EXPORT.value and not (
+            options.get(CONF_SOLAR_IMPORT_POWER_SENSOR) and options.get(CONF_SOLAR_EXPORT_POWER_SENSOR)
+        ):
+            raise vol.Invalid("Solar import and export power sensors are required for DSMR import/export mode")
     return options
 
 
@@ -283,6 +288,8 @@ def _validation_error_key(err: Exception) -> str:
         return "solar_surplus_sensor_required"
     if "grid power sensor is required when solar mode derives surplus" in message:
         return "solar_grid_sensor_required"
+    if "Solar import and export power sensors are required" in message:
+        return "solar_import_export_sensor_required"
     if CONF_FIXED_CURRENT in message:
         return "fixed_current_out_of_range"
     return "invalid_config"
@@ -451,6 +458,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_SOLAR_REQUIRE_UNITS, default=current.get(CONF_SOLAR_REQUIRE_UNITS, True)): bool,
             _optional_field(CONF_SOLAR_SURPLUS_SENSOR, _entity_selector(), current.get(CONF_SOLAR_SURPLUS_SENSOR)): _entity_selector(),
             _optional_field(CONF_SOLAR_GRID_POWER_SENSOR, _entity_selector(), current.get(CONF_SOLAR_GRID_POWER_SENSOR)): _entity_selector(),
+            _optional_field(CONF_SOLAR_IMPORT_POWER_SENSOR, _entity_selector(), current.get(CONF_SOLAR_IMPORT_POWER_SENSOR)): _entity_selector(),
+            _optional_field(CONF_SOLAR_EXPORT_POWER_SENSOR, _entity_selector(), current.get(CONF_SOLAR_EXPORT_POWER_SENSOR)): _entity_selector(),
             vol.Optional(CONF_SOLAR_START_THRESHOLD, default=current.get(CONF_SOLAR_START_THRESHOLD, 1800.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
             vol.Optional(CONF_SOLAR_STOP_THRESHOLD, default=current.get(CONF_SOLAR_STOP_THRESHOLD, 1200.0)): _float_selector(MIN_POWER_W, MAX_POWER_W, 1.0),
             vol.Optional(CONF_SOLAR_START_DELAY, default=current.get(CONF_SOLAR_START_DELAY, DEFAULT_PV_START_DELAY_S)): _float_selector(0.0, 3600.0, 0.1),
@@ -467,6 +476,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
             CONF_SOLAR_REQUIRE_UNITS: current.get(CONF_SOLAR_REQUIRE_UNITS, True),
             CONF_SOLAR_SURPLUS_SENSOR: current.get(CONF_SOLAR_SURPLUS_SENSOR),
             CONF_SOLAR_GRID_POWER_SENSOR: current.get(CONF_SOLAR_GRID_POWER_SENSOR),
+            CONF_SOLAR_IMPORT_POWER_SENSOR: current.get(CONF_SOLAR_IMPORT_POWER_SENSOR),
+            CONF_SOLAR_EXPORT_POWER_SENSOR: current.get(CONF_SOLAR_EXPORT_POWER_SENSOR),
             CONF_SOLAR_START_THRESHOLD: current.get(CONF_SOLAR_START_THRESHOLD, 1800.0),
             CONF_SOLAR_STOP_THRESHOLD: current.get(CONF_SOLAR_STOP_THRESHOLD, 1200.0),
             CONF_SOLAR_START_DELAY: current.get(CONF_SOLAR_START_DELAY, DEFAULT_PV_START_DELAY_S),

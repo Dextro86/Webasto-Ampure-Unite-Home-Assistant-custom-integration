@@ -442,9 +442,11 @@ def test_options_flow_shows_all_pv_fields_without_requiring_second_save():
             "solar_grid_power_direction",
             "solar_sensor_failure_behavior",
             "solar_require_units",
-            "solar_surplus_sensor",
-            "solar_grid_power_sensor",
-            "solar_start_threshold",
+                "solar_surplus_sensor",
+                "solar_grid_power_sensor",
+                "solar_import_power_sensor",
+                "solar_export_power_sensor",
+                "solar_start_threshold",
             "solar_stop_threshold",
             "solar_start_delay",
             "solar_stop_delay",
@@ -785,6 +787,45 @@ def test_pv_min_plus_surplus_strategy_requires_surplus_model_inputs():
     assert result["solar_control_strategy"] == "smart_solar"
 
 
+def test_solar_dsmr_import_export_strategy_requires_both_sensors():
+    try:
+        _validate_pv_options(
+            {
+                "solar_input_model": "dsmr_import_export",
+                "solar_control_strategy": "smart_solar",
+                "solar_until_unplug_strategy": "inherit",
+                "solar_import_power_sensor": "sensor.import",
+                "solar_export_power_sensor": None,
+                "solar_start_threshold": 1800.0,
+                "solar_stop_threshold": 1200.0,
+                "solar_min_current": 6.0,
+                "fixed_current": 8.0,
+            }
+        )
+    except Exception as err:  # noqa: BLE001
+        assert "import and export" in str(err)
+    else:
+        raise AssertionError("Expected DSMR import/export validation to fail")
+
+
+def test_solar_dsmr_import_export_strategy_accepts_both_sensors():
+    result = _validate_pv_options(
+        {
+            "solar_input_model": "dsmr_import_export",
+            "solar_control_strategy": "smart_solar",
+            "solar_until_unplug_strategy": "inherit",
+            "solar_import_power_sensor": "sensor.import",
+            "solar_export_power_sensor": "sensor.export",
+            "solar_start_threshold": 1800.0,
+            "solar_stop_threshold": 1200.0,
+            "solar_min_current": 6.0,
+            "fixed_current": 8.0,
+        }
+    )
+
+    assert result["solar_input_model"] == "dsmr_import_export"
+
+
 def test_legacy_pv_min_always_plus_surplus_strategy_normalizes_to_min_plus_surplus():
     result = _validate_pv_options(
         {
@@ -912,6 +953,30 @@ def test_sensor_adapter_rejects_stale_control_sensor_values():
     assert adapter.state_as_current_a("sensor.stale", max_age_s=60.0) is None
     assert adapter.state_is_stale("sensor.stale", max_age_s=60.0) is True
     assert adapter.state_as_current_a("sensor.fresh", max_age_s=60.0) == 12.0
+
+
+def test_sensor_adapter_accepts_stale_zero_surplus_but_rejects_stale_positive_surplus():
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.stale_zero": SimpleNamespace(
+                    state="0.0",
+                    attributes={"unit_of_measurement": "kW"},
+                    last_reported=stale,
+                ),
+                "sensor.stale_positive": SimpleNamespace(
+                    state="1.5",
+                    attributes={"unit_of_measurement": "kW"},
+                    last_reported=stale,
+                ),
+            }.get(entity_id)
+        )
+    )
+    adapter = HaSensorAdapter(hass)
+
+    assert adapter.stale_zero_state_as_power_w("sensor.stale_zero", max_age_s=60.0) == 0.0
+    assert adapter.stale_zero_state_as_power_w("sensor.stale_positive", max_age_s=60.0) is None
 
 
 def test_options_flow_shows_min_and_max_current_in_charging_section():
@@ -1213,6 +1278,98 @@ def test_pv_snapshot_reports_ready_when_input_is_available():
 
     snapshot = coordinator._read_sensor_snapshot()
 
+    assert snapshot.reason_invalid is None
+    assert snapshot.solar_input_state == "ready"
+
+
+def test_solar_dsmr_snapshot_derives_signed_grid_power_from_import_export():
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.import_power": SimpleNamespace(state="0.5", attributes={"unit_of_measurement": "kW"}),
+                "sensor.export_power": SimpleNamespace(state="3.0", attributes={"unit_of_measurement": "kW"}),
+            }.get(entity_id)
+        )
+    )
+
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.hass = hass
+    coordinator.entry = SimpleNamespace(
+        options={
+            "solar_import_power_sensor": "sensor.import_power",
+            "solar_export_power_sensor": "sensor.export_power",
+        },
+        data={"installed_phases": "3p"},
+    )
+    coordinator.sensor_adapter = HaSensorAdapter(hass)
+    coordinator.control_config = ControlConfig(
+        dlb_input_model=DlbInputModel.DISABLED,
+        solar_control_strategy=SolarControlStrategy.SURPLUS,
+        solar_input_model=SolarInputModel.DSMR_IMPORT_EXPORT,
+        solar_require_units=True,
+    )
+    coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.SURPLUS)
+
+    snapshot = coordinator._read_sensor_snapshot()
+
+    assert snapshot.grid_power_w == -2500.0
+    assert snapshot.reason_invalid is None
+    assert snapshot.solar_input_state == "ready"
+
+
+def test_solar_dsmr_surplus_ignores_grid_power_direction_setting():
+    controller = make_controller(
+        solar_input_model=SolarInputModel.DSMR_IMPORT_EXPORT,
+        solar_grid_power_direction="positive_export",
+    )
+    sensors = HaSensorSnapshot(grid_power_w=-2500.0)
+    wallbox = WallboxState(charging_active=False, active_power_w=0.0)
+
+    assert controller.resolve_surplus_power(sensors, wallbox) == 2500.0
+
+
+def test_solar_dsmr_snapshot_accepts_stale_zero_direction():
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    fresh = datetime.now(timezone.utc)
+    hass = SimpleNamespace(
+        states=SimpleNamespace(
+            get=lambda entity_id: {
+                "sensor.import_power": SimpleNamespace(
+                    state="0.0",
+                    attributes={"unit_of_measurement": "kW"},
+                    last_reported=stale,
+                ),
+                "sensor.export_power": SimpleNamespace(
+                    state="3.0",
+                    attributes={"unit_of_measurement": "kW"},
+                    last_reported=fresh,
+                ),
+            }.get(entity_id)
+        )
+    )
+
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.hass = hass
+    coordinator.entry = SimpleNamespace(
+        options={
+            "solar_import_power_sensor": "sensor.import_power",
+            "solar_export_power_sensor": "sensor.export_power",
+        },
+        data={"installed_phases": "3p"},
+    )
+    coordinator.sensor_adapter = HaSensorAdapter(hass)
+    coordinator.control_config = ControlConfig(
+        dlb_input_model=DlbInputModel.DISABLED,
+        solar_control_strategy=SolarControlStrategy.SURPLUS,
+        solar_input_model=SolarInputModel.DSMR_IMPORT_EXPORT,
+        solar_require_units=True,
+        control_sensor_timeout_s=60.0,
+    )
+    coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.SURPLUS)
+
+    snapshot = coordinator._read_sensor_snapshot()
+
+    assert snapshot.grid_power_w == -3000.0
     assert snapshot.reason_invalid is None
     assert snapshot.solar_input_state == "ready"
 

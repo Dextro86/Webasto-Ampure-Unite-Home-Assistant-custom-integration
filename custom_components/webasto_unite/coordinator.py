@@ -32,7 +32,9 @@ from .const import (
     CONF_POLLING_INTERVAL,
     CONF_SOLAR_CONTROL_STRATEGY,
     CONF_SOLAR_GRID_POWER_DIRECTION,
+    CONF_SOLAR_EXPORT_POWER_SENSOR,
     CONF_SOLAR_INPUT_MODEL,
+    CONF_SOLAR_IMPORT_POWER_SENSOR,
     CONF_SOLAR_MIN_CURRENT,
     CONF_SOLAR_MIN_PAUSE,
     CONF_SOLAR_MIN_RUNTIME,
@@ -728,11 +730,24 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
 
         if self.control_config.solar_input_model == SolarInputModel.SURPLUS_SENSOR:
-            snapshot.surplus_power_w = self.sensor_adapter.state_as_power_w(
+            snapshot.surplus_power_w = self.sensor_adapter.stale_zero_state_as_power_w(
                 options.get(CONF_SOLAR_SURPLUS_SENSOR),
                 require_supported_unit=self.control_config.solar_require_units,
                 max_age_s=self.control_config.control_sensor_timeout_s,
             )
+        elif self.control_config.solar_input_model == SolarInputModel.DSMR_IMPORT_EXPORT:
+            import_power_w = self.sensor_adapter.stale_zero_state_as_power_w(
+                options.get(CONF_SOLAR_IMPORT_POWER_SENSOR),
+                require_supported_unit=self.control_config.solar_require_units,
+                max_age_s=self.control_config.control_sensor_timeout_s,
+            )
+            export_power_w = self.sensor_adapter.stale_zero_state_as_power_w(
+                options.get(CONF_SOLAR_EXPORT_POWER_SENSOR),
+                require_supported_unit=self.control_config.solar_require_units,
+                max_age_s=self.control_config.control_sensor_timeout_s,
+            )
+            if import_power_w is not None and export_power_w is not None:
+                snapshot.grid_power_w = import_power_w - export_power_w
         elif snapshot.grid_power_w is None:
             snapshot.grid_power_w = self.sensor_adapter.state_as_power_w(
                 options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR),
@@ -771,17 +786,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             and self.control_config.solar_control_strategy != SolarControlStrategy.DISABLED
             and self.controller.resolve_surplus_power(snapshot, wallbox) is None
         ):
-            solar_entity = (
-                options.get(CONF_SOLAR_SURPLUS_SENSOR)
-                if self.control_config.solar_input_model == SolarInputModel.SURPLUS_SENSOR
-                else options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR)
-            )
+            solar_entities = self._solar_input_entities(options)
             snapshot.solar_input_state = "unavailable"
             snapshot.reason_invalid = self._control_sensor_invalid_reason(
                 "Required Solar sensor",
-                stale=self.sensor_adapter.state_is_stale(
-                    solar_entity,
-                    max_age_s=self.control_config.control_sensor_timeout_s,
+                stale=any(
+                    self.sensor_adapter.state_is_stale(
+                        entity_id,
+                        max_age_s=self.control_config.control_sensor_timeout_s,
+                    )
+                    for entity_id in solar_entities
                 ),
                 require_units=self.control_config.solar_require_units,
             )
@@ -789,6 +803,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             snapshot.solar_input_state = "ready"
 
         return snapshot
+
+    def _solar_input_entities(self, options: dict) -> tuple[str | None, ...]:
+        if self.control_config.solar_input_model == SolarInputModel.SURPLUS_SENSOR:
+            return (options.get(CONF_SOLAR_SURPLUS_SENSOR),)
+        if self.control_config.solar_input_model == SolarInputModel.DSMR_IMPORT_EXPORT:
+            return (
+                options.get(CONF_SOLAR_IMPORT_POWER_SENSOR),
+                options.get(CONF_SOLAR_EXPORT_POWER_SENSOR),
+            )
+        return (
+            options.get(CONF_SOLAR_GRID_POWER_SENSOR) or options.get(CONF_DLB_GRID_POWER_SENSOR),
+        )
 
     def _required_dlb_sensor_indices(self, wallbox: WallboxState | None) -> tuple[int, ...]:
         if self._configured_phase_count() == 1:
@@ -978,6 +1004,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self.entry.options.get(CONF_SOLAR_GRID_POWER_SENSOR),
             self.entry.options.get(CONF_DLB_GRID_POWER_SENSOR),
             self.entry.options.get(CONF_SOLAR_SURPLUS_SENSOR),
+            self.entry.options.get(CONF_SOLAR_IMPORT_POWER_SENSOR),
+            self.entry.options.get(CONF_SOLAR_EXPORT_POWER_SENSOR),
         ]
         entities = [entity_id for entity_id in entities if entity_id]
         if not entities:

@@ -80,7 +80,7 @@ Start conservatively: first confirm monitoring works, then set `Integration Char
 The integration options are grouped into one settings screen with these sections:
 
 - `Connection`: charger network and Modbus settings
-- `Charging`: installed phases, default mode and current limits
+- `Charging`: charger configuration, default mode and current limits
 - `Temporary Session Settings`: temporary per-session Fixed Current and Solar Until Unplug behavior when managed control is enabled
 - `Dynamic Load Balancing`: exposes DLB mode, sensor scope, fuse settings and DLB sensors in one section
 - `Solar Charging`: exposes Solar strategy, input source, thresholds and timing settings in one section
@@ -97,6 +97,7 @@ This keeps the full configuration in one place while preserving the same validat
 - `Eco Solar` always pauses when Solar input is unavailable. `Smart Solar` and `Solar Boost` can optionally continue at `Solar Minimum Current`, but the default remains pause for safety.
 - Solar current increases are smoothed and ramp-limited internally to reduce bouncing; DLB and safety limits can still reduce current immediately.
 - For Solar with a signed grid power sensor, choose the sign direction by looking at the sensor while exporting and not charging: negative export means export is below zero, positive export means export is above zero.
+- For P1/DSMR meters with separate import and export power sensors, use `DSMR Import/Export Sensors` as Solar input. The integration calculates signed grid power internally as `import - export`.
 - Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
 
 ## Diagnostics and Troubleshooting
@@ -104,6 +105,7 @@ This keeps the full configuration in one place while preserving the same validat
 If the charger does not behave as expected, first check these entities:
 
 - `Connected` and `Client Error`: Modbus connection status.
+- `IEC 61851 State`: derived EV charging state (`A`, `B`, `C`, `E`, `F`) for compatibility with tools such as EVCC.
 - `Final Target`: current the integration is currently requesting.
 - `Control Reason`: why the current target was chosen.
 - `Fallback Active` and `Sensor Invalid Reason`: whether DLB/Solar input is missing, stale or unsafe.

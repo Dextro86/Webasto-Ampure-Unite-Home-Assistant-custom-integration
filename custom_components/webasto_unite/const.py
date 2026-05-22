@@ -58,6 +58,8 @@ CONF_DLB_L2_SENSOR = "dlb_l2_sensor"
 CONF_DLB_L3_SENSOR = "dlb_l3_sensor"
 CONF_SOLAR_GRID_POWER_SENSOR = "solar_grid_power_sensor"
 CONF_SOLAR_GRID_POWER_DIRECTION = "solar_grid_power_direction"
+CONF_SOLAR_IMPORT_POWER_SENSOR = "solar_import_power_sensor"
+CONF_SOLAR_EXPORT_POWER_SENSOR = "solar_export_power_sensor"
 # Backward compatibility for old option key.
 CONF_DLB_GRID_POWER_SENSOR = "dlb_grid_power_sensor"
 CONF_SOLAR_INPUT_MODEL = "solar_input_model"

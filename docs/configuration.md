@@ -45,7 +45,7 @@ If monitoring is unreliable, first check that no other tool, automation or integ
 
 Main settings:
 
-- `Charger Installation`: installed charger phase configuration, usually `1 Phase` or `3 Phases`.
+- `Charger Configuration`: charger configuration for the integration, either `1P` or `3P`. Choose `3P` for a three-phase charger setup, even when some connected vehicles only charge on one phase.
 - `Integration Charging Control`: whether the integration may actively control the charger or stay in monitoring-only mode.
 - `Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
 - `Minimum Current (A)`: lowest current the integration may request. EV charging normally starts at `6 A`.
@@ -152,6 +152,9 @@ Main settings:
 - `Solar Sensor Failure Behavior`
 - `Require Solar Sensor Units`
 - `Solar Surplus Sensor`
+- `Grid Power Sensor`
+- `Import Power Sensor`
+- `Export Power Sensor`
 - `Start Threshold (W)`
 - `Stop Threshold (W)`
 - `Solar Start Delay (s)`
@@ -167,7 +170,7 @@ Solar Strategy:
 - `Smart Solar`: charge at least at `Solar Minimum Current (A)` when Solar input is valid, and increase only when the total Solar input supports more than that minimum.
 - `Solar Boost`: charge at `Solar Minimum Current (A)` and add available Solar surplus on top.
 
-Solar charging is disabled by default. Enable it only after selecting a suitable surplus or signed grid power sensor.
+Solar charging is disabled by default. Enable it only after selecting suitable Solar input sensors.
 
 `Smart Solar` is not pure surplus-only charging. It may charge at `Solar Minimum Current (A)` when there is little or no surplus, as long as the Solar input is valid. It raises current when the calculated Solar input supports more than the minimum. Use `Eco Solar` if you want Solar charging to wait until enough surplus is present.
 
@@ -205,6 +208,17 @@ Solar diagnostic sensors expose the calculation path:
 - `Solar Target`: Solar current target before DLB, maximum current and charger/session limits.
 - `Solar Phase Count`, `Solar Phase Source` and `Solar Voltage Sum`: phase and voltage basis used for the Solar current calculation.
 
+The integration also exposes `IEC 61851 State` as a derived diagnostic sensor for compatibility with external tools such as EVCC:
+
+- `A`: no vehicle connected
+- `B`: vehicle connected, not charging
+- `C`: charging
+- `E`: fault
+- `F`: unavailable
+- `Unknown`: state could not be derived
+
+This sensor is derived from the charger's Modbus charge point, charging and cable states. It is not a raw IEC61851 register.
+
 Solar Sensor Failure Behavior:
 
 - `Pause charging`: recommended default. `Smart Solar` and `Solar Boost` pause by writing `0 A` when Solar input is stale, unavailable or invalid.
@@ -213,10 +227,27 @@ Solar Sensor Failure Behavior:
 `Eco Solar` always pauses on Solar input failure because it is surplus-only charging.
 Solar input must also be recent. If the configured Solar sensor is older than `Control Sensor Timeout (s)`, Solar control treats it as unavailable.
 
-Solar input can be provided in two ways:
+Solar input can be provided in three ways:
 
 - `Solar Surplus Sensor`: select a Home Assistant sensor that directly represents available Solar surplus as current power in `W` or `kW`.
 - `Signed Grid Power Sensor`: select a live net grid power sensor that reports both import and export using positive and negative values. The integration converts the grid value into Solar input and compensates for charger power while the charger is already charging.
+- `DSMR Import/Export Sensors`: select separate P1/DSMR import and export power sensors. The integration calculates signed grid power internally as `import - export`, so no Home Assistant template helper is needed.
+
+For Dutch/Belgian DSMR/P1 meters with separate sensors such as current consumption and current production/return delivery, `DSMR Import/Export Sensors` is usually the clearest option.
+
+How `DSMR Import/Export Sensors` are interpreted:
+
+```text
+import sensor = 500 W, export sensor = 0 W     -> signed grid power +500 W
+import sensor = 0 W, export sensor = 3000 W    -> signed grid power -3000 W
+import sensor = 0 W, export sensor = 0 W       -> signed grid power 0 W
+```
+
+The same charger-power correction is then applied as with `Signed Grid Power Sensor`.
+
+For DSMR import/export sensors, a stale zero value is accepted as `0 W`. This is intentional because one direction often stays at zero for a long time. A stale positive import or export value is still rejected as unsafe.
+
+`Grid Power Direction` is ignored for `DSMR Import/Export Sensors`; the integration always treats `import - export` as signed grid power.
 
 `Grid Power Direction` tells the integration which sign means export to the grid:
 

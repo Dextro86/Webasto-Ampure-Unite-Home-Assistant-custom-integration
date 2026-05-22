@@ -8,7 +8,7 @@
           "host": "Charger IP address",
           "port": "Port",
           "unit_id": "Modbus Unit ID",
-          "installed_phases": "Charger Phase Configuration"
+          "installed_phases": "Charger Configuration"
         }
       }
     }
@@ -36,7 +36,7 @@
           "general_charging": {
             "name": "Charging",
             "data": {
-              "installed_phases": "Charger Installation",
+              "installed_phases": "Charger Configuration",
               "control_mode": "Integration Charging Control",
               "startup_charge_mode": "Default Mode",
               "min_current": "Minimum Current (A)",
@@ -44,8 +44,8 @@
               "safe_current": "Fallback Current (A)"
             },
             "data_description": {
-              "installed_phases": "Physical charger setup: 1-phase or 3-phase.",
-              "control_mode": "On lets the integration control the charger. Off keeps the integration in monitoring mode with keepalive only.",
+              "installed_phases": "Set how the charger is configured for this integration. Use 1P for a single-phase charger setup. Use 3P for a three-phase charger setup; the integration can still detect when a connected vehicle charges on only one phase.",
+              "control_mode": "Enabled lets the integration take control of the charger.",
               "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
               "min_current": "Lowest current in amperes the integration may request. Charging below 6 A is normally not supported.",
               "max_current": "Normal charging target and highest current in amperes the integration may request. Set this to match the charger and installation limit.",
@@ -96,6 +96,8 @@
               "solar_require_units": "Require Solar Sensor Units",
               "solar_surplus_sensor": "Solar Surplus Sensor",
               "solar_grid_power_sensor": "Grid Power Sensor",
+              "solar_import_power_sensor": "Import Power Sensor",
+              "solar_export_power_sensor": "Export Power Sensor",
               "solar_start_threshold": "Start Threshold (W)",
               "solar_stop_threshold": "Stop Threshold (W)",
               "solar_start_delay": "Solar Start Delay (s)",
@@ -106,12 +108,14 @@
             },
             "data_description": {
               "solar_control_strategy": "Choose how strictly the integration should follow available solar surplus.",
-              "solar_input_model": "Choose how solar input is provided. A Signed Grid Power Sensor reports import and export with positive and negative values.",
+              "solar_input_model": "Choose how solar input is provided. DSMR Import/Export Sensors are recommended for P1 meters with separate consumption and production sensors.",
               "solar_grid_power_direction": "Choose which sign means export to the grid. Export is treated as available solar surplus.",
               "solar_sensor_failure_behavior": "What Smart Solar and Solar Boost should do when Solar input is stale, unavailable or invalid. Continuing at Solar Minimum Current may use grid power. Eco Solar always pauses.",
               "solar_require_units": "If enabled, solar sensors must expose a supported unit (W, kW, mW, MW). Unitless values are ignored.",
               "solar_surplus_sensor": "Sensor that reports the currently available solar surplus.",
               "solar_grid_power_sensor": "Signed grid power sensor used to derive solar surplus from import and export.",
+              "solar_import_power_sensor": "DSMR/P1 sensor that reports current grid import/consumption power.",
+              "solar_export_power_sensor": "DSMR/P1 sensor that reports current grid export/production power.",
               "solar_start_threshold": "Minimum solar surplus required before charging may start.",
               "solar_stop_threshold": "Solar surplus level below which charging may stop again.",
               "solar_start_delay": "Time in seconds solar surplus must stay high enough before charging starts.",
@@ -152,6 +156,7 @@
       "solar_min_current_out_of_range": "Solar Minimum Current must be less than or equal to Maximum Current.",
       "solar_surplus_sensor_required": "Select a solar surplus sensor for the surplus-sensor solar model.",
       "solar_grid_sensor_required": "Select a grid power sensor when solar surplus is derived from grid power.",
+      "solar_import_export_sensor_required": "Select both import and export power sensors for DSMR import/export solar input.",
       "fixed_current_out_of_range": "The Fixed Current target must stay within the supported current range."
     }
   }

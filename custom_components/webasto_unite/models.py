@@ -27,6 +27,7 @@ class DlbSensorScope(str, Enum):
 class SolarInputModel(str, Enum):
     SURPLUS_SENSOR = "surplus_sensor"
     GRID_POWER_DERIVED = "grid_power_derived"
+    DSMR_IMPORT_EXPORT = "dsmr_import_export"
 
 
 class SolarGridPowerDirection(str, Enum):

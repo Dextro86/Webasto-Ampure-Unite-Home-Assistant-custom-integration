@@ -1,3 +1,7 @@
+import importlib
+import pkgutil
+
+import custom_components.webasto_unite as webasto_unite_package
 from custom_components.webasto_unite.registers import (
     CHARGE_POINT_ID,
     CHARGE_POINT_STATE,
@@ -19,8 +23,35 @@ from custom_components.webasto_unite.registers import (
     ValueType,
 )
 from custom_components.webasto_unite.models import ChargingState, PhaseCurrents, WallboxState
-from custom_components.webasto_unite.sensor import WebastoSensor
+from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
+
+
+def test_all_integration_modules_import_and_wallbox_reader_instantiates():
+    for module_info in pkgutil.iter_modules(webasto_unite_package.__path__):
+        if module_info.ispkg:
+            continue
+        importlib.import_module(f"{webasto_unite_package.__name__}.{module_info.name}")
+
+    client = object()
+    reader = WallboxReader(client)
+
+    assert reader.client is client
+
+
+def test_energy_and_measurement_sensors_expose_statistics_metadata():
+    sensors = {description.key: description for description in SENSORS}
+
+    assert sensors["energy_meter"].device_class == "energy"
+    assert sensors["energy_meter"].state_class == "total_increasing"
+    assert sensors["session_energy"].device_class == "energy"
+    assert sensors["session_energy"].state_class == "total"
+    assert sensors["active_power"].device_class == "power"
+    assert sensors["active_power"].state_class == "measurement"
+    assert sensors["current_l1"].device_class == "current"
+    assert sensors["current_l1"].state_class == "measurement"
+    assert sensors["voltage_l1"].device_class == "voltage"
+    assert sensors["voltage_l1"].state_class == "measurement"
 
 
 def test_runtime_measurement_registers_use_input_registers():
@@ -90,13 +121,15 @@ def test_charging_active_uses_charging_state_register_with_measurement_fallback(
 
 
 def test_human_readable_charge_point_state_mapping_uses_conservative_labels():
-    assert WebastoSensor._format_charge_point_state(0) == "No Vehicle"
+    assert WebastoSensor._format_charge_point_state(0) == "Available"
     assert WebastoSensor._format_charge_point_state(1) == "Preparing"
     assert WebastoSensor._format_charge_point_state(2) == "Charging"
-    assert WebastoSensor._format_charge_point_state(3) == "Charging"
-    assert WebastoSensor._format_charge_point_state(4) == "Paused"
-    assert WebastoSensor._format_charge_point_state(7) == "Error"
-    assert WebastoSensor._format_charge_point_state(8) == "Reserved"
+    assert WebastoSensor._format_charge_point_state(3) == "SuspendedEVSE"
+    assert WebastoSensor._format_charge_point_state(4) == "SuspendedEV"
+    assert WebastoSensor._format_charge_point_state(5) == "Finishing"
+    assert WebastoSensor._format_charge_point_state(6) == "Reserved"
+    assert WebastoSensor._format_charge_point_state(7) == "Unavailable"
+    assert WebastoSensor._format_charge_point_state(8) == "Faulted"
     assert WebastoSensor._format_charge_point_state(99) == "Unknown (99)"
 
 
@@ -107,13 +140,39 @@ def test_human_readable_charge_state_mapping_uses_known_values():
 
 
 def test_human_readable_equipment_and_cable_state_mappings_use_fallback_for_unknown():
-    assert WebastoSensor._format_equipment_state(0) == "Starting"
+    assert WebastoSensor._format_equipment_state(0) == "Initializing"
     assert WebastoSensor._format_equipment_state(1) == "Running"
-    assert WebastoSensor._format_equipment_state(2) == "Error"
+    assert WebastoSensor._format_equipment_state(2) == "Fault"
+    assert WebastoSensor._format_equipment_state(3) == "Disabled"
+    assert WebastoSensor._format_equipment_state(4) == "Updating"
     assert WebastoSensor._format_equipment_state(9) == "Unknown (9)"
 
-    assert WebastoSensor._format_cable_state(0) == "No Cable"
-    assert WebastoSensor._format_cable_state(1) == "Cable Attached"
-    assert WebastoSensor._format_cable_state(2) == "Vehicle Connected"
-    assert WebastoSensor._format_cable_state(3) == "Vehicle Connected Locked"
+    assert WebastoSensor._format_cable_state(0) == "Cable Not Connected"
+    assert WebastoSensor._format_cable_state(1) == "Cable Connected, Vehicle Not Connected"
+    assert WebastoSensor._format_cable_state(2) == "Cable Connected, Vehicle Connected"
+    assert WebastoSensor._format_cable_state(3) == "Cable Connected, Vehicle Connected, Cable Locked"
     assert WebastoSensor._format_cable_state(9) == "Unknown (9)"
+
+
+def test_iec61851_state_is_derived_conservatively():
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=False, charging_active=False)
+    ) == "A"
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=True, charging_active=False)
+    ) == "B"
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=True, charge_state_raw=1)
+    ) == "C"
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=True, charging_active=True)
+    ) == "C"
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=True, charge_point_state_raw=8)
+    ) == "E"
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=True, evse_state_raw=2)
+    ) == "E"
+    assert WebastoSensor._derive_iec61851_state(
+        WallboxState(vehicle_connected=True, charge_point_state_raw=7)
+    ) == "F"
