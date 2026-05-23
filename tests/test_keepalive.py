@@ -1,40 +1,26 @@
 import asyncio
-from time import monotonic
 
 from custom_components.webasto_unite.models import ControlConfig
-from custom_components.webasto_unite.write_queue import WriteQueueManager, QueuedWrite, WritePriority
 from custom_components.webasto_unite.registers import LIFE_BIT
-
-
-class DummyCoordinator:
-    def __init__(self):
-        self.control_config = ControlConfig(keepalive_interval_s=999)
-        self.write_queue = WriteQueueManager()
-        self._last_keepalive_sent_monotonic = 0.0
-        self._keepalive_started_monotonic = monotonic() - 1000
-
-    async def _enqueue_keepalive_if_needed(self):
-        from time import monotonic
-
-        now = monotonic()
-        elapsed = now - self._last_keepalive_sent_monotonic if self._last_keepalive_sent_monotonic else now - self._keepalive_started_monotonic
-        if elapsed < self.control_config.keepalive_interval_s:
-            return
-        await self.write_queue.enqueue(
-            QueuedWrite("keepalive", LIFE_BIT, 1, WritePriority.KEEPALIVE)
-        )
-
-    def _is_keepalive_overdue(self, age_s: float | None) -> bool:
-        if age_s is None:
-            return False
-        return age_s > (self.control_config.keepalive_interval_s * 1.5)
+from custom_components.webasto_unite.write_queue import WriteQueueManager
+from custom_components.webasto_unite.write_runtime import WriteRuntime, WriteRuntimeState
 
 
 def test_forced_keepalive_enqueues_write_of_one():
     async def _run():
-        coordinator = DummyCoordinator()
-        await coordinator._enqueue_keepalive_if_needed()
-        item = await coordinator.write_queue.dequeue_next()
+        write_queue = WriteQueueManager()
+        runtime = WriteRuntime(
+            ControlConfig(keepalive_interval_s=999),
+            write_queue=write_queue,
+            client=None,
+            controller=None,
+            state=WriteRuntimeState(keepalive_started_monotonic=0.0),
+            monotonic_fn=lambda: 1000.0,
+        )
+
+        await runtime.enqueue_keepalive_if_needed()
+        item = await write_queue.dequeue_next()
+
         assert item is not None
         assert item.register == LIFE_BIT
         assert item.value == 1
@@ -43,8 +29,12 @@ def test_forced_keepalive_enqueues_write_of_one():
 
 
 def test_keepalive_overdue_uses_interval_budget():
-    coordinator = DummyCoordinator()
-    coordinator.control_config = ControlConfig(keepalive_interval_s=10)
+    runtime = WriteRuntime(
+        ControlConfig(keepalive_interval_s=10),
+        write_queue=WriteQueueManager(),
+        client=None,
+        controller=None,
+    )
 
-    assert coordinator._is_keepalive_overdue(12.0) is False
-    assert coordinator._is_keepalive_overdue(16.0) is True
+    assert runtime.is_keepalive_overdue(12.0) is False
+    assert runtime.is_keepalive_overdue(16.0) is True

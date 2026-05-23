@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
+from .evcc import build_evcc_status
 from .models import ChargeMode
 
 
@@ -61,6 +62,7 @@ SENSORS = (
     WebastoSensorDescription(key="sensor_invalid_reason", name="Sensor Invalid Reason", value_key="sensor_invalid_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="fallback_active", name="Fallback Active", value_key="fallback_active", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="client_error", name="Client Error", value_key="last_client_error", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="evcc_status", name="EVCC Status", value_key="evcc_status", entity_category=EntityCategory.DIAGNOSTIC),
 )
 
 
@@ -86,6 +88,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             return self._format_charge_state(data.wallbox.charge_state_raw)
         if self.entity_description.key == "iec61851_state":
             return self._derive_iec61851_state(data.wallbox)
+        if self.entity_description.key == "evcc_status":
+            return build_evcc_status(data, self.coordinator.control_config)["charger_state"]
         if self.entity_description.key == "equipment_state_text":
             return self._format_equipment_state(data.wallbox.evse_state_raw)
         if self.entity_description.key == "cable_state_text":
@@ -104,7 +108,11 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        if self.entity_description.key != "iec61851_state" or self.coordinator.data is None:
+        if self.coordinator.data is None:
+            return None
+        if self.entity_description.key == "evcc_status":
+            return build_evcc_status(self.coordinator.data, self.coordinator.control_config)
+        if self.entity_description.key != "iec61851_state":
             return None
         wallbox = self.coordinator.data.wallbox
         return {

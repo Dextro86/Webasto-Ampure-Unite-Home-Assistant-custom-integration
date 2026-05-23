@@ -16,6 +16,7 @@ This is a community project developed with significant AI assistance. Active cha
 - Dynamic Load Balancing (DLB)
 - Solar charging
 - Optional Lovelace dashboard and automation examples
+- EVCC-friendly status entities for using the charger through Home Assistant
 
 Supported charge modes:
 
@@ -112,6 +113,7 @@ If the charger does not behave as expected, first check these entities:
 - `DLB Limit`: current limit calculated by Dynamic Load Balancing.
 - `Solar Input State` and `Solar Surplus Input`: whether Solar input is valid and how much surplus the integration sees.
 - `Solar Raw Input`, `Solar Filtered Input`, `Solar Target`, `Solar Phase Count`, `Solar Phase Source` and `Solar Voltage Sum`: diagnostic values for Solar control behavior.
+- `EVCC Status`: diagnostic compatibility sensor with stable machine attributes and readable `*_label` attributes.
 
 Common causes:
 
@@ -120,6 +122,41 @@ Common causes:
 - Modbus/TCP is disabled in the charger web interface.
 - A P1, grid power or template sensor stopped updating while Home Assistant kept showing the last value.
 - A Solar signed grid power sensor has the wrong `Grid Power Direction`.
+
+## EVCC via Home Assistant
+
+EVCC can use the charger through Home Assistant entities. Use this only with one active controller:
+
+- If EVCC controls charging, set this integration to `Integration Charging Control = Enabled`, `Default Mode = Normal`, and keep this integration's Solar/DLB control disabled unless you explicitly want the integration to apply an additional local safety cap.
+- Do not let EVCC and this integration both run Solar surplus control at the same time.
+- Automatic phase switching is not included.
+
+Example `evcc.yaml` charger section, replace entity IDs with the actual entity IDs from your Home Assistant instance:
+
+```yaml
+chargers:
+  - name: webasto_unite_ha
+    type: homeassistant
+    uri: http://homeassistant.local:8123
+    token: ${HA_TOKEN}
+    status: sensor.webasto_unite_iec_61851_state
+    enabled: switch.webasto_unite_allow_charging
+    setMaxCurrent: number.webasto_unite_current_limit
+    power: sensor.webasto_unite_active_power
+    currents:
+      - sensor.webasto_unite_current_l1
+      - sensor.webasto_unite_current_l2
+      - sensor.webasto_unite_current_l3
+```
+
+Useful compatibility entities:
+
+- `IEC 61851 State`: EVCC charger status (`A`, `B`, `C`, `E`, `F`).
+- `Charging On/Off`: enable/disable switch used by EVCC.
+- `Maximum Current`: current limit number used by EVCC as `setMaxCurrent`.
+- `Active Power`: measured charger power.
+- `Current L1/L2/L3`: measured phase currents.
+- `EVCC Status`: diagnostic sensor for support/debugging. Its raw attributes are machine-stable; attributes ending in `_label` are intended for human reading.
 
 ## Repository contents
 

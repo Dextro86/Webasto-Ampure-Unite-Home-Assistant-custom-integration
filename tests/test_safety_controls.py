@@ -18,16 +18,22 @@ from custom_components.webasto_unite.config_flow import (
     _validate_pv_options,
 )
 from custom_components.webasto_unite import async_setup as integration_async_setup
+from custom_components.webasto_unite.capabilities import build_capabilities, build_capability_summary
+from custom_components.webasto_unite.control_inputs import ControlInputReader
 from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
 from custom_components.webasto_unite.diagnostics import async_get_config_entry_diagnostics
+from custom_components.webasto_unite.evcc import build_evcc_status
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, DlbInputModel, HaSensorSnapshot, PhaseCurrents, SolarControlStrategy, SolarInputModel, RuntimeSnapshot, WallboxState
 from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoFixedCurrentNumber
-from custom_components.webasto_unite.sensor import WebastoSensor
+from custom_components.webasto_unite.operating_status import build_operating_state
+from custom_components.webasto_unite.runtime_guards import RuntimeGuards, RuntimeGuardState
+from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
 from custom_components.webasto_unite.switch import WebastoChargingSwitch, WebastoFixedCurrentUntilUnplugSwitch, WebastoSolarUntilUnplugSwitch
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
+from custom_components.webasto_unite.write_runtime import WriteRuntime
 
 
 def make_controller(**kwargs):
@@ -53,6 +59,67 @@ def make_config_entry(data=None, options=None):
             "installed_phases": "3p",
         },
         options=options or {},
+    )
+
+
+def make_operating_state(
+    *,
+    effective_mode: ChargeMode,
+    decision,
+    control_config: ControlConfig | None = None,
+    charging_paused: bool = False,
+    solar_until_unplug_active: bool = False,
+    fixed_current_until_unplug_active: bool = False,
+) -> str:
+    return build_operating_state(
+        effective_mode=effective_mode,
+        charging_paused=charging_paused,
+        fixed_current_until_unplug_active=fixed_current_until_unplug_active,
+        solar_until_unplug_active=solar_until_unplug_active,
+        control_config=control_config or ControlConfig(),
+        decision=decision,
+    )
+
+
+def read_control_inputs(coordinator, wallbox=None):
+    return ControlInputReader(
+        options=coordinator.entry.options,
+        config=coordinator.control_config,
+        sensor_adapter=coordinator.sensor_adapter,
+        surplus_resolver=coordinator.controller.resolve_surplus_power,
+        configured_phase_count=coordinator._configured_phase_count,
+    ).read(wallbox)
+
+
+async def enqueue_test_decision(coordinator, decision):
+    if not hasattr(coordinator, "control_config"):
+        coordinator.control_config = ControlConfig()
+    if not hasattr(coordinator, "controller"):
+        coordinator.controller = WallboxController(coordinator.control_config)
+    runtime = WriteRuntime(
+        coordinator.control_config,
+        write_queue=coordinator.write_queue,
+        client=None,
+        controller=getattr(coordinator, "controller", None),
+    )
+    await runtime.enqueue_decision(
+        decision,
+        effective_mode=coordinator.effective_mode,
+        current_snapshot=getattr(coordinator, "data", None),
+        allows_control_writes=coordinator._allows_control_writes(),
+        enqueue_keepalive=AsyncMock(),
+    )
+
+
+def install_mock_write_runtime(coordinator):
+    coordinator.write_runtime = SimpleNamespace(
+        enqueue_keepalive_if_needed=AsyncMock(),
+        enqueue_decision=AsyncMock(),
+        flush_write_queue=AsyncMock(),
+        keepalive_age_seconds=lambda: 0.0,
+        is_keepalive_overdue=lambda age_s: False,
+        keepalive_sent_count=0,
+        keepalive_write_failures=0,
     )
 
 
@@ -121,6 +188,17 @@ def default_options_input(**overrides):
     data.update(default_pv_input())
     data.update(overrides)
     return data
+
+
+def install_runtime_guards(coordinator, *, startup_ready: bool = False) -> None:
+    coordinator.runtime_guards = RuntimeGuards(
+        coordinator.control_config,
+        state=RuntimeGuardState(
+            startup_started_monotonic=monotonic() - (120.0 if startup_ready else 0.0),
+            startup_refresh_count=10 if startup_ready else 0,
+        ),
+        monotonic_fn=lambda: monotonic(),
+    )
 
 
 def test_off_mode_writes_zero_current_when_vehicle_is_connected():
@@ -1129,7 +1207,7 @@ def test_dlb_snapshot_marks_stale_phase_sensor_invalid():
     )
     coordinator.controller = make_controller()
 
-    snapshot = coordinator._read_sensor_snapshot()
+    snapshot = read_control_inputs(coordinator)
 
     assert snapshot.valid is False
     assert snapshot.phase_currents.l1 is None
@@ -1183,7 +1261,7 @@ def test_dlb_snapshot_ignores_stale_inactive_phase_sensors_while_1p_charging_on_
         phase_currents=PhaseCurrents(l1=6.0, l2=0.0, l3=0.0),
     )
 
-    snapshot = coordinator._read_sensor_snapshot(wallbox)
+    snapshot = read_control_inputs(coordinator, wallbox)
 
     assert snapshot.valid is True
     assert snapshot.phase_currents.l1 == 12.0
@@ -1221,7 +1299,7 @@ def test_solar_snapshot_marks_stale_input_sensor_unavailable():
     )
     coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.ECO_SOLAR)
 
-    snapshot = coordinator._read_sensor_snapshot()
+    snapshot = read_control_inputs(coordinator)
 
     assert snapshot.surplus_power_w is None
     assert snapshot.reason_invalid == "Required Solar sensor stale"
@@ -1249,7 +1327,7 @@ def test_pv_snapshot_requires_units_when_enabled():
     )
     coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.SURPLUS)
 
-    snapshot = coordinator._read_sensor_snapshot()
+    snapshot = read_control_inputs(coordinator)
 
     assert snapshot.grid_power_w is None
     assert snapshot.reason_invalid == "Required Solar sensor unavailable or invalid unit"
@@ -1276,7 +1354,7 @@ def test_pv_snapshot_reports_ready_when_input_is_available():
     )
     coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.SURPLUS)
 
-    snapshot = coordinator._read_sensor_snapshot()
+    snapshot = read_control_inputs(coordinator)
 
     assert snapshot.reason_invalid is None
     assert snapshot.solar_input_state == "ready"
@@ -1310,7 +1388,7 @@ def test_solar_dsmr_snapshot_derives_signed_grid_power_from_import_export():
     )
     coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.SURPLUS)
 
-    snapshot = coordinator._read_sensor_snapshot()
+    snapshot = read_control_inputs(coordinator)
 
     assert snapshot.grid_power_w == -2500.0
     assert snapshot.reason_invalid is None
@@ -1367,7 +1445,7 @@ def test_solar_dsmr_snapshot_accepts_stale_zero_direction():
     )
     coordinator.controller = make_controller(solar_control_strategy=SolarControlStrategy.SURPLUS)
 
-    snapshot = coordinator._read_sensor_snapshot()
+    snapshot = read_control_inputs(coordinator)
 
     assert snapshot.grid_power_w == -3000.0
     assert snapshot.reason_invalid is None
@@ -1389,7 +1467,7 @@ def test_keepalive_only_mode_blocks_control_writes():
             should_write=True,
             target_current_a=10.0,
         )
-        await coordinator._enqueue_decision(decision)
+        await enqueue_test_decision(coordinator, decision)
 
         assert await coordinator.write_queue.size() == 0
 
@@ -1402,7 +1480,6 @@ def test_managed_control_mode_allows_static_sync():
 
     assert coordinator._allows_static_sync() is True
     assert coordinator._allows_control_writes() is True
-    assert coordinator._allows_keepalive() is True
 
 
 def test_keepalive_only_mode_disables_control_writes_and_static_sync():
@@ -1411,7 +1488,6 @@ def test_keepalive_only_mode_disables_control_writes_and_static_sync():
 
     assert coordinator._allows_static_sync() is False
     assert coordinator._allows_control_writes() is False
-    assert coordinator._allows_keepalive() is True
 
 
 def test_sensor_refresh_is_debounced_to_single_refresh():
@@ -1706,9 +1782,7 @@ def test_public_surplus_resolver_is_available_and_returns_expected_value():
 def test_dlb_start_guard_suppresses_first_transient_downscale_sample():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.control_config = ControlConfig(dlb_sensor_scope="total_including_charger")
-    coordinator._last_charging_active = False
-    coordinator._dlb_start_guard_until_monotonic = 0.0
-    coordinator._dlb_start_guard_downscale_samples = 0
+    install_runtime_guards(coordinator)
 
     wallbox = WallboxState(charging_active=True, current_limit_a=16.0)
     first = SimpleNamespace(
@@ -1716,7 +1790,7 @@ def test_dlb_start_guard_suppresses_first_transient_downscale_sample():
         target_current_a=12.0,
         dominant_limit_reason=ControlReason.DLB_LIMITED,
     )
-    coordinator._apply_dlb_start_transient_guard(
+    coordinator.runtime_guards.apply_dlb_start_transient_guard(
         wallbox=wallbox,
         decision=first,
         now_monotonic=10.0,
@@ -1728,7 +1802,7 @@ def test_dlb_start_guard_suppresses_first_transient_downscale_sample():
         target_current_a=12.0,
         dominant_limit_reason=ControlReason.DLB_LIMITED,
     )
-    coordinator._apply_dlb_start_transient_guard(
+    coordinator.runtime_guards.apply_dlb_start_transient_guard(
         wallbox=wallbox,
         decision=second,
         now_monotonic=11.0,
@@ -1739,9 +1813,7 @@ def test_dlb_start_guard_suppresses_first_transient_downscale_sample():
 def test_dlb_start_guard_is_disabled_for_load_excluding_charger_scope():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.control_config = ControlConfig(dlb_sensor_scope="load_excluding_charger")
-    coordinator._last_charging_active = False
-    coordinator._dlb_start_guard_until_monotonic = 0.0
-    coordinator._dlb_start_guard_downscale_samples = 0
+    install_runtime_guards(coordinator)
 
     wallbox = WallboxState(charging_active=True, current_limit_a=16.0)
     decision = SimpleNamespace(
@@ -1749,7 +1821,7 @@ def test_dlb_start_guard_is_disabled_for_load_excluding_charger_scope():
         target_current_a=12.0,
         dominant_limit_reason=ControlReason.DLB_LIMITED,
     )
-    coordinator._apply_dlb_start_transient_guard(
+    coordinator.runtime_guards.apply_dlb_start_transient_guard(
         wallbox=wallbox,
         decision=decision,
         now_monotonic=10.0,
@@ -1763,9 +1835,7 @@ def test_dlb_start_guard_does_not_delay_reduction_to_minimum_current():
         dlb_sensor_scope="total_including_charger",
         min_current_a=6.0,
     )
-    coordinator._last_charging_active = False
-    coordinator._dlb_start_guard_until_monotonic = 0.0
-    coordinator._dlb_start_guard_downscale_samples = 0
+    install_runtime_guards(coordinator)
 
     wallbox = WallboxState(charging_active=True, current_limit_a=16.0)
     decision = SimpleNamespace(
@@ -1773,7 +1843,7 @@ def test_dlb_start_guard_does_not_delay_reduction_to_minimum_current():
         target_current_a=6.0,
         dominant_limit_reason=ControlReason.DLB_LIMITED,
     )
-    coordinator._apply_dlb_start_transient_guard(
+    coordinator.runtime_guards.apply_dlb_start_transient_guard(
         wallbox=wallbox,
         decision=decision,
         now_monotonic=10.0,
@@ -1788,11 +1858,7 @@ def test_pv_start_guard_suppresses_first_transient_pause_write_when_input_unavai
     coordinator._charging_paused = False
     coordinator._solar_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
-    coordinator._last_solar_charging_active = False
-    coordinator._solar_start_guard_until_monotonic = 0.0
-    coordinator._solar_start_guard_pause_samples = 0
-    coordinator._startup_refresh_count = 0
-    coordinator._startup_started_monotonic = monotonic()
+    install_runtime_guards(coordinator)
 
     wallbox = WallboxState(charging_active=True, current_limit_a=16.0)
     decision = SimpleNamespace(
@@ -1804,7 +1870,8 @@ def test_pv_start_guard_suppresses_first_transient_pause_write_when_input_unavai
     )
     sensors = SimpleNamespace(solar_input_state="unavailable")
 
-    coordinator._apply_solar_start_transient_guard(
+    coordinator.runtime_guards.apply_solar_start_transient_guard(
+        effective_mode=coordinator.effective_mode,
         wallbox=wallbox,
         decision=decision,
         sensors=sensors,
@@ -1821,11 +1888,7 @@ def test_pv_start_guard_allows_confirmed_pause_write_on_second_sample():
     coordinator._charging_paused = False
     coordinator._solar_until_unplug_active = False
     coordinator._fixed_current_until_unplug_active = False
-    coordinator._last_solar_charging_active = False
-    coordinator._solar_start_guard_until_monotonic = 0.0
-    coordinator._solar_start_guard_pause_samples = 0
-    coordinator._startup_refresh_count = 0
-    coordinator._startup_started_monotonic = monotonic()
+    install_runtime_guards(coordinator)
 
     wallbox = WallboxState(charging_active=True, current_limit_a=16.0)
     first = SimpleNamespace(
@@ -1836,7 +1899,8 @@ def test_pv_start_guard_allows_confirmed_pause_write_on_second_sample():
         dominant_limit_reason=None,
     )
     sensors = SimpleNamespace(solar_input_state="unavailable")
-    coordinator._apply_solar_start_transient_guard(
+    coordinator.runtime_guards.apply_solar_start_transient_guard(
+        effective_mode=coordinator.effective_mode,
         wallbox=wallbox,
         decision=first,
         sensors=sensors,
@@ -1851,7 +1915,8 @@ def test_pv_start_guard_allows_confirmed_pause_write_on_second_sample():
         reason=ControlReason.BELOW_MIN_CURRENT,
         dominant_limit_reason=None,
     )
-    coordinator._apply_solar_start_transient_guard(
+    coordinator.runtime_guards.apply_solar_start_transient_guard(
+        effective_mode=coordinator.effective_mode,
         wallbox=wallbox,
         decision=second,
         sensors=sensors,
@@ -2001,10 +2066,9 @@ def test_temporary_session_settings_are_not_restored_after_restart():
     assert restarted.effective_mode == ChargeMode.NORMAL
 
 def test_capability_builder_marks_unconfirmed_and_optional_features():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     wallbox = WallboxState(ev_max_current_a=None)
 
-    capabilities = coordinator._build_capabilities(wallbox)
+    capabilities = build_capabilities(wallbox)
 
     assert capabilities["current_control_5004"] == "confirmed"
     assert capabilities["keepalive_6000"] == "confirmed"
@@ -2012,44 +2076,37 @@ def test_capability_builder_marks_unconfirmed_and_optional_features():
 
 
 def test_capability_summary_reflects_partial_validation_state():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     wallbox = WallboxState(ev_max_current_a=None)
 
-    assert coordinator._build_capability_summary(wallbox) == "validated_with_optional_gaps"
+    assert build_capability_summary(wallbox) == "validated_with_optional_gaps"
 
 
 def test_operating_state_reports_temporary_pv_override():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.NORMAL
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = True
-    coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig()
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.SOLAR_MODE,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "solar_until_unplug"
+    assert make_operating_state(
+        effective_mode=ChargeMode.SOLAR,
+        decision=decision,
+        solar_until_unplug_active=True,
+    ) == "solar_until_unplug"
 
 
 def test_operating_state_reports_temporary_fixed_current_override():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.NORMAL
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = True
-    coordinator.control_config = ControlConfig()
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.FIXED_CURRENT_MODE,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "fixed_current_until_unplug"
+    assert make_operating_state(
+        effective_mode=ChargeMode.FIXED_CURRENT,
+        decision=decision,
+        fixed_current_until_unplug_active=True,
+    ) == "fixed_current_until_unplug"
 
 
 def test_pv_waiting_for_surplus_writes_zero_current():
@@ -2068,7 +2125,6 @@ def test_pv_waiting_for_surplus_writes_zero_current():
         coordinator._solar_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._allows_control_writes = lambda: True
-        coordinator._enqueue_keepalive_if_needed = AsyncMock()
 
         decision = SimpleNamespace(
             charging_enabled=False,
@@ -2077,7 +2133,7 @@ def test_pv_waiting_for_surplus_writes_zero_current():
             should_write=False,
         )
 
-        await coordinator._enqueue_decision(decision)
+        await enqueue_test_decision(coordinator, decision)
         item = await coordinator.write_queue.peek_next()
 
         assert item.key == "current_limit"
@@ -2102,7 +2158,6 @@ def test_pv_min_always_sensor_unavailable_does_not_force_pause():
         coordinator._solar_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._allows_control_writes = lambda: True
-        coordinator._enqueue_keepalive_if_needed = AsyncMock()
 
         decision = SimpleNamespace(
             charging_enabled=True,
@@ -2111,7 +2166,7 @@ def test_pv_min_always_sensor_unavailable_does_not_force_pause():
             should_write=True,
         )
 
-        await coordinator._enqueue_decision(decision)
+        await enqueue_test_decision(coordinator, decision)
         item = await coordinator.write_queue.peek_next()
 
         assert item.key == "current_limit"
@@ -2136,7 +2191,6 @@ def test_safety_below_minimum_writes_zero_current():
         coordinator._solar_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._allows_control_writes = lambda: True
-        coordinator._enqueue_keepalive_if_needed = AsyncMock()
 
         decision = SimpleNamespace(
             charging_enabled=False,
@@ -2146,7 +2200,7 @@ def test_safety_below_minimum_writes_zero_current():
             should_write=False,
         )
 
-        await coordinator._enqueue_decision(decision)
+        await enqueue_test_decision(coordinator, decision)
         item = await coordinator.write_queue.peek_next()
 
         assert item.key == "current_limit"
@@ -2171,7 +2225,6 @@ def test_pv_waiting_for_surplus_does_not_repeat_zero_current_when_already_paused
         coordinator._solar_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._allows_control_writes = lambda: True
-        coordinator._enqueue_keepalive_if_needed = AsyncMock()
 
         decision = SimpleNamespace(
             charging_enabled=False,
@@ -2180,7 +2233,7 @@ def test_pv_waiting_for_surplus_does_not_repeat_zero_current_when_already_paused
             should_write=False,
         )
 
-        await coordinator._enqueue_decision(decision)
+        await enqueue_test_decision(coordinator, decision)
 
         assert await coordinator.write_queue.size() == 0
 
@@ -2188,104 +2241,75 @@ def test_pv_waiting_for_surplus_does_not_repeat_zero_current_when_already_paused
 
 
 def test_operating_state_reports_waiting_for_surplus():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.SOLAR
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig()
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.BELOW_MIN_CURRENT,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "waiting_for_solar"
+    assert make_operating_state(effective_mode=ChargeMode.SOLAR, decision=decision) == "waiting_for_solar"
 
 
 def test_operating_state_reports_dlb_limited():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.NORMAL
-    coordinator._charging_paused = False
-    coordinator.control_config = ControlConfig()
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = False
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.DLB_LIMITED,
         dominant_limit_reason=ControlReason.DLB_LIMITED,
     )
 
-    assert coordinator._build_operating_state(decision) == "dlb_limited"
+    assert make_operating_state(effective_mode=ChargeMode.NORMAL, decision=decision) == "dlb_limited"
 
 
 def test_operating_state_reports_min_plus_surplus():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.SOLAR
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig(solar_control_strategy="smart_solar")
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.SOLAR_MODE,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "smart_solar"
+    assert make_operating_state(
+        effective_mode=ChargeMode.SOLAR,
+        decision=decision,
+        control_config=ControlConfig(solar_control_strategy="smart_solar"),
+    ) == "smart_solar"
 
 
 def test_operating_state_reports_solar_boost():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.SOLAR
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig(solar_control_strategy="solar_boost")
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.SOLAR_MODE,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "solar_boost"
+    assert make_operating_state(
+        effective_mode=ChargeMode.SOLAR,
+        decision=decision,
+        control_config=ControlConfig(solar_control_strategy="solar_boost"),
+    ) == "solar_boost"
 
 
 def test_legacy_min_always_operating_state_normalizes_to_min_plus_surplus():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.SOLAR
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = False
-    coordinator.control_config = ControlConfig(solar_control_strategy="min_always_plus_surplus")
-
     decision = SimpleNamespace(
         fallback_active=False,
         reason=ControlReason.SOLAR_MODE,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "solar_boost"
+    assert make_operating_state(
+        effective_mode=ChargeMode.SOLAR,
+        decision=decision,
+        control_config=ControlConfig(solar_control_strategy="min_always_plus_surplus"),
+    ) == "solar_boost"
 
 
 def test_operating_state_reports_fallback_before_mode():
-    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
-    coordinator._mode = ChargeMode.NORMAL
-    coordinator._charging_paused = False
-    coordinator._solar_until_unplug_active = False
-    coordinator._fixed_current_until_unplug_active = False
-
     decision = SimpleNamespace(
         fallback_active=True,
         reason=ControlReason.SAFE_CURRENT_FALLBACK,
         dominant_limit_reason=None,
     )
 
-    assert coordinator._build_operating_state(decision) == "fallback"
+    assert make_operating_state(effective_mode=ChargeMode.NORMAL, decision=decision) == "fallback"
 
 
 def test_coordinator_solar_runtime_uses_adaptive_start_then_observed_three_phase_state():
@@ -2351,22 +2375,14 @@ def test_coordinator_solar_runtime_uses_adaptive_start_then_observed_three_phase
         coordinator._solar_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._last_vehicle_connected = False
-        coordinator._last_charging_active = False
-        coordinator._last_solar_charging_active = False
-        coordinator._dlb_start_guard_until_monotonic = 0.0
-        coordinator._dlb_start_guard_downscale_samples = 0
-        coordinator._solar_start_guard_until_monotonic = 0.0
-        coordinator._solar_start_guard_pause_samples = 0
-        coordinator._startup_started_monotonic = monotonic() - 120.0
-        coordinator._startup_refresh_count = 10
+        install_runtime_guards(coordinator, startup_ready=True)
         coordinator._last_keepalive_sent_monotonic = monotonic()
         coordinator._keepalive_started_monotonic = monotonic() - 10.0
         coordinator._keepalive_sent_count = 0
         coordinator._keepalive_write_failures = 0
         coordinator._sensor_refresh_task = None
         coordinator._flush_lock = asyncio.Lock()
-        coordinator._enqueue_decision = AsyncMock()
-        coordinator._flush_write_queue = AsyncMock()
+        install_mock_write_runtime(coordinator)
 
         first_snapshot = await coordinator._async_update_data()
         second_snapshot = await coordinator._async_update_data()
@@ -2448,22 +2464,14 @@ def test_coordinator_caches_observed_session_phase_for_later_solar_restarts():
         coordinator._solar_until_unplug_active = False
         coordinator._fixed_current_until_unplug_active = False
         coordinator._last_vehicle_connected = True
-        coordinator._last_charging_active = False
-        coordinator._last_solar_charging_active = False
-        coordinator._dlb_start_guard_until_monotonic = 0.0
-        coordinator._dlb_start_guard_downscale_samples = 0
-        coordinator._solar_start_guard_until_monotonic = 0.0
-        coordinator._solar_start_guard_pause_samples = 0
-        coordinator._startup_started_monotonic = monotonic() - 120.0
-        coordinator._startup_refresh_count = 10
+        install_runtime_guards(coordinator, startup_ready=True)
         coordinator._last_keepalive_sent_monotonic = monotonic()
         coordinator._keepalive_started_monotonic = monotonic() - 10.0
         coordinator._keepalive_sent_count = 0
         coordinator._keepalive_write_failures = 0
         coordinator._sensor_refresh_task = None
         coordinator._flush_lock = asyncio.Lock()
-        coordinator._enqueue_decision = AsyncMock()
-        coordinator._flush_write_queue = AsyncMock()
+        install_mock_write_runtime(coordinator)
 
         first_snapshot = await coordinator._async_update_data()
         second_snapshot = await coordinator._async_update_data()
@@ -2486,3 +2494,103 @@ def test_sensor_presentation_uses_clear_solar_labels():
         WebastoSensor._present_value("unavailable", value_key="solar_input_state")
         == "Solar Input Unavailable"
     )
+
+
+def test_evcc_status_reports_unknown_without_runtime_data():
+    status = build_evcc_status(None)
+
+    assert status["charger_state"] == "unknown"
+    assert status["charger_state_label"] == "Unknown"
+    assert status["iec61851_state"] == "Unknown"
+    assert status["unavailable_reason"] == "no_runtime_data"
+    assert status["unavailable_reason_label"] == "No Runtime Data"
+
+
+def test_evcc_status_exposes_stable_fields_from_runtime_snapshot():
+    snapshot = RuntimeSnapshot(
+        wallbox=WallboxState(
+            available=True,
+            vehicle_connected=True,
+            charging_active=True,
+            charge_point_state_raw=2,
+            charge_state_raw=1,
+            evse_state_raw=1,
+            cable_state_raw=3,
+            current_limit_a=10.0,
+            actual_current_a=9.8,
+            active_power_w=6800.0,
+            session_energy_kwh=4.2,
+            phases_in_use=3,
+            hardware_min_current_a=6.0,
+            session_max_current_a=16.0,
+        ),
+        mode=ChargeMode.SOLAR,
+        effective_mode=ChargeMode.SOLAR,
+        operating_state="smart_solar",
+        control_mode=ControlMode.MANAGED_CONTROL,
+        control_reason=ControlReason.SOLAR_MODE.value,
+        charging_paused=False,
+        solar_until_unplug_active=False,
+        fixed_current_until_unplug_active=False,
+        keepalive_age_s=1.0,
+        keepalive_interval_s=10.0,
+        keepalive_overdue=False,
+        keepalive_sent_count=1,
+        keepalive_write_failures=0,
+        queue_depth=0,
+        pending_write_kind=None,
+        final_target_a=12.0,
+        dlb_limit_a=14.0,
+        solar_input_state="ready",
+        solar_raw_surplus_w=3000.0,
+        solar_filtered_surplus_w=2900.0,
+        solar_target_current_a=12.0,
+    )
+    status = build_evcc_status(snapshot, ControlConfig(min_current_a=6.0, max_current_a=20.0))
+
+    assert status["charger_state"] == "smart_solar"
+    assert status["charger_state_label"] == "Smart Solar"
+    assert status["iec61851_state"] == "C"
+    assert status["max_current"] == 12.0
+    assert status["offered_current"] == 10.0
+    assert status["actual_current"] == 9.8
+    assert status["actual_power"] == 6800.0
+    assert status["phase_count_observed"] == 3
+    assert status["configured_current_min"] == 6.0
+    assert status["configured_current_max"] == 20.0
+    assert status["enabled"] is True
+    assert status["charging_enabled"] is True
+    assert status["vehicle_connected"] is True
+    assert status["charging"] is True
+    assert status["faulted"] is False
+
+
+def test_evcc_status_sensor_uses_attributes_for_compatibility_fields():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry()
+    coordinator.control_config = ControlConfig(min_current_a=6.0, max_current_a=16.0)
+    coordinator.data = RuntimeSnapshot(
+        wallbox=WallboxState(available=True, vehicle_connected=True, charging_active=False),
+        mode=ChargeMode.NORMAL,
+        effective_mode=ChargeMode.NORMAL,
+        operating_state="normal",
+        control_mode=ControlMode.MANAGED_CONTROL,
+        control_reason=ControlReason.NORMAL_MODE.value,
+        charging_paused=False,
+        solar_until_unplug_active=False,
+        fixed_current_until_unplug_active=False,
+        keepalive_age_s=1.0,
+        keepalive_interval_s=10.0,
+        keepalive_overdue=False,
+        keepalive_sent_count=1,
+        keepalive_write_failures=0,
+        queue_depth=0,
+        pending_write_kind=None,
+    )
+    description = next(item for item in SENSORS if item.key == "evcc_status")
+    sensor = WebastoSensor(coordinator, description)
+
+    assert sensor.native_value == "normal"
+    assert sensor.extra_state_attributes["iec61851_state"] == "B"
+    assert sensor.extra_state_attributes["charger_state_label"] == "Normal"
+    assert sensor.extra_state_attributes["configured_current_max"] == 16.0

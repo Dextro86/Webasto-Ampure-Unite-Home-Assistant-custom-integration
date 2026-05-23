@@ -219,6 +219,8 @@ The integration also exposes `IEC 61851 State` as a derived diagnostic sensor fo
 
 This sensor is derived from the charger's Modbus charge point, charging and cable states. It is not a raw IEC61851 register.
 
+The integration also exposes `EVCC Status` as a diagnostic compatibility sensor. Its state and raw attributes are stable machine values for EVCC or automations. Attributes ending in `_label` are meant for human-readable dashboards and support.
+
 Solar Sensor Failure Behavior:
 
 - `Pause charging`: recommended default. `Smart Solar` and `Solar Boost` pause by writing `0 A` when Solar input is stale, unavailable or invalid.
@@ -351,6 +353,47 @@ What this means:
 
 The charger may still have its own physical or firmware-level phase configuration. This integration now controls charging current only through register `5004`.
 
+## EVCC via Home Assistant
+
+EVCC can use this charger through Home Assistant entities. This integration then acts as the Home Assistant bridge to the Webasto/Ampure Modbus connection.
+
+Recommended setup when EVCC is the active charging manager:
+
+- Set `Integration Charging Control` to `Enabled`.
+- Set `Default Mode` to `Normal`.
+- Keep this integration's Solar and DLB control disabled unless you intentionally want an additional local safety cap.
+- Do not run EVCC Solar control and this integration's Solar control at the same time.
+- Automatic phase switching is not provided by this integration.
+
+Relevant entities:
+
+- `IEC 61851 State`: charger status for EVCC (`A`, `B`, `C`, `E`, `F`).
+- `Charging On/Off`: enable/disable switch.
+- `Maximum Current`: number entity for EVCC `setMaxCurrent`.
+- `Active Power`: measured charger power.
+- `Current L1`, `Current L2`, `Current L3`: phase currents.
+- `EVCC Status`: diagnostic support sensor with stable attributes.
+
+Example `evcc.yaml` charger section. Replace entity IDs with your actual Home Assistant entity IDs:
+
+```yaml
+chargers:
+  - name: webasto_unite_ha
+    type: homeassistant
+    uri: http://homeassistant.local:8123
+    token: ${HA_TOKEN}
+    status: sensor.webasto_unite_iec_61851_state
+    enabled: switch.webasto_unite_allow_charging
+    setMaxCurrent: number.webasto_unite_current_limit
+    power: sensor.webasto_unite_active_power
+    currents:
+      - sensor.webasto_unite_current_l1
+      - sensor.webasto_unite_current_l2
+      - sensor.webasto_unite_current_l3
+```
+
+If EVCC cannot enable charging, verify that `Charging On/Off` is available in Home Assistant. It is unavailable when `Integration Charging Control` is `Monitoring Only`.
+
 ## Important entities
 
 Daily-use entities:
@@ -375,6 +418,7 @@ Useful diagnostics:
 - `Sensor Invalid Reason`
 - `Effective Active Phases`
 - `Solar Surplus Input`
+- `EVCC Status`
 
 ## Troubleshooting basics
 
