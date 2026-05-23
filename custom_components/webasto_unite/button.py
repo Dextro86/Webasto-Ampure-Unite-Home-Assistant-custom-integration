@@ -8,6 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
+from .models import ControlMode
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -16,6 +17,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
         [
             WebastoRefreshButton(coordinator),
             WebastoReconnectButton(coordinator),
+            WebastoPauseChargingButton(coordinator),
+            WebastoResumeChargingButton(coordinator),
         ]
     )
 
@@ -42,3 +45,39 @@ class WebastoReconnectButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_trigger_reconnect()
+
+
+class WebastoPauseChargingButton(WebastoUniteCoordinatorEntity, ButtonEntity):
+    _attr_name = "Pause Charging"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_pause_charging"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+
+    async def async_press(self) -> None:
+        if not self.available:
+            return
+        await self.coordinator.async_set_charging_enabled(False)
+        await self.coordinator.async_request_refresh()
+
+
+class WebastoResumeChargingButton(WebastoUniteCoordinatorEntity, ButtonEntity):
+    _attr_name = "Resume Charging"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_resume_charging"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+
+    async def async_press(self) -> None:
+        if not self.available:
+            return
+        await self.coordinator.async_set_charging_enabled(True)
+        await self.coordinator.async_request_refresh()

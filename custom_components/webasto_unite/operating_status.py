@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .controller import WallboxController
-from .models import ChargeMode, ControlConfig, ControlReason, SolarControlStrategy
+from .models import ChargeMode, ControlConfig, ControlMode, ControlReason, SolarControlStrategy
 
 
 def build_operating_state(
@@ -13,6 +13,8 @@ def build_operating_state(
     control_config: ControlConfig,
     decision,
 ) -> str:
+    if control_config.control_mode == ControlMode.KEEPALIVE_ONLY:
+        return "monitoring_only_not_writing"
     if effective_mode == ChargeMode.OFF and charging_paused:
         return "paused"
     if effective_mode == ChargeMode.OFF:

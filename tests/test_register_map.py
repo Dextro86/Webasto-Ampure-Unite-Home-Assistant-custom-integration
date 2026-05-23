@@ -10,6 +10,7 @@ from custom_components.webasto_unite.registers import (
     FIRMWARE_VERSION,
     MAX_CURRENT_CABLE_A,
     NUMBER_OF_PHASES,
+    PHASE_SWITCH_MODE,
     READ_REGISTERS,
     SERIAL_NUMBER,
     SESSION_DURATION_S,
@@ -23,6 +24,13 @@ from custom_components.webasto_unite.registers import (
     ValueType,
 )
 from custom_components.webasto_unite.models import ChargingState, PhaseCurrents, WallboxState
+from custom_components.webasto_unite.phase_observer import (
+    PHASE_SWITCH_VALUE_1P,
+    PHASE_SWITCH_VALUE_3P,
+    build_phase_observability,
+    detect_vehicle_phase_capability,
+    interpret_phase_switch_mode,
+)
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 
@@ -81,6 +89,74 @@ def test_identity_and_phase_registers_match_official_unite_pdf():
     assert CHARGE_POINT_ID.count == 50
     assert FIRMWARE_VERSION.count == 50
     assert NUMBER_OF_PHASES.register_type == RegisterType.INPUT
+
+
+def test_phase_switch_register_mapping_uses_known_webasto_values():
+    assert PHASE_SWITCH_MODE.address == 405
+    assert PHASE_SWITCH_MODE.register_type == RegisterType.HOLDING
+    assert PHASE_SWITCH_MODE.readable is True
+    assert PHASE_SWITCH_MODE.writable is True
+    assert PHASE_SWITCH_VALUE_1P == 0
+    assert PHASE_SWITCH_VALUE_3P == 1
+
+
+def test_phase_switch_mode_interpretation_uses_known_webasto_values():
+    assert interpret_phase_switch_mode(0) == "1P"
+    assert interpret_phase_switch_mode(1) == "3P"
+    assert interpret_phase_switch_mode(None) is None
+    assert interpret_phase_switch_mode(9) == "Unknown"
+
+
+def test_phase_observer_reports_manual_switch_availability():
+    wallbox = WallboxState(
+        installed_phases=3,
+        vehicle_connected=True,
+        phase_switch_mode_raw=1,
+        charging_active=True,
+        phases_in_use=3,
+    )
+
+    state = build_phase_observability(wallbox)
+
+    assert state.phase_switch_mode == "3P"
+    assert state.phase_switch_register_available is True
+    assert state.phase_switch_available is True
+    assert state.phase_switch_block_reason is None
+    assert state.vehicle_phase_capability == "likely_3p"
+    assert state.write_register_address == 405
+
+
+def test_phase_observer_blocks_when_register_is_unavailable():
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, phase_switch_mode_raw=None)
+
+    state = build_phase_observability(wallbox)
+
+    assert state.phase_switch_available is False
+    assert state.phase_switch_block_reason == "phase_switch_register_unavailable"
+
+
+def test_vehicle_phase_capability_is_observed_only():
+    assert detect_vehicle_phase_capability(WallboxState(vehicle_connected=False)) == "unknown"
+    assert detect_vehicle_phase_capability(
+        WallboxState(vehicle_connected=True, charging_active=True, phases_in_use=1)
+    ) == "likely_1p"
+    assert detect_vehicle_phase_capability(
+        WallboxState(vehicle_connected=True, charging_active=True, phases_in_use=3)
+    ) == "likely_3p"
+
+
+def test_phase_switch_diagnostic_sensors_are_exposed():
+    sensors = {description.key: description for description in SENSORS}
+
+    assert sensors["charger_reported_phases"].entity_category == "diagnostic"
+    assert sensors["phase_switch_mode"].entity_category == "diagnostic"
+    assert sensors["phase_switch_available"].entity_category == "diagnostic"
+    assert sensors["phase_switch_block_reason"].entity_category == "diagnostic"
+    assert sensors["vehicle_phase_capability"].entity_category == "diagnostic"
+    assert sensors["phase_switching_mode"].entity_category == "diagnostic"
+    assert sensors["phase_switch_last_result"].entity_category == "diagnostic"
+
+
 def test_voltage_and_session_time_registers_are_available():
     assert VOLTAGE_L1_V.register_type == RegisterType.INPUT
     assert VOLTAGE_L1_V.value_type == ValueType.UINT16
@@ -118,6 +194,39 @@ def test_charging_active_uses_charging_state_register_with_measurement_fallback(
     wallbox = WallboxState(charge_state_raw=0, active_power_w=0.0, phase_currents=PhaseCurrents(l1=0.0))
     wallbox.update_charging_active()
     assert wallbox.charging_active is False
+
+
+def test_implausible_active_power_is_zero_when_vehicle_disconnected():
+    assert (
+        WallboxReader._normalize_active_power_w(
+            4_294_967_295,
+            vehicle_connected=False,
+            register_name="active_power",
+        )
+        == 0.0
+    )
+
+
+def test_implausible_active_power_is_unavailable_when_vehicle_connected():
+    assert (
+        WallboxReader._normalize_active_power_w(
+            4_294_967_295,
+            vehicle_connected=True,
+            register_name="active_power",
+        )
+        is None
+    )
+
+
+def test_plausible_active_power_is_kept():
+    assert (
+        WallboxReader._normalize_active_power_w(
+            11_000,
+            vehicle_connected=True,
+            register_name="active_power",
+        )
+        == 11_000.0
+    )
 
 
 def test_human_readable_charge_point_state_mapping_uses_conservative_labels():

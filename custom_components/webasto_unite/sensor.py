@@ -13,6 +13,8 @@ from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
 from .evcc import build_evcc_status
 from .models import ChargeMode
+from .phase_observer import PHASE_SWITCH_VALUE_1P, PHASE_SWITCH_VALUE_3P
+from .registers import PHASE_SWITCH_MODE
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -30,6 +32,16 @@ SENSORS = (
     WebastoSensorDescription(key="cable_state_text", name="Cable State", value_key="cable_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="evse_fault_code", name="EVSE Fault Code", value_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="effective_active_phases", name="Effective Active Phases", value_key="phases_in_use", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="charger_reported_phases", name="Charger Reported Phases", value_key="charge_point_phase_count", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_mode", name="Phase Switch Mode", value_key="phase_switch_mode", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_mode_raw", name="Phase Switch Mode Raw", value_key="phase_switch_mode_raw", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_available", name="Phase Switch Available", value_key="phase_switch_available", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_block_reason", name="Phase Switch Block Reason", value_key="phase_switch_block_reason", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="vehicle_phase_capability", name="Vehicle Phase Capability", value_key="vehicle_phase_capability", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switching_mode", name="Phase Switching Mode", value_key="phase_switching_mode", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_last_result", name="Last Phase Switch Result", value_key="phase_switch_last_result", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_last_block_reason", name="Last Phase Switch Block Reason", value_key="phase_switch_last_block_reason", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_last_target", name="Last Phase Switch Target", value_key="phase_switch_last_target", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="active_power", name="Active Power", value_key="active_power_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="active_power_l1", name="Active Power L1", value_key="active_power_l1_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="active_power_l2", name="Active Power L2", value_key="active_power_l2_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
@@ -37,7 +49,7 @@ SENSORS = (
     WebastoSensorDescription(key="current_l1", name="Current L1", value_key="current_l1_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="current_l2", name="Current L2", value_key="current_l2_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="current_l3", name="Current L3", value_key="current_l3_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
-    WebastoSensorDescription(key="actual_current", name="Max Phase Current", value_key="actual_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
+    WebastoSensorDescription(key="actual_current", name="Actual Phase Current", value_key="actual_current_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="voltage_l1", name="Voltage L1", value_key="voltage_l1_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="voltage_l2", name="Voltage L2", value_key="voltage_l2_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="voltage_l3", name="Voltage L3", value_key="voltage_l3_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT),
@@ -112,6 +124,15 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             return None
         if self.entity_description.key == "evcc_status":
             return build_evcc_status(self.coordinator.data, self.coordinator.control_config)
+        if self.entity_description.key == "phase_switch_mode":
+            return {
+                "source": "register_405",
+                "read_register": PHASE_SWITCH_MODE.address,
+                "write_register": PHASE_SWITCH_MODE.address,
+                "write_value_1p": PHASE_SWITCH_VALUE_1P,
+                "write_value_3p": PHASE_SWITCH_VALUE_3P,
+                "writes_enabled": self.coordinator.data.phase_switching_mode == "manual_only",
+            }
         if self.entity_description.key != "iec61851_state":
             return None
         wallbox = self.coordinator.data.wallbox
@@ -223,6 +244,7 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "dlb_limited": "DLB Limited",
                 "validated_with_optional_gaps": "Validated with Optional Gaps",
                 "validated": "Validated",
+                "monitoring_only_not_writing": "Monitoring Only - Not Writing",
                 "off_mode": "Off Mode",
                 "normal_mode": "Normal Mode",
                 "fixed_current_mode": "Fixed Current Mode",
@@ -243,5 +265,22 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "ready": "Ready",
                 "unavailable": "Unavailable",
                 "disabled": "Disabled",
+                "likely_1p": "Likely 1P",
+                "likely_3p": "Likely 3P",
+                "unknown": "Unknown",
+                "charger_not_configured_3p": "Charger Not Configured 3P",
+                "phase_switch_register_unavailable": "Phase Switch Register Unavailable",
+                "vehicle_not_connected": "Vehicle Not Connected",
+                "manual_only": "Manual Only",
+                "manual_phase_switching_disabled": "Manual Phase Switching Disabled",
+                "integration_control_disabled": "Integration Control Disabled",
+                "invalid_target_phase": "Invalid Target Phase",
+                "charger_state_unavailable": "Charger State Unavailable",
+                "charger_unavailable": "Charger Unavailable",
+                "vehicle_likely_1p": "Vehicle Likely 1P",
+                "already_in_target_phase": "Already In Target Phase",
+                "blocked": "Blocked",
+                "failed": "Failed",
+                "requested": "Requested",
             }.get(value, value)
         return value

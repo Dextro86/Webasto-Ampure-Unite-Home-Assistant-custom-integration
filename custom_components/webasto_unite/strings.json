@@ -128,12 +128,14 @@
           "advanced": {
             "name": "Advanced",
             "data": {
+              "phase_switching_mode": "Phase Switching Mode",
               "keepalive_interval": "Keepalive Interval (s)",
               "control_sensor_timeout": "Control Sensor Timeout (s)",
               "timeout": "Request Timeout (s)",
               "retries": "Retry Attempts"
             },
             "data_description": {
+              "phase_switching_mode": "Experimental manual 1P/3P switching. Off is recommended unless you explicitly want to test manual phase switching.",
               "keepalive_interval": "Interval in seconds between keepalive writes.",
               "control_sensor_timeout": "Maximum sensor age in seconds before DLB or Solar input is treated as unsafe.",
               "timeout": "How many seconds the integration waits for a charger response.",

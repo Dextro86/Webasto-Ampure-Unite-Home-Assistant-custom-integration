@@ -16,6 +16,9 @@ from .const import (
     SERVICE_ENABLE_SOLAR_UNTIL_UNPLUG,
     DOMAIN,
     PLATFORMS,
+    SERVICE_REQUEST_PHASE_1P,
+    SERVICE_REQUEST_PHASE_3P,
+    SERVICE_RESET_PHASE_SWITCH_STATE,
     SERVICE_SET_MAX_CURRENT,
     SERVICE_SET_MODE,
     SERVICE_SET_USER_LIMIT,
@@ -98,6 +101,25 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         coordinator.set_fixed_current_until_unplug(False)
         await coordinator.async_request_refresh()
 
+    async def handle_request_phase_1p(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(call.data["entry_id"])
+        try:
+            await coordinator.async_request_phase_switch(1)
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_request_phase_3p(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(call.data["entry_id"])
+        try:
+            await coordinator.async_request_phase_switch(3)
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_reset_phase_switch_state(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(call.data["entry_id"])
+        coordinator.reset_phase_switch_state()
+        await coordinator.async_request_refresh()
+
     hass.services.async_register(DOMAIN, SERVICE_SET_MODE, handle_set_mode, schema=_SERVICE_SCHEMA_MODE)
     hass.services.async_register(DOMAIN, SERVICE_SET_MAX_CURRENT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_SET_USER_LIMIT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
@@ -136,6 +158,24 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         DOMAIN,
         SERVICE_DISABLE_FIXED_CURRENT_UNTIL_UNPLUG,
         handle_disable_fixed_current_until_unplug,
+        schema=_SERVICE_SCHEMA_SESSION,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REQUEST_PHASE_1P,
+        handle_request_phase_1p,
+        schema=_SERVICE_SCHEMA_SESSION,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REQUEST_PHASE_3P,
+        handle_request_phase_3p,
+        schema=_SERVICE_SCHEMA_SESSION,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESET_PHASE_SWITCH_STATE,
+        handle_reset_phase_switch_state,
         schema=_SERVICE_SCHEMA_SESSION,
     )
     return True

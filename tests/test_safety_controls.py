@@ -18,15 +18,18 @@ from custom_components.webasto_unite.config_flow import (
     _validate_pv_options,
 )
 from custom_components.webasto_unite import async_setup as integration_async_setup
+from custom_components.webasto_unite.button import WebastoPauseChargingButton, WebastoResumeChargingButton
 from custom_components.webasto_unite.capabilities import build_capabilities, build_capability_summary
 from custom_components.webasto_unite.control_inputs import ControlInputReader
 from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
 from custom_components.webasto_unite.diagnostics import async_get_config_entry_diagnostics
 from custom_components.webasto_unite.evcc import build_evcc_status
+from custom_components.webasto_unite.const import PHASE_SWITCHING_MODE_MANUAL_ONLY
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, DlbInputModel, HaSensorSnapshot, PhaseCurrents, SolarControlStrategy, SolarInputModel, RuntimeSnapshot, WallboxState
 from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoFixedCurrentNumber
 from custom_components.webasto_unite.operating_status import build_operating_state
+from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 from custom_components.webasto_unite.runtime_guards import RuntimeGuards, RuntimeGuardState
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
@@ -76,7 +79,7 @@ def make_operating_state(
         charging_paused=charging_paused,
         fixed_current_until_unplug_active=fixed_current_until_unplug_active,
         solar_until_unplug_active=solar_until_unplug_active,
-        control_config=control_config or ControlConfig(),
+        control_config=control_config or ControlConfig(control_mode=ControlMode.MANAGED_CONTROL),
         decision=decision,
     )
 
@@ -232,6 +235,171 @@ def test_service_handler_returns_clear_error_for_unknown_entry_id():
     handler = services.handlers[("webasto_unite", "set_mode")]
     with pytest.raises(HomeAssistantError, match="Unknown Webasto Unite entry_id"):
         asyncio.run(handler(SimpleNamespace(data={"entry_id": "missing", "mode": "normal"})))
+
+
+def test_phase_switch_services_are_registered():
+    class _Services:
+        def __init__(self):
+            self.handlers = {}
+
+        def async_register(self, domain, service, handler, schema=None):
+            self.handlers[(domain, service)] = handler
+
+    services = _Services()
+    hass = SimpleNamespace(data={"webasto_unite": {}}, services=services)
+
+    asyncio.run(integration_async_setup(hass, {}))
+
+    assert ("webasto_unite", "request_phase_1p") in services.handlers
+    assert ("webasto_unite", "request_phase_3p") in services.handlers
+    assert ("webasto_unite", "reset_phase_switch_state") in services.handlers
+
+
+def test_manual_phase_switch_is_blocked_by_default():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock())
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                available=True,
+                vehicle_connected=True,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        with pytest.raises(ValueError, match="manual_phase_switching_disabled"):
+            await coordinator.async_request_phase_switch(1)
+
+        coordinator.client.write.assert_not_called()
+        assert coordinator._phase_switch_last_result == "blocked"
+
+    asyncio.run(_run())
+
+
+def test_manual_phase_switch_pauses_writes_phase_and_resumes():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            min_current_a=6.0,
+            max_current_a=20.0,
+        )
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock())
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                current_limit_a=16.0,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        await coordinator.async_request_phase_switch(1)
+
+        assert coordinator.client.write.await_args_list[0].args == (SET_CHARGE_CURRENT_A, 0)
+        assert coordinator.client.write.await_args_list[1].args == (PHASE_SWITCH_MODE, 0)
+        assert coordinator.client.write.await_args_list[2].args == (SET_CHARGE_CURRENT_A, 16)
+        assert coordinator._phase_switch_sleep.await_count == 2
+        assert coordinator._phase_switch_last_result == "requested"
+        assert coordinator._phase_switch_last_target == "1P"
+
+    asyncio.run(_run())
+
+
+def test_manual_3p_phase_switch_blocks_likely_1p_vehicle():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock())
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                phases_in_use=1,
+                phase_switch_mode_raw=0,
+            )
+        )
+
+        with pytest.raises(ValueError, match="vehicle_likely_1p"):
+            await coordinator.async_request_phase_switch(3)
+
+        coordinator.client.write.assert_not_called()
+        assert coordinator._phase_switch_last_result == "blocked"
+
+    asyncio.run(_run())
+
+
+def test_reset_phase_switch_state_clears_diagnostics():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._phase_switch_last_result = "blocked"
+    coordinator._phase_switch_last_block_reason = "vehicle_likely_1p"
+    coordinator._phase_switch_last_target = "3P"
+
+    coordinator.reset_phase_switch_state()
+
+    assert coordinator._phase_switch_last_result is None
+    assert coordinator._phase_switch_last_block_reason is None
+    assert coordinator._phase_switch_last_target is None
+
+
+def test_pause_and_resume_buttons_use_charging_enabled_state():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.async_set_charging_enabled = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+
+        pause = WebastoPauseChargingButton(coordinator)
+        resume = WebastoResumeChargingButton(coordinator)
+
+        assert pause.available is True
+        assert resume.available is True
+
+        await pause.async_press()
+        await resume.async_press()
+
+        assert coordinator.async_set_charging_enabled.await_args_list[0].args == (False,)
+        assert coordinator.async_set_charging_enabled.await_args_list[1].args == (True,)
+        assert coordinator.async_request_refresh.await_count == 2
+
+    asyncio.run(_run())
+
+
+def test_pause_and_resume_buttons_are_unavailable_in_monitoring_only():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.KEEPALIVE_ONLY)
+        coordinator.async_set_charging_enabled = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+
+        pause = WebastoPauseChargingButton(coordinator)
+        resume = WebastoResumeChargingButton(coordinator)
+
+        assert pause.available is False
+        assert resume.available is False
+
+        await pause.async_press()
+        await resume.async_press()
+
+        coordinator.async_set_charging_enabled.assert_not_called()
+        coordinator.async_request_refresh.assert_not_called()
+
+    asyncio.run(_run())
 
 
 def test_reported_current_mismatch_overrides_stale_internal_write_state():
@@ -2095,6 +2263,20 @@ def test_operating_state_reports_temporary_pv_override():
     ) == "solar_until_unplug"
 
 
+def test_operating_state_reports_monitoring_only_not_writing():
+    decision = SimpleNamespace(
+        fallback_active=False,
+        reason=ControlReason.FIXED_CURRENT_MODE,
+        dominant_limit_reason=None,
+    )
+
+    assert make_operating_state(
+        effective_mode=ChargeMode.FIXED_CURRENT,
+        decision=decision,
+        control_config=ControlConfig(control_mode=ControlMode.KEEPALIVE_ONLY),
+    ) == "monitoring_only_not_writing"
+
+
 def test_operating_state_reports_temporary_fixed_current_override():
     decision = SimpleNamespace(
         fallback_active=False,
@@ -2270,7 +2452,10 @@ def test_operating_state_reports_min_plus_surplus():
     assert make_operating_state(
         effective_mode=ChargeMode.SOLAR,
         decision=decision,
-        control_config=ControlConfig(solar_control_strategy="smart_solar"),
+        control_config=ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            solar_control_strategy="smart_solar",
+        ),
     ) == "smart_solar"
 
 
@@ -2284,7 +2469,10 @@ def test_operating_state_reports_solar_boost():
     assert make_operating_state(
         effective_mode=ChargeMode.SOLAR,
         decision=decision,
-        control_config=ControlConfig(solar_control_strategy="solar_boost"),
+        control_config=ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            solar_control_strategy="solar_boost",
+        ),
     ) == "solar_boost"
 
 
@@ -2298,7 +2486,10 @@ def test_legacy_min_always_operating_state_normalizes_to_min_plus_surplus():
     assert make_operating_state(
         effective_mode=ChargeMode.SOLAR,
         decision=decision,
-        control_config=ControlConfig(solar_control_strategy="min_always_plus_surplus"),
+        control_config=ControlConfig(
+            control_mode=ControlMode.MANAGED_CONTROL,
+            solar_control_strategy="min_always_plus_surplus",
+        ),
     ) == "solar_boost"
 
 

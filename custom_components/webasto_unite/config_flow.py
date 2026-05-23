@@ -85,6 +85,10 @@ SOLAR_OVERRIDE_STRATEGY_OPTIONS = [
     {"value": SolarOverrideStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
     {"value": SolarOverrideStrategy.SOLAR_BOOST.value, "label": "Solar Boost"},
 ]
+PHASE_SWITCHING_MODE_OPTIONS = [
+    {"value": PHASE_SWITCHING_MODE_OFF, "label": "Off"},
+    {"value": PHASE_SWITCHING_MODE_MANUAL_ONLY, "label": "Manual Only (Experimental)"},
+]
 def _entity_selector() -> selector.EntitySelector:
     return selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor"], multiple=False))
 
@@ -314,6 +318,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         }
         solar_defaults = _compact_section_defaults(solar_defaults)
         advanced_defaults = {
+            CONF_PHASE_SWITCHING_MODE: current.get(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE),
             CONF_KEEPALIVE_INTERVAL: current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S),
             CONF_CONTROL_SENSOR_TIMEOUT: current.get(
                 CONF_CONTROL_SENSOR_TIMEOUT,
@@ -324,6 +329,10 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         }
         advanced_schema = vol.Schema(
             {
+                vol.Optional(
+                    CONF_PHASE_SWITCHING_MODE,
+                    default=current.get(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE),
+                ): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SWITCHING_MODE_OPTIONS)),
                 vol.Optional(CONF_KEEPALIVE_INTERVAL, default=current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
                 vol.Optional(
                     CONF_CONTROL_SENSOR_TIMEOUT,
@@ -373,6 +382,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_SOLAR_MIN_RUNTIME, DEFAULT_PV_MIN_RUNTIME_S)
         validated.setdefault(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)
         validated.setdefault(CONF_SOLAR_MIN_CURRENT, 6.0)
+        validated.setdefault(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE)
         connection_input = {
             CONF_HOST: validated.pop(CONF_HOST),
             CONF_PORT: validated.pop(CONF_PORT),
@@ -419,6 +429,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR] = SolarSensorFailureBehavior(
             validated[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR]
         ).value
+        if validated[CONF_PHASE_SWITCHING_MODE] not in {PHASE_SWITCHING_MODE_OFF, PHASE_SWITCHING_MODE_MANUAL_ONLY}:
+            raise vol.Invalid("phase_switching_mode_invalid")
         validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
         validated.pop(CONF_USER_LIMIT, None)
         validated = _validate_init_options(validated)

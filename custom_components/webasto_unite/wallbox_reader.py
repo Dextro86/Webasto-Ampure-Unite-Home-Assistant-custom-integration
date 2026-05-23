@@ -28,6 +28,7 @@ from .registers import (
     MODEL,
     MIN_CURRENT_HW_A,
     NUMBER_OF_PHASES,
+    PHASE_SWITCH_MODE,
     SAFE_CURRENT_A,
     SESSION_MAX_CURRENT_A,
     SERIAL_NUMBER,
@@ -43,6 +44,8 @@ from .registers import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+MAX_PLAUSIBLE_ACTIVE_POWER_W = 250_000
 
 
 class WallboxReader:
@@ -68,11 +71,28 @@ class WallboxReader:
             wallbox.charge_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_STATE.address)
             wallbox.evse_state_raw = self._block_u16(telemetry, telemetry_base, EVSE_STATE.address)
             wallbox.cable_state_raw = self._block_u16(telemetry, telemetry_base, CABLE_STATE.address)
+            wallbox.vehicle_connected = int(wallbox.cable_state_raw or 0) >= 2
             wallbox.error_code = self._block_u16(telemetry, telemetry_base, ERROR_CODE.address)
-            wallbox.active_power_w = self._block_u32(telemetry, telemetry_base, TOTAL_CHARGE_ACTIVE_POWER_W.address)
-            wallbox.active_power_l1_w = self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L1_W.address)
-            wallbox.active_power_l2_w = self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L2_W.address)
-            wallbox.active_power_l3_w = self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L3_W.address)
+            wallbox.active_power_w = self._normalize_active_power_w(
+                self._block_u32(telemetry, telemetry_base, TOTAL_CHARGE_ACTIVE_POWER_W.address),
+                vehicle_connected=wallbox.vehicle_connected,
+                register_name=TOTAL_CHARGE_ACTIVE_POWER_W.name,
+            )
+            wallbox.active_power_l1_w = self._normalize_active_power_w(
+                self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L1_W.address),
+                vehicle_connected=wallbox.vehicle_connected,
+                register_name=ACTIVE_POWER_L1_W.name,
+            )
+            wallbox.active_power_l2_w = self._normalize_active_power_w(
+                self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L2_W.address),
+                vehicle_connected=wallbox.vehicle_connected,
+                register_name=ACTIVE_POWER_L2_W.name,
+            )
+            wallbox.active_power_l3_w = self._normalize_active_power_w(
+                self._block_u32(telemetry, telemetry_base, ACTIVE_POWER_L3_W.address),
+                vehicle_connected=wallbox.vehicle_connected,
+                register_name=ACTIVE_POWER_L3_W.name,
+            )
             wallbox.phase_currents = PhaseCurrents(
                 l1=self._block_u16(telemetry, telemetry_base, CURRENT_L1_A.address) * CURRENT_L1_A.scale,
                 l2=self._block_u16(telemetry, telemetry_base, CURRENT_L2_A.address) * CURRENT_L2_A.scale,
@@ -86,6 +106,11 @@ class WallboxReader:
             wallbox.phases_in_use = wallbox.phase_currents.active_phase_count()
             wallbox.charge_point_phase_count = 1 if number_of_phases == 0 else 3
             wallbox.installed_phases = 1 if configured_installed_phases == "1p" else 3
+            try:
+                wallbox.phase_switch_mode_raw = int(await self.client.read(PHASE_SWITCH_MODE))
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Optional phase switch register 405 unavailable: %s", err)
+                wallbox.phase_switch_mode_raw = None
             wallbox.session_max_current_a = self._normalize_optional_current_limit_a(
                 await self.client.read(SESSION_MAX_CURRENT_A)
             )
@@ -116,7 +141,6 @@ class WallboxReader:
             wallbox.life_bit_seen = int(await self.client.read(LIFE_BIT))
 
             wallbox.charging_state = self.map_charging_state(wallbox.charge_point_state_raw)
-            wallbox.vehicle_connected = int(wallbox.cable_state_raw or 0) >= 2
             wallbox.update_charging_active()
             wallbox.available = True
             wallbox.connection_state = ConnectionState.CONNECTED
@@ -135,6 +159,21 @@ class WallboxReader:
     def _block_u32(block: list[int], base_address: int, address: int) -> int:
         offset = address - base_address
         return int((block[offset] << 16) | block[offset + 1])
+
+    @staticmethod
+    def _normalize_active_power_w(
+        raw_value: int | float | None,
+        *,
+        vehicle_connected: bool,
+        register_name: str,
+    ) -> float | None:
+        if raw_value is None:
+            return None
+        value = float(raw_value)
+        if 0.0 <= value <= MAX_PLAUSIBLE_ACTIVE_POWER_W:
+            return value
+        _LOGGER.debug("Ignoring implausible %s value from charger: %s W", register_name, raw_value)
+        return 0.0 if not vehicle_connected else None
 
     @staticmethod
     def format_clock_hhmmss(raw_value: float | int | None) -> str | None:

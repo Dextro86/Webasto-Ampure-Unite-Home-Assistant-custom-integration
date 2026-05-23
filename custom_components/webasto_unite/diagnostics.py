@@ -59,6 +59,16 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "solar_phase_count": coordinator.data.solar_phase_count,
                 "solar_phase_source": coordinator.data.solar_phase_source,
                 "solar_voltage_sum_v": coordinator.data.solar_voltage_sum_v,
+                "phase_switch_mode_raw": coordinator.data.phase_switch_mode_raw,
+                "phase_switch_mode": coordinator.data.phase_switch_mode,
+                "phase_switch_register_available": coordinator.data.phase_switch_register_available,
+                "phase_switch_available": coordinator.data.phase_switch_available,
+                "phase_switch_block_reason": coordinator.data.phase_switch_block_reason,
+                "vehicle_phase_capability": coordinator.data.vehicle_phase_capability,
+                "phase_switching_mode": coordinator.data.phase_switching_mode,
+                "phase_switch_last_result": coordinator.data.phase_switch_last_result,
+                "phase_switch_last_block_reason": coordinator.data.phase_switch_last_block_reason,
+                "phase_switch_last_target": coordinator.data.phase_switch_last_target,
                 "pending_write_kind": coordinator.data.pending_write_kind,
             }
             if coordinator.data is not None

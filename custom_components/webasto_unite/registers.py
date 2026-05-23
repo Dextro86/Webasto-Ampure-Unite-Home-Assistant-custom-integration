@@ -43,6 +43,11 @@ FIRMWARE_VERSION = RegisterDef("firmware_version", 230, count=50, register_type=
 
 CHARGE_POINT_POWER_W = RegisterDef("charge_point_power_w", 400, count=2, register_type=RegisterType.INPUT, value_type=ValueType.UINT32)
 NUMBER_OF_PHASES = RegisterDef("number_of_phases", 404, register_type=RegisterType.INPUT, value_type=ValueType.UINT16)
+# Experimental 1P/3P phase-switch control register seen in earlier Webasto/Vestel
+# mappings and validated in previous integration builds. Known values from the
+# old implementation: 0 = 1P, 1 = 3P. Automatic phase switching remains disabled;
+# manual writes are only exposed through the experimental manual-only service flow.
+PHASE_SWITCH_MODE = RegisterDef("phase_switch_mode", 405, value_type=ValueType.UINT16, writable=True, readable=True)
 
 CHARGE_POINT_STATE = RegisterDef("charge_point_state", 1000, register_type=RegisterType.INPUT)
 CHARGE_STATE = RegisterDef("charge_state", 1001, register_type=RegisterType.INPUT)
@@ -95,6 +100,7 @@ READ_REGISTERS = (
     FIRMWARE_VERSION,
     CHARGE_POINT_POWER_W,
     NUMBER_OF_PHASES,
+    PHASE_SWITCH_MODE,
     CHARGE_POINT_STATE,
     CHARGE_STATE,
     EVSE_STATE,
@@ -128,6 +134,7 @@ READ_REGISTERS = (
 WRITE_REGISTERS = (
     SAFE_CURRENT_A,
     COMM_TIMEOUT_S,
+    PHASE_SWITCH_MODE,
     SET_CHARGE_POWER_W,
     SET_CHARGE_CURRENT_A,
     LIFE_BIT,

@@ -104,3 +104,30 @@ disable_fixed_current_until_unplug:
       description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
+request_phase_1p:
+  name: Request 1P Phase Mode
+  description: Experimental manual phase switch request to 1P. Requires Phase Switching Mode to be Manual Only.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
+request_phase_3p:
+  name: Request 3P Phase Mode
+  description: Experimental manual phase switch request to 3P. Requires Phase Switching Mode to be Manual Only.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
+reset_phase_switch_state:
+  name: Reset Phase Switch State
+  description: Clear the diagnostic state of the experimental manual phase switching helper.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"

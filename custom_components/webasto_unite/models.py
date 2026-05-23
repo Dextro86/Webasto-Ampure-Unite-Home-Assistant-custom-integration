@@ -180,6 +180,7 @@ class WallboxState:
     phases_in_use: Optional[int] = None
     installed_phases: Optional[int] = None
     charge_point_phase_count: Optional[int] = None
+    phase_switch_mode_raw: Optional[int] = None
     error_code: Optional[int] = None
     serial_number: Optional[str] = None
     charge_point_id: Optional[str] = None
@@ -405,6 +406,16 @@ class RuntimeSnapshot:
     solar_phase_source: Optional[str] = None
     solar_voltage_sum_v: Optional[float] = None
     solar_input_state: Optional[str] = None
+    phase_switch_mode_raw: Optional[int] = None
+    phase_switch_mode: Optional[str] = None
+    phase_switch_register_available: Optional[bool] = None
+    phase_switch_available: Optional[bool] = None
+    phase_switch_block_reason: Optional[str] = None
+    vehicle_phase_capability: Optional[str] = None
+    phase_switching_mode: Optional[str] = None
+    phase_switch_last_result: Optional[str] = None
+    phase_switch_last_block_reason: Optional[str] = None
+    phase_switch_last_target: Optional[str] = None
     dominant_limit_reason: Optional[str] = None
     fallback_active: bool = False
     last_client_error: str | None = None
@@ -455,6 +466,16 @@ class RuntimeSnapshot:
             "solar_phase_source": self.solar_phase_source,
             "solar_voltage_sum_v": self.solar_voltage_sum_v,
             "solar_input_state": self.solar_input_state,
+            "phase_switch_mode_raw": self.phase_switch_mode_raw,
+            "phase_switch_mode": self.phase_switch_mode,
+            "phase_switch_register_available": self.phase_switch_register_available,
+            "phase_switch_available": self.phase_switch_available,
+            "phase_switch_block_reason": self.phase_switch_block_reason,
+            "vehicle_phase_capability": self.vehicle_phase_capability,
+            "phase_switching_mode": self.phase_switching_mode,
+            "phase_switch_last_result": self.phase_switch_last_result,
+            "phase_switch_last_block_reason": self.phase_switch_last_block_reason,
+            "phase_switch_last_target": self.phase_switch_last_target,
             "dominant_limit_reason": self.dominant_limit_reason,
             "fallback_active": self.fallback_active,
             "last_client_error": self.last_client_error,

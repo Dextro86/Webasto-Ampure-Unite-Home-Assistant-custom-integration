@@ -29,6 +29,7 @@ from .const import (
     CONF_MAIN_FUSE,
     CONF_MAX_CURRENT,
     CONF_MIN_CURRENT,
+    CONF_PHASE_SWITCHING_MODE,
     CONF_POLLING_INTERVAL,
     CONF_SOLAR_CONTROL_STRATEGY,
     CONF_SOLAR_GRID_POWER_DIRECTION,
@@ -62,6 +63,7 @@ from .const import (
     DEFAULT_MAX_CURRENT_A,
     DEFAULT_MIN_CURRENT_A,
     DEFAULT_NAME,
+    DEFAULT_PHASE_SWITCHING_MODE,
     DEFAULT_POLL_INTERVAL_S,
     DEFAULT_PORT,
     DEFAULT_PV_MIN_PAUSE_S,
@@ -77,6 +79,7 @@ from .const import (
     DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
     DOMAIN,
+    PHASE_SWITCHING_MODE_OFF,
     STORAGE_KEY_CHARGING_STATE,
 )
 from .capabilities import build_capabilities, build_capability_summary
@@ -101,6 +104,13 @@ from .models import (
     normalize_solar_override_strategy,
 )
 from .operating_status import build_operating_state
+from .phase_engine import (
+    PHASE_SWITCH_PAUSE_AFTER_S,
+    PHASE_SWITCH_PAUSE_BEFORE_S,
+    build_manual_phase_switch_decision,
+)
+from .phase_observer import build_phase_observability
+from .registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 from .runtime_guards import RuntimeGuards
 from .sensor_adapter import HaSensorAdapter
 from .wallbox_reader import WallboxReader
@@ -133,9 +143,14 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._solar_until_unplug_active = False
         self._fixed_current_until_unplug_active = False
         self._last_vehicle_connected = False
+        self._phase_switching_mode = PHASE_SWITCHING_MODE_OFF
+        self._phase_switch_last_result: str | None = None
+        self._phase_switch_last_block_reason: str | None = None
+        self._phase_switch_last_target: str | None = None
         self._sensor_unsubscribers = []
         self._keepalive_task: asyncio.Task | None = None
         self._sensor_refresh_task: asyncio.Task | None = None
+        self._phase_switch_sleep = asyncio.sleep
         entry_id = getattr(entry, "entry_id", "default")
         self._charging_state_store = Store(hass, 1, f"{DOMAIN}.{entry_id}.{STORAGE_KEY_CHARGING_STATE}")
 
@@ -185,6 +200,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             communication_timeout_s=float(merged.get(CONF_COMM_TIMEOUT, 30.0)),
         )
         self._mode = self._resolve_startup_mode(merged)
+        self._phase_switching_mode = str(
+            merged.get(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE)
+        )
         self.controller = WallboxController(self.control_config)
         self.runtime_guards = RuntimeGuards(self.control_config, monotonic_fn=lambda: monotonic())
         self.client = WebastoModbusClient(
@@ -237,6 +255,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._fixed_current_until_unplug_active = False
         if not hasattr(self, "_last_vehicle_connected"):
             self._last_vehicle_connected = False
+        if not hasattr(self, "_phase_switching_mode"):
+            self._phase_switching_mode = PHASE_SWITCHING_MODE_OFF
+        if not hasattr(self, "_phase_switch_last_result"):
+            self._phase_switch_last_result = None
+        if not hasattr(self, "_phase_switch_last_block_reason"):
+            self._phase_switch_last_block_reason = None
+        if not hasattr(self, "_phase_switch_last_target"):
+            self._phase_switch_last_target = None
+        if not hasattr(self, "_phase_switch_sleep"):
+            self._phase_switch_sleep = asyncio.sleep
         if not hasattr(self, "write_queue"):
             self.write_queue = WriteQueueManager()
         if not hasattr(self, "control_config"):
@@ -382,6 +410,49 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         # Backward-compatible service alias.
         self.set_max_current(current_a)
 
+    async def async_request_phase_switch(self, target_phases: int) -> None:
+        self._ensure_runtime_defaults()
+        current_snapshot = getattr(self, "data", None)
+        wallbox = getattr(current_snapshot, "wallbox", None)
+        decision = build_manual_phase_switch_decision(
+            phase_switching_mode=self._phase_switching_mode,
+            wallbox=wallbox,
+            target_phases=target_phases,
+            config=self.control_config,
+        )
+        self._phase_switch_last_target = f"{target_phases}P"
+        if not decision.allowed or decision.plan is None:
+            reason = decision.block_reason or "phase_switch_blocked"
+            self._phase_switch_last_result = "blocked"
+            self._phase_switch_last_block_reason = reason
+            raise ValueError(f"Phase switch blocked: {reason}")
+
+        plan = decision.plan
+        await self.write_queue.clear()
+        try:
+            async with self.write_runtime.flush_lock:
+                if plan.was_charging:
+                    await self.client.write(SET_CHARGE_CURRENT_A, 0)
+                    await self._phase_switch_sleep(PHASE_SWITCH_PAUSE_BEFORE_S)
+                await self.client.write(PHASE_SWITCH_MODE, plan.write_value)
+                if plan.was_charging and plan.resume_current_a is not None:
+                    await self._phase_switch_sleep(PHASE_SWITCH_PAUSE_AFTER_S)
+                    await self.client.write(SET_CHARGE_CURRENT_A, int(round(plan.resume_current_a)))
+        except Exception as err:  # noqa: BLE001
+            self._phase_switch_last_result = "failed"
+            self._phase_switch_last_block_reason = str(err)
+            raise
+
+        self._phase_switch_last_result = "requested"
+        self._phase_switch_last_block_reason = None
+        await self.async_request_refresh()
+
+    def reset_phase_switch_state(self) -> None:
+        self._ensure_runtime_defaults()
+        self._phase_switch_last_result = None
+        self._phase_switch_last_block_reason = None
+        self._phase_switch_last_target = None
+
     def set_fixed_current(self, current_a: float) -> None:
         self.control_config.fixed_current_a = self._validate_runtime_current(current_a, "Fixed Current")
 
@@ -455,6 +526,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 configured_phase_count=self._configured_phase_count,
             ).read(wallbox)
             solar_surplus_w = self.controller.resolve_surplus_power(sensors, wallbox)
+            phase_observability = build_phase_observability(wallbox)
             solar_strategy = self.controller.resolve_effective_solar_strategy(
                 self.control_config.solar_control_strategy,
                 self.control_config.solar_until_unplug_strategy,
@@ -523,6 +595,16 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 solar_phase_source=self.controller.solar_state.phase_source,
                 solar_voltage_sum_v=self.controller.solar_state.voltage_sum_v,
                 solar_input_state=sensors.solar_input_state,
+                phase_switch_mode_raw=phase_observability.phase_switch_mode_raw,
+                phase_switch_mode=phase_observability.phase_switch_mode,
+                phase_switch_register_available=phase_observability.phase_switch_register_available,
+                phase_switch_available=phase_observability.phase_switch_available,
+                phase_switch_block_reason=phase_observability.phase_switch_block_reason,
+                vehicle_phase_capability=phase_observability.vehicle_phase_capability,
+                phase_switching_mode=self._phase_switching_mode,
+                phase_switch_last_result=self._phase_switch_last_result,
+                phase_switch_last_block_reason=self._phase_switch_last_block_reason,
+                phase_switch_last_target=self._phase_switch_last_target,
                 dominant_limit_reason=decision.dominant_limit_reason.value if decision.dominant_limit_reason is not None else None,
                 fallback_active=decision.fallback_active,
                 last_client_error=self.client.stats.last_error,

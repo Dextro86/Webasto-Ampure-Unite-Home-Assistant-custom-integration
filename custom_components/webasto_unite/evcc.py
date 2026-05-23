@@ -88,6 +88,7 @@ def present_evcc_value(value: Any) -> Any:
         "solar_boost": "Solar Boost",
         "solar": "Solar",
         "dlb_limited": "DLB Limited",
+        "monitoring_only_not_writing": "Monitoring Only - Not Writing",
         "normal": "Normal",
         "managed_control": "Enabled",
         "keepalive_only": "Monitoring Only",

@@ -1,24 +1,93 @@
-# Webasto/Ampure Unite Home Assistant custom integration
+# Webasto / Ampure Unite for Home Assistant
 
 [![Tests](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/actions/workflows/tests.yml/badge.svg)](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/actions/workflows/tests.yml)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/)
 [![Latest release](https://img.shields.io/github/v/release/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration?label=latest%20release)](https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration/releases)
 
-Home Assistant custom integration for Webasto Unite and Ampure Unite EV chargers over local Modbus/TCP.
+Advanced local control, Solar charging and Dynamic Load Balancing for Webasto Unite and Ampure Unite EV chargers.
+
+This integration controls and monitors Webasto/Ampure Unite chargers directly over local Modbus/TCP. It is not a cloud integration and it is not a generic Modbus wrapper. The focus is stable charger control inside Home Assistant, with Solar surplus charging, Dynamic Load Balancing, restart-safe behavior, diagnostics and EVCC-oriented entities.
 
 This is a community project developed with significant AI assistance. Active charging control should be verified on your own charger and vehicle before relying on automation.
 
 ## Features
 
-- Local Modbus/TCP monitoring
-- Keepalive handling
-- Current control through register `5004`
-- Dynamic Load Balancing (DLB)
-- Solar charging
-- Optional Lovelace dashboard and automation examples
-- EVCC-friendly status entities for using the charger through Home Assistant
+| Feature | Supported |
+|---|---|
+| Local Modbus/TCP monitoring | Yes |
+| Cloud-free operation | Yes |
+| Keepalive handling | Yes |
+| Current control through register `5004` | Yes |
+| Solar surplus charging | Yes |
+| Dynamic Load Balancing | Yes |
+| Session-aware charging logic | Yes |
+| Derived IEC 61851 state | Yes |
+| EVCC compatibility entities | Yes |
+| Solar smoothing/filtering | Yes |
+| Solar ramp limiting | Yes |
+| Stale sensor protection | Yes |
+| Restart-safe charging state | Yes |
+| Reconnect handling | Yes |
+| Advanced diagnostics | Yes |
+| Manual 1P/3P phase switching | Experimental, off by default |
+| Automatic phase switching | Not included |
 
-Supported charge modes:
+## Why this integration exists
+
+Many charger integrations and generic Modbus examples expose only basic charger data. This integration is specific to Webasto/Ampure Unite chargers and aims to provide a stable local charger-control platform for Home Assistant.
+
+Special focus areas:
+
+- predictable charging behavior
+- safe behavior after Home Assistant restarts
+- Dynamic Load Balancing protections
+- Solar charging smoothing and filtering
+- stale sensor detection
+- detailed diagnostics for troubleshooting and support
+- EVCC-oriented status and current-control entities
+
+## Architecture
+
+```text
+Home Assistant
+      |
+      v
+Webasto / Ampure Unite integration
+      |
+      v
+Local Modbus/TCP
+      |
+      v
+Webasto / Ampure Unite charger
+```
+
+The integration communicates directly with the charger over the local network. No cloud connection is required.
+
+## Quick Start
+
+1. Install the integration through HACS or manually.
+2. Restart Home Assistant.
+3. Add `Webasto/Ampure Unite` through `Settings` -> `Devices & Services`.
+4. Start with `Integration Charging Control = Monitoring Only`.
+5. Confirm that charger state, currents, power and energy sensors update correctly.
+6. Set `Integration Charging Control = Enabled` only after monitoring is stable.
+7. Enable DLB and Solar only after selecting suitable live Home Assistant sensors.
+
+Detailed instructions: [Installation](docs/installation.md)
+
+## Documentation
+
+- [Installation](docs/installation.md)
+- [Full configuration reference](docs/configuration.md)
+- [EVCC compatibility](docs/evcc.md)
+- [Solar charging and Dynamic Load Balancing](docs/solar_dlb.md)
+- [Diagnostics](docs/diagnostics.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Architecture](docs/architecture.md)
+- [Roadmap](docs/roadmap.md)
+- [Dashboard examples](examples)
+
+## Supported Charge Modes
 
 - `Off`
 - `Normal`
@@ -36,132 +105,94 @@ Temporary session overrides:
 - `Solar Until Unplug`
 - `Fixed Current Until Unplug`
 
+## Solar Charging And DLB
+
+The integration contains logic for Solar surplus charging and Dynamic Load Balancing:
+
+- Solar input models: Solar surplus sensor, signed grid power sensor, DSMR import/export sensors
+- Solar smoothing and filtering to reduce bouncing
+- Ramp limiting for Solar current increases
+- Dynamic Load Balancing based on phase current sensors
+- Control Sensor Timeout protection against stale Home Assistant sensor values
+- Conservative fallback behavior when sensor input is unavailable or unsafe
+
+See [Solar charging and Dynamic Load Balancing](docs/solar_dlb.md).
+
+## EVCC Compatibility
+
+The integration exposes entities and diagnostics that can be used by EVCC through Home Assistant:
+
+- derived IEC 61851 state
+- charger enable/disable switch
+- current-control number entity
+- pause/resume buttons
+- measured power and phase currents
+- session energy
+- observed active phases
+- readable and machine-oriented diagnostics
+
+See [EVCC compatibility](docs/evcc.md).
+
+## Phase Switching
+
+Automatic phase switching is not included.
+
+Experimental manual phase switching is available only when `Phase Switching Mode = Manual Only`. It is off by default and must be triggered explicitly through services. The known register mapping used by the integration is:
+
+- register `404`: charger-reported phase configuration (`0 = 1P`, `1 = 3P`)
+- register `405`: experimental phase-switch mode (`0 = 1P`, `1 = 3P`)
+
+Manual phase switching is intended for testing and validation, not for unattended automation yet.
+
+## Stability-First Design
+
+This integration prioritizes:
+
+- predictable behavior over aggressive automation
+- conservative fallback behavior
+- restart-safe state handling
+- stale sensor protection
+- diagnostics that explain why current was reduced or charging paused
+- avoiding automatic recovery loops that repeatedly write to the charger
+
 ## Requirements
 
-- Home Assistant is already running.
-- HACS is installed if you want to install through HACS.
-- The charger has network connectivity and a fixed IP address.
-- `Modbus/TCP` is enabled in the charger's web interface.
-- The Modbus/TCP port is normally `502`; the Webasto/Ampure Unite unit ID is often `255`.
-- No other system keeps an active `Modbus/TCP` connection open to the charger. The charger appears to work reliably with only one active Modbus master.
-- DLB and Solar control require suitable Home Assistant sensors.
+- Home Assistant
+- Webasto Unite or Ampure Unite charger
+- Charger reachable over the local network
+- Modbus/TCP enabled on the charger
+- TCP port `502` reachable from Home Assistant
+- Recommended Modbus unit ID: `255`
+- No other system keeping an active Modbus/TCP connection open to the charger
 
-## Installation
+The charger appears to work reliably with only one active Modbus master connection.
 
-### HACS custom repository
+## Troubleshooting First Checks
 
-1. Open `HACS`.
-2. Open the top-right menu and choose `Custom repositories`.
-3. Add this repository URL:
-   `https://github.com/Dextro86/Webasto-Ampure-Unite-Home-Assistant-custom-integration`
-4. Select category `Integration`.
-5. Click `Add`.
-6. Search for `Webasto/Ampure Unite`.
-7. Open the integration and click `Download`.
-8. Restart Home Assistant.
-9. Go to `Settings` -> `Devices & Services`.
-10. Click `Add Integration`.
-11. Search for `Webasto/Ampure Unite` and complete the config flow.
+If charging behavior is unexpected, check:
 
-### Manual installation
+- `Connected`
+- `Client Error`
+- `Control Reason`
+- `Final Target`
+- `Fallback Active`
+- `Sensor Invalid Reason`
+- `DLB Limit`
+- `Solar Input State`
+- `Solar Raw Input`
+- `Solar Filtered Input`
+- `EVCC Status`
 
-Copy `custom_components/webasto_unite` to `config/custom_components/webasto_unite`, restart Home Assistant, and add the integration through `Settings` -> `Devices & Services` -> `Add Integration`.
+See [Diagnostics](docs/diagnostics.md) and [Troubleshooting](docs/troubleshooting.md).
 
-## Documentation
-
-- [Configuration guide](docs/configuration.md): setup, one-screen settings layout, sensor choices, DLB, Solar charging and troubleshooting.
-- [Dashboard examples](examples): optional Lovelace dashboard and automation examples.
-
-Start conservatively: first confirm monitoring works, then set `Integration Charging Control` to `Enabled`, and only then enable DLB and Solar charging.
-
-`Integration Charging Control = Monitoring Only` is the safest first setup. In this mode the integration keeps the charger alive and monitors all values, but it does not write charging-current commands.
-
-## Settings Overview
-
-The integration options are grouped into one settings screen with these sections:
-
-- `Connection`: charger network and Modbus settings
-- `Charging`: charger configuration, default mode and current limits
-- `Temporary Session Settings`: temporary per-session Fixed Current and Solar Until Unplug behavior when managed control is enabled
-- `Dynamic Load Balancing`: exposes DLB mode, sensor scope, fuse settings and DLB sensors in one section
-- `Solar Charging`: exposes Solar strategy, input source, thresholds and timing settings in one section
-- `Advanced`: keepalive, control sensor freshness and communication tuning
-
-This keeps the full configuration in one place while preserving the same validation rules as before.
-
-## Notes
-
-- Automatic and manual phase switching are removed in this stability release. Remove old phase-switching dashboard controls, services and automations from custom dashboards.
-- DLB and Solar charging are disabled by default and should be enabled only after selecting suitable sensors.
-- DLB uses per-phase current sensors only. In `1p` setup, only L1 is required; in `3p`, L1/L2/L3 are required.
-- DLB and Solar input sensors must be live power/current sensors. If a required sensor stops updating for longer than `Control Sensor Timeout (s)`, the integration falls back safely instead of trusting stale values.
-- `Eco Solar` always pauses when Solar input is unavailable. `Smart Solar` and `Solar Boost` can optionally continue at `Solar Minimum Current`, but the default remains pause for safety.
-- Solar current increases are smoothed and ramp-limited internally to reduce bouncing; DLB and safety limits can still reduce current immediately.
-- For Solar with a signed grid power sensor, choose the sign direction by looking at the sensor while exporting and not charging: negative export means export is below zero, positive export means export is above zero.
-- For P1/DSMR meters with separate import and export power sensors, use `DSMR Import/Export Sensors` as Solar input. The integration calculates signed grid power internally as `import - export`.
-- Session command register `5006` is not used for start/stop control. The integration uses register `5004` current control instead.
-
-## Diagnostics and Troubleshooting
-
-If the charger does not behave as expected, first check these entities:
-
-- `Connected` and `Client Error`: Modbus connection status.
-- `IEC 61851 State`: derived EV charging state (`A`, `B`, `C`, `E`, `F`) for compatibility with tools such as EVCC.
-- `Final Target`: current the integration is currently requesting.
-- `Control Reason`: why the current target was chosen.
-- `Fallback Active` and `Sensor Invalid Reason`: whether DLB/Solar input is missing, stale or unsafe.
-- `DLB Limit`: current limit calculated by Dynamic Load Balancing.
-- `Solar Input State` and `Solar Surplus Input`: whether Solar input is valid and how much surplus the integration sees.
-- `Solar Raw Input`, `Solar Filtered Input`, `Solar Target`, `Solar Phase Count`, `Solar Phase Source` and `Solar Voltage Sum`: diagnostic values for Solar control behavior.
-- `EVCC Status`: diagnostic compatibility sensor with stable machine attributes and readable `*_label` attributes.
-
-Common causes:
-
-- Another Modbus client is connected to the charger.
-- The charger IP address changed.
-- Modbus/TCP is disabled in the charger web interface.
-- A P1, grid power or template sensor stopped updating while Home Assistant kept showing the last value.
-- A Solar signed grid power sensor has the wrong `Grid Power Direction`.
-
-## EVCC via Home Assistant
-
-EVCC can use the charger through Home Assistant entities. Use this only with one active controller:
-
-- If EVCC controls charging, set this integration to `Integration Charging Control = Enabled`, `Default Mode = Normal`, and keep this integration's Solar/DLB control disabled unless you explicitly want the integration to apply an additional local safety cap.
-- Do not let EVCC and this integration both run Solar surplus control at the same time.
-- Automatic phase switching is not included.
-
-Example `evcc.yaml` charger section, replace entity IDs with the actual entity IDs from your Home Assistant instance:
-
-```yaml
-chargers:
-  - name: webasto_unite_ha
-    type: homeassistant
-    uri: http://homeassistant.local:8123
-    token: ${HA_TOKEN}
-    status: sensor.webasto_unite_iec_61851_state
-    enabled: switch.webasto_unite_allow_charging
-    setMaxCurrent: number.webasto_unite_current_limit
-    power: sensor.webasto_unite_active_power
-    currents:
-      - sensor.webasto_unite_current_l1
-      - sensor.webasto_unite_current_l2
-      - sensor.webasto_unite_current_l3
-```
-
-Useful compatibility entities:
-
-- `IEC 61851 State`: EVCC charger status (`A`, `B`, `C`, `E`, `F`).
-- `Charging On/Off`: enable/disable switch used by EVCC.
-- `Maximum Current`: current limit number used by EVCC as `setMaxCurrent`.
-- `Active Power`: measured charger power.
-- `Current L1/L2/L3`: measured phase currents.
-- `EVCC Status`: diagnostic sensor for support/debugging. Its raw attributes are machine-stable; attributes ending in `_label` are intended for human reading.
-
-## Repository contents
+## Repository Contents
 
 - [`custom_components/webasto_unite`](custom_components/webasto_unite): integration code
-- [`docs`](docs): configuration documentation
+- [`docs`](docs): documentation
 - [`examples`](examples): dashboard and automation examples
 - [`tests`](tests): unit tests
 - [`hacs.json`](hacs.json): HACS metadata
+
+## Disclaimer
+
+This project is not affiliated with Webasto, Ampure or EVCC.
