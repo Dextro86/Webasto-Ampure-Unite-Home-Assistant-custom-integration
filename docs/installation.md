@@ -50,7 +50,7 @@ Recommended first setup:
 1. Use `Integration Charging Control = Monitoring Only`.
 2. Confirm that charger state, currents, power and energy values update correctly.
 3. Confirm that `Connected` is on and `Client Error` stays empty.
-4. Switch to `Integration Charging Control = Enabled` only after monitoring is stable.
+4. Switch to `Integration Charging Control = Enabled` only after monitoring is stable, or choose `External Controller` when EVCC or another Home Assistant controller should write the charging current.
 5. Enable DLB and Solar only after selecting suitable live sensors.
 
 ## Charger Configuration

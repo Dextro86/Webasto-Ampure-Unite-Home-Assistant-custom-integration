@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .control_owner import derive_control_owner_from_snapshot, present_control_owner
 from .entity import WebastoUniteCoordinatorEntity
 from .evcc import build_evcc_status
 from .models import ChargeMode
@@ -69,7 +70,14 @@ SENSORS = (
     WebastoSensorDescription(key="solar_phase_source", name="Solar Phase Source", value_key="solar_phase_source", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="solar_voltage_sum", name="Solar Voltage Sum", value_key="solar_voltage_sum_v", native_unit_of_measurement=UnitOfElectricPotential.VOLT, device_class=SensorDeviceClass.VOLTAGE, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="solar_input_state", name="Solar Input State", value_key="solar_input_state", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="control_owner", name="Control Owner", value_key="control_owner", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="reason", name="Control Reason", value_key="control_reason", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="control_writes_enabled", name="Control Writes Enabled", value_key="control_writes_enabled", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="last_control_write_value", name="Last Control Write", value_key="last_control_write_value_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="last_control_write_reason", name="Last Control Write Reason", value_key="last_control_write_reason", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="last_control_write_register", name="Last Control Write Register", value_key="last_control_write_register", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="last_control_write_age", name="Last Control Write Age", value_key="last_control_write_age_s", native_unit_of_measurement=UnitOfTime.SECONDS, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="last_control_write_blocked_reason", name="Last Control Write Blocked Reason", value_key="last_control_write_blocked_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="limit_reason", name="Dominant Limit", value_key="dominant_limit_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="sensor_invalid_reason", name="Sensor Invalid Reason", value_key="sensor_invalid_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="fallback_active", name="Fallback Active", value_key="fallback_active", entity_category=EntityCategory.DIAGNOSTIC),
@@ -102,6 +110,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             return self._derive_iec61851_state(data.wallbox)
         if self.entity_description.key == "evcc_status":
             return build_evcc_status(data, self.coordinator.control_config)["charger_state"]
+        if self.entity_description.key == "control_owner":
+            return present_control_owner(derive_control_owner_from_snapshot(data))
         if self.entity_description.key == "equipment_state_text":
             return self._format_equipment_state(data.wallbox.evse_state_raw)
         if self.entity_description.key == "cable_state_text":
@@ -245,6 +255,9 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "validated_with_optional_gaps": "Validated with Optional Gaps",
                 "validated": "Validated",
                 "monitoring_only_not_writing": "Monitoring Only - Not Writing",
+                "monitoring_only": "Monitoring Only",
+                "external_controller": "External Controller",
+                "external_controller_mode": "External Controller Mode",
                 "off_mode": "Off Mode",
                 "normal_mode": "Normal Mode",
                 "fixed_current_mode": "Fixed Current Mode",

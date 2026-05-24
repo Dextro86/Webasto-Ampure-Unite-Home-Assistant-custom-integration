@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .control_owner import derive_control_owner_from_snapshot, present_control_owner
 from .models import ControlConfig, RuntimeSnapshot
 
 
@@ -89,6 +90,8 @@ def present_evcc_value(value: Any) -> Any:
         "solar": "Solar",
         "dlb_limited": "DLB Limited",
         "monitoring_only_not_writing": "Monitoring Only - Not Writing",
+        "external_controller": "External Controller",
+        "external_controller_mode": "External Controller Mode",
         "normal": "Normal",
         "managed_control": "Enabled",
         "keepalive_only": "Monitoring Only",
@@ -136,6 +139,7 @@ def build_evcc_status(data: RuntimeSnapshot | None, config: ControlConfig | None
         unavailable_reason = data.last_client_error or "charger_unavailable"
     elif data.sensor_invalid_reason:
         unavailable_reason = data.sensor_invalid_reason
+    control_owner = derive_control_owner_from_snapshot(data)
 
     return {
         "charger_state": data.operating_state or "unknown",
@@ -162,6 +166,8 @@ def build_evcc_status(data: RuntimeSnapshot | None, config: ControlConfig | None
         "unavailable_reason_label": present_evcc_value(unavailable_reason),
         "control_mode": data.control_mode.value,
         "control_mode_label": present_evcc_value(data.control_mode.value),
+        "control_owner": control_owner,
+        "control_owner_label": present_control_owner(control_owner),
         "effective_mode": data.effective_mode.value,
         "effective_mode_label": present_evcc_value(data.effective_mode.value),
         "control_reason": data.control_reason,

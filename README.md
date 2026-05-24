@@ -70,7 +70,7 @@ The integration communicates directly with the charger over the local network. N
 3. Add `Webasto/Ampure Unite` through `Settings` -> `Devices & Services`.
 4. Start with `Integration Charging Control = Monitoring Only`.
 5. Confirm that charger state, currents, power and energy sensors update correctly.
-6. Set `Integration Charging Control = Enabled` only after monitoring is stable.
+6. Set `Integration Charging Control = Enabled` only after monitoring is stable, or use `External Controller` when EVCC or another controller should manage charging current.
 7. Enable DLB and Solar only after selecting suitable live Home Assistant sensors.
 
 Detailed instructions: [Installation](docs/installation.md)
@@ -130,6 +130,8 @@ The integration exposes entities and diagnostics that can be used by EVCC throug
 - session energy
 - observed active phases
 - readable and machine-oriented diagnostics
+
+Use `Integration Charging Control = External Controller` when EVCC is the active charging manager. Check the actual Home Assistant entity IDs before copying the example configuration.
 
 See [EVCC compatibility](docs/evcc.md).
 

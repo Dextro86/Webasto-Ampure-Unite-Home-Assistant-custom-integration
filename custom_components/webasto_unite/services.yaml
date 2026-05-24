@@ -15,7 +15,7 @@ set_mode:
       example: "solar"
 set_max_current:
   name: Set Maximum Current
-  description: Set the Maximum Current used by normal charging mode.
+  description: Set the Maximum Current used by normal charging mode. In External Controller mode this writes the requested current directly to the charger.
   fields:
     entry_id:
       name: Entry ID
@@ -29,7 +29,7 @@ set_max_current:
       example: 20
 set_user_limit:
   name: Set Maximum Current
-  description: Legacy service alias. Sets the Maximum Current used by normal charging mode.
+  description: Legacy service alias. Sets the Maximum Current used by normal charging mode. In External Controller mode this writes the requested current directly to the charger.
   fields:
     entry_id:
       name: Entry ID

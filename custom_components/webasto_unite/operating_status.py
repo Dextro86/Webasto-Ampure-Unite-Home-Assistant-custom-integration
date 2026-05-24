@@ -15,6 +15,8 @@ def build_operating_state(
 ) -> str:
     if control_config.control_mode == ControlMode.KEEPALIVE_ONLY:
         return "monitoring_only_not_writing"
+    if control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+        return "external_controller"
     if effective_mode == ChargeMode.OFF and charging_paused:
         return "paused"
     if effective_mode == ChargeMode.OFF:

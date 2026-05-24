@@ -56,7 +56,10 @@ class WebastoPauseChargingButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+        return self.coordinator.control_config.control_mode in {
+            ControlMode.MANAGED_CONTROL,
+            ControlMode.EXTERNAL_CONTROLLER,
+        }
 
     async def async_press(self) -> None:
         if not self.available:
@@ -74,7 +77,10 @@ class WebastoResumeChargingButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+        return self.coordinator.control_config.control_mode in {
+            ControlMode.MANAGED_CONTROL,
+            ControlMode.EXTERNAL_CONTROLLER,
+        }
 
     async def async_press(self) -> None:
         if not self.available:

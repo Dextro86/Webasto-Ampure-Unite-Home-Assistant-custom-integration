@@ -22,6 +22,7 @@ class QueuedWrite:
     register: RegisterDef
     value: Any
     priority: WritePriority
+    reason: str | None = None
     created_monotonic: float = field(default_factory=monotonic)
 
 

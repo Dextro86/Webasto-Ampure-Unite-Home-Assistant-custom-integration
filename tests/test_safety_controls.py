@@ -123,6 +123,11 @@ def install_mock_write_runtime(coordinator):
         is_keepalive_overdue=lambda age_s: False,
         keepalive_sent_count=0,
         keepalive_write_failures=0,
+        last_control_write_value_a=None,
+        last_control_write_reason=None,
+        last_control_write_register=None,
+        last_control_write_age_seconds=lambda: None,
+        last_control_write_blocked_reason=None,
     )
 
 
@@ -1658,6 +1663,110 @@ def test_keepalive_only_mode_disables_control_writes_and_static_sync():
     assert coordinator._allows_control_writes() is False
 
 
+def test_external_controller_mode_blocks_automatic_writes_but_allows_static_sync():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
+
+    assert coordinator._allows_control_writes() is False
+    assert coordinator._allows_current_writes() is True
+    assert coordinator._allows_static_sync() is True
+    assert coordinator._control_write_blocked_reason() == "external_controller_mode"
+
+
+def test_external_controller_current_limit_writes_directly():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.EXTERNAL_CONTROLLER,
+            min_current_a=6.0,
+            max_current_a=32.0,
+        )
+        coordinator.write_queue = WriteQueueManager()
+        client = SimpleNamespace(write=AsyncMock())
+        coordinator.write_runtime = WriteRuntime(
+            coordinator.control_config,
+            write_queue=coordinator.write_queue,
+            client=client,
+            controller=None,
+        )
+        coordinator._external_current_a = None
+
+        await coordinator.async_set_external_current_limit(20)
+
+        client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 20)
+        assert coordinator._external_current_a == 20.0
+        assert coordinator.write_runtime.last_control_write_reason == "external_controller"
+
+    asyncio.run(_run())
+
+
+def test_maximum_current_number_writes_directly_in_external_controller_mode():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.EXTERNAL_CONTROLLER,
+            min_current_a=6.0,
+            max_current_a=32.0,
+        )
+        coordinator.write_queue = WriteQueueManager()
+        client = SimpleNamespace(write=AsyncMock())
+        coordinator.write_runtime = WriteRuntime(
+            coordinator.control_config,
+            write_queue=coordinator.write_queue,
+            client=client,
+            controller=None,
+        )
+        coordinator._external_current_a = None
+        coordinator.async_request_refresh = AsyncMock()
+
+        current_limit = WebastoMaximumCurrentNumber(coordinator)
+        await current_limit.async_set_native_value(24)
+
+        client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 24)
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_external_controller_mode_makes_charging_switch_available():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry()
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
+    coordinator._charging_paused = False
+
+    charging_switch = WebastoChargingSwitch(coordinator)
+
+    assert charging_switch.available is True
+
+
+def test_external_controller_charging_switch_off_writes_zero():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
+        coordinator._charging_paused = False
+        coordinator._charging_state_store = SimpleNamespace(async_save=AsyncMock())
+        coordinator.write_queue = WriteQueueManager()
+        client = SimpleNamespace(write=AsyncMock())
+        coordinator.write_runtime = WriteRuntime(
+            coordinator.control_config,
+            write_queue=coordinator.write_queue,
+            client=client,
+            controller=None,
+        )
+        coordinator._external_current_a = 16.0
+        coordinator.async_request_refresh = AsyncMock()
+
+        charging_switch = WebastoChargingSwitch(coordinator)
+        await charging_switch.async_turn_off()
+
+        client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 0)
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
 def test_sensor_refresh_is_debounced_to_single_refresh():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -2749,6 +2858,8 @@ def test_evcc_status_exposes_stable_fields_from_runtime_snapshot():
     assert status["phase_count_observed"] == 3
     assert status["configured_current_min"] == 6.0
     assert status["configured_current_max"] == 20.0
+    assert status["control_owner"] == "solar"
+    assert status["control_owner_label"] == "Solar"
     assert status["enabled"] is True
     assert status["charging_enabled"] is True
     assert status["vehicle_connected"] is True
@@ -2784,4 +2895,34 @@ def test_evcc_status_sensor_uses_attributes_for_compatibility_fields():
     assert sensor.native_value == "normal"
     assert sensor.extra_state_attributes["iec61851_state"] == "B"
     assert sensor.extra_state_attributes["charger_state_label"] == "Normal"
+    assert sensor.extra_state_attributes["control_owner"] == "integration"
+    assert sensor.extra_state_attributes["control_owner_label"] == "Integration"
     assert sensor.extra_state_attributes["configured_current_max"] == 16.0
+
+
+def test_control_owner_sensor_reports_external_controller():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry()
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
+    coordinator.data = RuntimeSnapshot(
+        wallbox=WallboxState(available=True, vehicle_connected=True, charging_active=False),
+        mode=ChargeMode.NORMAL,
+        effective_mode=ChargeMode.NORMAL,
+        operating_state="external_controller",
+        control_mode=ControlMode.EXTERNAL_CONTROLLER,
+        control_reason=ControlReason.NORMAL_MODE.value,
+        charging_paused=False,
+        solar_until_unplug_active=False,
+        fixed_current_until_unplug_active=False,
+        keepalive_age_s=1.0,
+        keepalive_interval_s=10.0,
+        keepalive_overdue=False,
+        keepalive_sent_count=1,
+        keepalive_write_failures=0,
+        queue_depth=0,
+        pending_write_kind=None,
+    )
+    description = next(item for item in SENSORS if item.key == "control_owner")
+    sensor = WebastoSensor(coordinator, description)
+
+    assert sensor.native_value == "External Controller"

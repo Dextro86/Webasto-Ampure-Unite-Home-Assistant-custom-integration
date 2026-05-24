@@ -62,6 +62,17 @@ In Monitoring Only mode the integration still calculates `Final Target` for diag
 
 Set `Integration Charging Control` to `Enabled` if you want the integration to write the calculated current target to the charger.
 
+Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging On/Off` and `Maximum Current`. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
+
+Useful diagnostics for this case:
+
+- `Control Owner`
+- `Control Writes Enabled`
+- `Last Control Write`
+- `Last Control Write Reason`
+- `Last Control Write Age`
+- `Last Control Write Blocked Reason`
+
 ## Charging Stops On Solar Sensor Failure
 
 This is expected for `Eco Solar`.

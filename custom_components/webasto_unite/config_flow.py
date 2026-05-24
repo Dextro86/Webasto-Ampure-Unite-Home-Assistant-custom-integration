@@ -48,6 +48,7 @@ PHASE_SELECTOR_OPTIONS = [
 ]
 CONTROL_MODE_SELECTOR_OPTIONS = [
     {"value": ControlMode.MANAGED_CONTROL.value, "label": "Enabled"},
+    {"value": ControlMode.EXTERNAL_CONTROLLER.value, "label": "External Controller"},
     {"value": ControlMode.KEEPALIVE_ONLY.value, "label": "Monitoring Only"},
 ]
 STARTUP_CHARGE_MODE_SELECTOR_OPTIONS = [

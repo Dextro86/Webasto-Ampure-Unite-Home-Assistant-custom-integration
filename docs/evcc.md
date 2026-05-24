@@ -8,15 +8,17 @@ Use only one active charging controller. Do not let EVCC and this integration bo
 
 When EVCC controls charging:
 
-- Set `Integration Charging Control` to `Enabled`.
+- Set `Integration Charging Control` to `External Controller`.
 - Set `Default Mode` to `Normal`.
-- Keep this integration's Solar control disabled.
+- Keep this integration's Solar control disabled. EVCC should be the Solar/loadpoint brain.
 - Keep this integration's DLB disabled unless you intentionally want an additional local safety cap.
 - Do not use experimental manual phase switching for EVCC automation yet.
 
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `Maximum Current` as the external control path.
+
 ## Relevant Entities
 
-Entity names depend on the Home Assistant entity registry, but these are the intended purposes:
+Entity IDs depend on the Home Assistant entity registry. Always check the actual entity IDs in Home Assistant before copying the example below.
 
 | Purpose | Entity |
 |---|---|
@@ -35,23 +37,30 @@ Entity names depend on the Home Assistant entity registry, but these are the int
 
 ## Example EVCC Charger Configuration
 
-Replace entity IDs with the actual entity IDs from your Home Assistant instance.
+Replace every entity ID with the actual entity ID from your Home Assistant instance.
 
 ```yaml
 chargers:
   - name: webasto_unite_ha
-    type: homeassistant
+    type: template
+    template: homeassistant
     uri: http://homeassistant.local:8123
     token: ${HA_TOKEN}
     status: sensor.webasto_unite_iec_61851_state
     enabled: switch.webasto_unite_allow_charging
+    enable: switch.webasto_unite_allow_charging
     setMaxCurrent: number.webasto_unite_current_limit
     power: sensor.webasto_unite_active_power
-    currents:
-      - sensor.webasto_unite_current_l1
-      - sensor.webasto_unite_current_l2
-      - sensor.webasto_unite_current_l3
+    energy: sensor.webasto_unite_energy_meter
+    currentL1: sensor.webasto_unite_current_l1
+    currentL2: sensor.webasto_unite_current_l2
+    currentL3: sensor.webasto_unite_current_l3
+    voltageL1: sensor.webasto_unite_voltage_l1
+    voltageL2: sensor.webasto_unite_voltage_l2
+    voltageL3: sensor.webasto_unite_voltage_l3
 ```
+
+Do not configure `phaseswitch` for this integration yet. Manual phase switching is experimental and is not exposed as the EVCC Home Assistant phase-switch select with options `1` and `3`.
 
 ## IEC 61851 State
 
@@ -71,6 +80,7 @@ Typical values:
 
 Attributes include:
 
+- control owner
 - charger state
 - IEC 61851 state
 - offered current
@@ -90,3 +100,4 @@ Attributes ending in `_label` are intended for human reading. Other attributes a
 - Automatic phase switching is not available.
 - Manual phase switching is experimental and not intended for EVCC automation yet.
 - EVCC and this integration should not both manage Solar charging at the same time.
+- `Monitoring Only` is not suitable for EVCC control because the control entities do not write current targets in that mode.

@@ -101,6 +101,7 @@ normalize_pv_override_strategy = normalize_solar_override_strategy
 class ControlMode(str, Enum):
     KEEPALIVE_ONLY = "keepalive_only"
     MANAGED_CONTROL = "managed_control"
+    EXTERNAL_CONTROLLER = "external_controller"
 
 
 class ConnectionState(str, Enum):
@@ -276,6 +277,7 @@ class ControlConfig:
     stable_cycles_before_write: int = 2
 
     def __post_init__(self) -> None:
+        self.control_mode = ControlMode(self.control_mode)
         self.solar_input_model = SolarInputModel(self.solar_input_model)
         self.solar_grid_power_direction = SolarGridPowerDirection(self.solar_grid_power_direction)
         self.solar_control_strategy = normalize_solar_control_strategy(self.solar_control_strategy)
@@ -393,6 +395,12 @@ class RuntimeSnapshot:
     keepalive_write_failures: int
     queue_depth: int
     pending_write_kind: str | None
+    control_writes_enabled: bool = False
+    last_control_write_value_a: Optional[float] = None
+    last_control_write_reason: Optional[str] = None
+    last_control_write_register: Optional[str] = None
+    last_control_write_age_s: Optional[float] = None
+    last_control_write_blocked_reason: Optional[str] = None
     sensor_snapshot_valid: bool = True
     sensor_invalid_reason: Optional[str] = None
     dlb_limit_a: Optional[float] = None
@@ -455,6 +463,12 @@ class RuntimeSnapshot:
             "sensor_invalid_reason": self.sensor_invalid_reason,
             "queue_depth": self.queue_depth,
             "pending_write_kind": self.pending_write_kind,
+            "control_writes_enabled": self.control_writes_enabled,
+            "last_control_write_value_a": self.last_control_write_value_a,
+            "last_control_write_reason": self.last_control_write_reason,
+            "last_control_write_register": self.last_control_write_register,
+            "last_control_write_age_s": self.last_control_write_age_s,
+            "last_control_write_blocked_reason": self.last_control_write_blocked_reason,
             "dlb_limit_a": self.dlb_limit_a,
             "final_target_a": self.final_target_a,
             "mode_target_a": self.mode_target_a,

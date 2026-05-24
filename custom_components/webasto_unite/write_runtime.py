@@ -16,6 +16,11 @@ class WriteRuntimeState:
     last_keepalive_sent_monotonic: float = 0.0
     keepalive_sent_count: int = 0
     keepalive_write_failures: int = 0
+    last_control_write_monotonic: float = 0.0
+    last_control_write_value_a: float | None = None
+    last_control_write_reason: str | None = None
+    last_control_write_register: str | None = None
+    last_control_write_blocked_reason: str | None = None
 
 
 class WriteRuntime:
@@ -47,6 +52,22 @@ class WriteRuntime:
     def keepalive_write_failures(self) -> int:
         return self.state.keepalive_write_failures
 
+    @property
+    def last_control_write_value_a(self) -> float | None:
+        return self.state.last_control_write_value_a
+
+    @property
+    def last_control_write_reason(self) -> str | None:
+        return self.state.last_control_write_reason
+
+    @property
+    def last_control_write_register(self) -> str | None:
+        return self.state.last_control_write_register
+
+    @property
+    def last_control_write_blocked_reason(self) -> str | None:
+        return self.state.last_control_write_blocked_reason
+
     async def enqueue_keepalive_if_needed(self) -> None:
         now = self._monotonic()
         elapsed = (
@@ -66,12 +87,15 @@ class WriteRuntime:
         current_snapshot,
         allows_control_writes: bool,
         enqueue_keepalive: Callable[[], Awaitable[None]],
+        blocked_reason: str = "monitoring_only",
     ) -> None:
         if not decision.charging_enabled and decision.reason == ControlReason.OFF_MODE:
             await self.write_queue.clear()
             await enqueue_keepalive()
 
         if not allows_control_writes:
+            if decision.should_write and decision.target_current_a is not None:
+                self.state.last_control_write_blocked_reason = blocked_reason
             return
 
         if (
@@ -83,7 +107,13 @@ class WriteRuntime:
             await self.write_queue.clear()
             await enqueue_keepalive()
             await self.write_queue.enqueue(
-                QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
+                QueuedWrite(
+                    "current_limit",
+                    SET_CHARGE_CURRENT_A,
+                    0,
+                    WritePriority.CONTROL,
+                    reason=decision.reason.value,
+                )
             )
             return
 
@@ -100,17 +130,25 @@ class WriteRuntime:
             await self.write_queue.clear()
             await enqueue_keepalive()
             await self.write_queue.enqueue(
-                QueuedWrite("current_limit", SET_CHARGE_CURRENT_A, 0, WritePriority.CONTROL)
+                QueuedWrite(
+                    "current_limit",
+                    SET_CHARGE_CURRENT_A,
+                    0,
+                    WritePriority.CONTROL,
+                    reason=decision.reason.value,
+                )
             )
             return
 
         if decision.should_write and decision.target_current_a is not None:
+            self.state.last_control_write_blocked_reason = None
             await self.write_queue.enqueue(
                 QueuedWrite(
                     "current_limit",
                     SET_CHARGE_CURRENT_A,
                     int(round(decision.target_current_a)),
                     WritePriority.CURRENT,
+                    reason=decision.reason.value,
                 )
             )
 
@@ -145,8 +183,14 @@ class WriteRuntime:
                 if item.key == "keepalive":
                     self.state.last_keepalive_sent_monotonic = self._monotonic()
                     self.state.keepalive_sent_count += 1
-                if item.key == "current_limit" and self.controller is not None:
-                    self.controller.mark_current_written(float(item.value))
+                if item.key == "current_limit":
+                    self.state.last_control_write_monotonic = self._monotonic()
+                    self.state.last_control_write_value_a = float(item.value)
+                    self.state.last_control_write_reason = item.reason
+                    self.state.last_control_write_register = item.register.name
+                    self.state.last_control_write_blocked_reason = None
+                    if self.controller is not None:
+                        self.controller.mark_current_written(float(item.value))
 
     def keepalive_age_seconds(self) -> float | None:
         reference = self.state.last_keepalive_sent_monotonic or self.state.keepalive_started_monotonic
@@ -156,3 +200,8 @@ class WriteRuntime:
         if age_s is None:
             return False
         return age_s > (self.config.keepalive_interval_s * 1.5)
+
+    def last_control_write_age_seconds(self) -> float | None:
+        if not self.state.last_control_write_monotonic:
+            return None
+        return round(max(0.0, self._monotonic() - self.state.last_control_write_monotonic), 1)

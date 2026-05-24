@@ -27,7 +27,10 @@ class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.control_config.control_mode == ControlMode.MANAGED_CONTROL
+        return self.coordinator.control_config.control_mode in {
+            ControlMode.MANAGED_CONTROL,
+            ControlMode.EXTERNAL_CONTROLLER,
+        }
 
     @property
     def is_on(self):

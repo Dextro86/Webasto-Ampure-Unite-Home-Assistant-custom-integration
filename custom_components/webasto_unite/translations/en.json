@@ -45,7 +45,7 @@
             },
             "data_description": {
               "installed_phases": "Set how the charger is configured for this integration. Use 1P for a single-phase charger setup. Use 3P for a three-phase charger setup; the integration can still detect when a connected vehicle charges on only one phase.",
-              "control_mode": "Enabled lets the integration take control of the charger.",
+              "control_mode": "Enabled lets this integration control charging. External Controller lets EVCC or another Home Assistant controller set charging current through the exposed entities. Monitoring Only only reads data and sends keepalive.",
               "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
               "min_current": "Lowest current in amperes the integration may request. Charging below 6 A is normally not supported.",
               "max_current": "Normal charging target and highest current in amperes the integration may request. Set this to match the charger and installation limit.",

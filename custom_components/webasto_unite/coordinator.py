@@ -114,7 +114,7 @@ from .registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 from .runtime_guards import RuntimeGuards
 from .sensor_adapter import HaSensorAdapter
 from .wallbox_reader import WallboxReader
-from .write_queue import WriteQueueManager
+from .write_queue import QueuedWrite, WritePriority, WriteQueueManager
 from .write_runtime import WriteRuntime
 
 _LOGGER = logging.getLogger(__name__)
@@ -147,6 +147,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_switch_last_result: str | None = None
         self._phase_switch_last_block_reason: str | None = None
         self._phase_switch_last_target: str | None = None
+        self._external_current_a: float | None = None
         self._sensor_unsubscribers = []
         self._keepalive_task: asyncio.Task | None = None
         self._sensor_refresh_task: asyncio.Task | None = None
@@ -263,6 +264,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._phase_switch_last_block_reason = None
         if not hasattr(self, "_phase_switch_last_target"):
             self._phase_switch_last_target = None
+        if not hasattr(self, "_external_current_a"):
+            self._external_current_a = None
         if not hasattr(self, "_phase_switch_sleep"):
             self._phase_switch_sleep = asyncio.sleep
         if not hasattr(self, "write_queue"):
@@ -381,6 +384,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         else:
             self.pause_charging()
         await self._charging_state_store.async_save({"charging_enabled": enabled})
+        if self.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+            current_a = self._external_current_a or self.control_config.min_current_a
+            await self._enqueue_external_current_limit(current_a if enabled else 0.0)
 
     async def _async_restore_charging_enabled_state(self) -> None:
         stored = await self._charging_state_store.async_load()
@@ -455,6 +461,39 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
     def set_fixed_current(self, current_a: float) -> None:
         self.control_config.fixed_current_a = self._validate_runtime_current(current_a, "Fixed Current")
+
+    async def async_set_external_current_limit(self, current_a: float) -> None:
+        self._ensure_runtime_defaults()
+        current = self._validate_external_current(current_a)
+        if current > 0:
+            self._external_current_a = current
+        await self._enqueue_external_current_limit(current)
+
+    async def _enqueue_external_current_limit(self, current_a: float) -> None:
+        await self.write_queue.enqueue(
+            QueuedWrite(
+                "current_limit",
+                SET_CHARGE_CURRENT_A,
+                int(round(current_a)),
+                WritePriority.CONTROL,
+                reason="external_controller",
+            )
+        )
+        await self.write_runtime.flush_write_queue()
+
+    def _validate_external_current(self, current_a: float) -> float:
+        current = float(current_a)
+        rounded = round(current)
+        if abs(current - rounded) > 1e-6:
+            raise ValueError("External current must be a whole amp value")
+        if rounded == 0:
+            return 0.0
+        if not self.control_config.min_current_a <= rounded <= self.control_config.max_current_a:
+            raise ValueError(
+                f"External current must be 0 A or between {self.control_config.min_current_a:g} A "
+                f"and {self.control_config.max_current_a:g} A"
+            )
+        return float(rounded)
 
     def _validate_runtime_current(self, current_a: float, label: str) -> float:
         current = float(current_a)
@@ -554,6 +593,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 effective_mode=self.effective_mode,
                 current_snapshot=getattr(self, "data", None),
                 allows_control_writes=self._allows_control_writes(),
+                blocked_reason=self._control_write_blocked_reason(),
                 enqueue_keepalive=self.write_runtime.enqueue_keepalive_if_needed,
             )
             await self.write_runtime.flush_write_queue()
@@ -584,6 +624,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 sensor_invalid_reason=sensors.reason_invalid,
                 queue_depth=await self.write_queue.size(),
                 pending_write_kind=await self.write_queue.peek_next_kind(),
+                control_writes_enabled=self._allows_current_writes(),
+                last_control_write_value_a=self.write_runtime.last_control_write_value_a,
+                last_control_write_reason=self.write_runtime.last_control_write_reason,
+                last_control_write_register=self.write_runtime.last_control_write_register,
+                last_control_write_age_s=self.write_runtime.last_control_write_age_seconds(),
+                last_control_write_blocked_reason=self.write_runtime.last_control_write_blocked_reason,
                 dlb_limit_a=decision.dlb_limit_a,
                 final_target_a=decision.final_target_a,
                 mode_target_a=decision.mode_target_a,
@@ -625,8 +671,22 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     def _allows_control_writes(self) -> bool:
         return self.control_config.control_mode == ControlMode.MANAGED_CONTROL
 
+    def _allows_current_writes(self) -> bool:
+        return self.control_config.control_mode in {
+            ControlMode.MANAGED_CONTROL,
+            ControlMode.EXTERNAL_CONTROLLER,
+        }
+
     def _allows_static_sync(self) -> bool:
-        return self.control_config.control_mode == ControlMode.MANAGED_CONTROL
+        return self.control_config.control_mode in {
+            ControlMode.MANAGED_CONTROL,
+            ControlMode.EXTERNAL_CONTROLLER,
+        }
+
+    def _control_write_blocked_reason(self) -> str:
+        if self.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+            return "external_controller_mode"
+        return "monitoring_only"
 
     async def _keepalive_loop(self) -> None:
         sleep_s = max(1.0, min(self.control_config.keepalive_interval_s / 2.0, 5.0))

@@ -7,6 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import WebastoUniteCoordinatorEntity
+from .models import ControlMode
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -31,6 +32,8 @@ class WebastoMaximumCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self):
+        if self.coordinator.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+            return getattr(self.coordinator, "_external_current_a", None) or self.coordinator.control_config.max_current_a
         return self.coordinator.control_config.max_current_a
 
     @property
@@ -42,6 +45,10 @@ class WebastoMaximumCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
         return 32.0
 
     async def async_set_native_value(self, value: float) -> None:
+        if self.coordinator.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+            await self.coordinator.async_set_external_current_limit(float(value))
+            await self.coordinator.async_request_refresh()
+            return
         self.coordinator.set_max_current(float(value))
         await self.coordinator.async_request_refresh()
 

@@ -155,6 +155,9 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["vehicle_phase_capability"].entity_category == "diagnostic"
     assert sensors["phase_switching_mode"].entity_category == "diagnostic"
     assert sensors["phase_switch_last_result"].entity_category == "diagnostic"
+    assert sensors["control_writes_enabled"].entity_category == "diagnostic"
+    assert sensors["last_control_write_reason"].entity_category == "diagnostic"
+    assert sensors["last_control_write_blocked_reason"].entity_category == "diagnostic"
 
 
 def test_voltage_and_session_time_registers_are_available():

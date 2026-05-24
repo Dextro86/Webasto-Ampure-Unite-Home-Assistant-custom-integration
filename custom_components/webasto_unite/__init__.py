@@ -24,7 +24,7 @@ from .const import (
     SERVICE_SET_USER_LIMIT,
     SERVICE_TRIGGER_RECONNECT,
 )
-from .models import ChargeMode, normalize_charge_mode
+from .models import ChargeMode, ControlMode, normalize_charge_mode
 from .coordinator import WebastoUniteCoordinator
 from .modbus_client import ModbusClientError
 
@@ -74,6 +74,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_set_limit(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
+        if coordinator.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+            await coordinator.async_set_external_current_limit(call.data["current_a"])
+            await coordinator.async_request_refresh()
+            return
         coordinator.set_max_current(call.data["current_a"])
         await coordinator.async_request_refresh()
 

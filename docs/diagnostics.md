@@ -11,6 +11,13 @@ Useful entities:
 - `Reconnect`
 - `Refresh`
 - `Control Reason`
+- `Control Writes Enabled`
+- `Control Owner`
+- `Last Control Write`
+- `Last Control Write Reason`
+- `Last Control Write Register`
+- `Last Control Write Age`
+- `Last Control Write Blocked Reason`
 - `Dominant Limit`
 - `Final Target`
 - `Reported Current Limit`
@@ -45,6 +52,22 @@ Useful entities:
 - `Solar Voltage Sum`
 
 Use these to check whether Solar input is available, stale, filtered, or limited by phase assumptions.
+
+## Write Diagnostics
+
+Use these entities when `Final Target` and `Reported Current Limit` do not match:
+
+- `Control Owner`: high-level source currently responsible for charging-current control, for example `Integration`, `External Controller`, `Solar`, `DLB`, `Fallback`, `Manual Pause` or `Monitoring Only`.
+- `Control Writes Enabled`: whether charging-current writes through this integration are available. This is true in `Enabled` and `External Controller` mode.
+- `Last Control Write`: last current value written to register `5004`.
+- `Last Control Write Reason`: why that write was made, for example Fixed Current, Solar, DLB or fallback.
+- `Last Control Write Register`: register used for the write.
+- `Last Control Write Age`: how long ago the last current write happened.
+- `Last Control Write Blocked Reason`: why a calculated write was not sent, for example `Monitoring Only` or `External Controller Mode`.
+
+In `Monitoring Only`, the integration may still calculate `Final Target`, but `Control Writes Enabled` is false and writes are not sent to the charger.
+
+In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off` and `Maximum Current` are still allowed and are recorded as `External Controller`.
 
 ## DLB Diagnostics
 

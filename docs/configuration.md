@@ -46,7 +46,7 @@ If monitoring is unreliable, first check that no other tool, automation or integ
 Main settings:
 
 - `Charger Configuration`: charger configuration for the integration, either `1P` or `3P`. Choose `3P` for a three-phase charger setup, even when some connected vehicles only charge on one phase.
-- `Integration Charging Control`: whether the integration may actively control the charger or stay in monitoring-only mode.
+- `Integration Charging Control`: who may actively control charging current: this integration, an external controller such as EVCC, or monitoring-only.
 - `Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
 - `Minimum Current (A)`: lowest current the integration may request. EV charging normally starts at `6 A`.
 - `Maximum Current (A)`: normal target current in `Normal` mode and the highest current the integration may request. Set this to match the charger and installation limit.
@@ -56,7 +56,7 @@ Recommended first setup:
 
 1. Set `Integration Charging Control` to `Monitoring Only`.
 2. Confirm that monitoring, connection state, currents and power values look correct.
-3. Switch `Integration Charging Control` to `Enabled` only after the monitored values are plausible.
+3. Switch `Integration Charging Control` to `Enabled` only after the monitored values are plausible, or choose `External Controller` when EVCC should manage charging current.
 
 If you want the integration to return to Solar charging after a Home Assistant restart, set `Default Mode` to the Solar option. The label of that option follows the configured Solar strategy, so it appears as `Eco Solar`, `Smart Solar` or `Solar Boost`. Solar must still be configured with a valid Solar strategy and sensor setup; otherwise startup falls back to `Normal`.
 
@@ -67,11 +67,13 @@ Restart behavior is intentionally split in two parts:
 
 This means a Home Assistant restart does not automatically resume charging if charging was previously turned off. It also means temporary runtime session settings are not restored after restart.
 
-`Charging On/Off` is only available when `Integration Charging Control` is `Enabled`. In `Monitoring Only` mode the integration keeps the charger alive and monitors it, but it does not write charging-current commands.
+`Charging On/Off` is available when `Integration Charging Control` is `Enabled` or `External Controller`. In `Monitoring Only` mode the integration keeps the charger alive and monitors it, but it does not write charging-current commands.
 
 When `Integration Charging Control` is `Monitoring Only`, `Charging Behavior` shows `Monitoring Only - Not Writing`. `Final Target` may still show the current the integration would choose, but that value is diagnostic only and is not written to the charger.
 
-`Pause Charging` and `Resume Charging` buttons are also available when `Integration Charging Control` is `Enabled`. They are convenience controls for the same charging-enabled state:
+When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `Maximum Current` remain writable so EVCC or another controller can control the charger through Home Assistant.
+
+`Pause Charging` and `Resume Charging` buttons are also available when `Integration Charging Control` is `Enabled` or `External Controller`. They are convenience controls for the same charging-enabled state:
 
 - `Pause Charging`: disables charging and lets the integration write `0 A`.
 - `Resume Charging`: enables charging again and lets the active mode calculate the next current target.
@@ -386,11 +388,13 @@ EVCC can use this charger through Home Assistant entities. This integration then
 
 Recommended setup when EVCC is the active charging manager:
 
-- Set `Integration Charging Control` to `Enabled`.
+- Set `Integration Charging Control` to `External Controller`.
 - Set `Default Mode` to `Normal`.
 - Keep this integration's Solar and DLB control disabled unless you intentionally want an additional local safety cap.
 - Do not run EVCC Solar control and this integration's Solar control at the same time.
 - Automatic phase switching is not provided by this integration. Experimental manual phase switching is not intended for EVCC automation yet.
+
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `Maximum Current`.
 
 Relevant entities:
 
@@ -401,25 +405,32 @@ Relevant entities:
 - `Current L1`, `Current L2`, `Current L3`: phase currents.
 - `EVCC Status`: diagnostic support sensor with stable attributes.
 
-Example `evcc.yaml` charger section. Replace entity IDs with your actual Home Assistant entity IDs:
+Example `evcc.yaml` charger section. Replace every entity ID with the actual entity ID from your Home Assistant instance:
 
 ```yaml
 chargers:
   - name: webasto_unite_ha
-    type: homeassistant
+    type: template
+    template: homeassistant
     uri: http://homeassistant.local:8123
     token: ${HA_TOKEN}
     status: sensor.webasto_unite_iec_61851_state
     enabled: switch.webasto_unite_allow_charging
+    enable: switch.webasto_unite_allow_charging
     setMaxCurrent: number.webasto_unite_current_limit
     power: sensor.webasto_unite_active_power
-    currents:
-      - sensor.webasto_unite_current_l1
-      - sensor.webasto_unite_current_l2
-      - sensor.webasto_unite_current_l3
+    energy: sensor.webasto_unite_energy_meter
+    currentL1: sensor.webasto_unite_current_l1
+    currentL2: sensor.webasto_unite_current_l2
+    currentL3: sensor.webasto_unite_current_l3
+    voltageL1: sensor.webasto_unite_voltage_l1
+    voltageL2: sensor.webasto_unite_voltage_l2
+    voltageL3: sensor.webasto_unite_voltage_l3
 ```
 
 If EVCC cannot enable charging, verify that `Charging On/Off` is available in Home Assistant. It is unavailable when `Integration Charging Control` is `Monitoring Only`.
+
+Do not configure EVCC `phaseswitch` for this integration yet. Experimental manual phase switching is not intended for EVCC automation and is not exposed as the EVCC Home Assistant phase-switch select with options `1` and `3`.
 
 ## Important entities
 

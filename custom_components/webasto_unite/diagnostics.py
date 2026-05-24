@@ -4,6 +4,7 @@ from __future__ import annotations
 from homeassistant.components.diagnostics import async_redact_data
 
 from .const import DOMAIN
+from .control_owner import derive_control_owner_from_snapshot
 
 TO_REDACT = {"host", "serial_number", "charge_point_id"}
 
@@ -36,6 +37,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "effective_mode": coordinator.data.effective_mode.value,
                 "operating_state": coordinator.data.operating_state,
                 "control_mode": coordinator.data.control_mode.value,
+                "control_owner": derive_control_owner_from_snapshot(coordinator.data),
                 "capability_summary": coordinator.data.capability_summary,
                 "control_reason": coordinator.data.control_reason,
                 "charging_paused": coordinator.data.charging_paused,
@@ -50,6 +52,12 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "fallback_active": coordinator.data.fallback_active,
                 "sensor_snapshot_valid": coordinator.data.sensor_snapshot_valid,
                 "sensor_invalid_reason": coordinator.data.sensor_invalid_reason,
+                "control_writes_enabled": coordinator.data.control_writes_enabled,
+                "last_control_write_value_a": coordinator.data.last_control_write_value_a,
+                "last_control_write_reason": coordinator.data.last_control_write_reason,
+                "last_control_write_register": coordinator.data.last_control_write_register,
+                "last_control_write_age_s": coordinator.data.last_control_write_age_s,
+                "last_control_write_blocked_reason": coordinator.data.last_control_write_blocked_reason,
                 "mode_target_a": coordinator.data.mode_target_a,
                 "dlb_limit_a": coordinator.data.dlb_limit_a,
                 "final_target_a": coordinator.data.final_target_a,
