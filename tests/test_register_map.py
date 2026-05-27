@@ -176,6 +176,7 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["phase_policy_required_surplus_1p"].entity_category == "diagnostic"
     assert sensors["phase_policy_required_surplus_3p"].entity_category == "diagnostic"
     assert sensors["phase_switch_last_result"].entity_category == "diagnostic"
+    assert sensors["phase_switch_state"].entity_category == "diagnostic"
     assert sensors["control_writes_enabled"].entity_category == "diagnostic"
     assert sensors["last_control_write_reason"].entity_category == "diagnostic"
     assert sensors["last_control_write_blocked_reason"].entity_category == "diagnostic"

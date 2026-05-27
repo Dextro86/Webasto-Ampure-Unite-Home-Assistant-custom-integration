@@ -358,6 +358,14 @@ def test_manual_phase_switch_pauses_writes_phase_and_resumes():
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
         coordinator.write_queue = WriteQueueManager()
         coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=0))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=True, phases_in_use=1),
+                    WallboxState(available=True, charging_active=True, phases_in_use=1),
+                ]
+            )
+        )
         coordinator._phase_switch_sleep = AsyncMock()
         coordinator.async_request_refresh = AsyncMock()
         coordinator.data = SimpleNamespace(
@@ -377,9 +385,10 @@ def test_manual_phase_switch_pauses_writes_phase_and_resumes():
         assert coordinator.client.write.await_args_list[0].args == (SET_CHARGE_CURRENT_A, 0)
         assert coordinator.client.write.await_args_list[1].args == (PHASE_SWITCH_MODE, 0)
         assert coordinator.client.write.await_args_list[2].args == (SET_CHARGE_CURRENT_A, 16)
-        assert coordinator._phase_switch_sleep.await_count == 2
+        assert coordinator._phase_switch_sleep.await_count == 5
         coordinator.client.read.assert_awaited_once_with(PHASE_SWITCH_MODE)
-        assert coordinator._phase_switch_last_result == "verified"
+        assert coordinator._phase_switch_last_result == "physical_verified"
+        assert coordinator._phase_switch_state == "physical_verified"
         assert coordinator._phase_switch_last_target == "1P"
         assert coordinator._phase_session_override_active is True
         assert coordinator._phase_session_target == "1P"
@@ -395,6 +404,14 @@ def test_manual_3p_phase_switch_allows_likely_1p_vehicle_because_observation_is_
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
         coordinator.write_queue = WriteQueueManager()
         coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=1))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=True, phases_in_use=3),
+                    WallboxState(available=True, charging_active=True, phases_in_use=3),
+                ]
+            )
+        )
         coordinator._phase_switch_sleep = AsyncMock()
         coordinator.async_request_refresh = AsyncMock()
         coordinator.data = SimpleNamespace(
@@ -413,7 +430,7 @@ def test_manual_3p_phase_switch_allows_likely_1p_vehicle_because_observation_is_
         await coordinator.async_request_phase_switch(3)
 
         assert coordinator.client.write.await_args_list[1].args == (PHASE_SWITCH_MODE, 1)
-        assert coordinator._phase_switch_last_result == "verified"
+        assert coordinator._phase_switch_last_result == "physical_verified"
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_session_target is None
 
@@ -468,7 +485,47 @@ def test_manual_phase_switch_marks_unverified_when_register_405_does_not_confirm
             await coordinator.async_request_phase_switch(1)
 
         assert coordinator.client.write.await_args_list[0].args == (PHASE_SWITCH_MODE, 0)
-        assert coordinator._phase_switch_last_result == "unverified"
+        assert coordinator._phase_switch_last_result == "register_unverified"
+
+    asyncio.run(_run())
+
+
+def test_manual_phase_switch_reports_physical_mismatch_when_register_confirms_but_phases_do_not_change():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=0))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=True, phases_in_use=3),
+                    WallboxState(available=True, charging_active=True, phases_in_use=3),
+                ]
+            )
+        )
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                charge_point_phase_count=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                current_limit_a=16.0,
+                phases_in_use=3,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        await coordinator.async_request_phase_switch(1)
+
+        assert coordinator._phase_switch_last_result == "register_verified_physical_mismatch"
+        assert coordinator._phase_switch_last_block_reason == "physical_phase_mismatch"
+        assert coordinator._phase_switch_state == "register_verified_physical_mismatch"
 
     asyncio.run(_run())
 
@@ -497,7 +554,7 @@ def test_restore_default_phase_can_run_without_connected_vehicle():
 
         coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
         coordinator.client.read.assert_awaited_once_with(PHASE_SWITCH_MODE)
-        assert coordinator._phase_switch_last_result == "verified"
+        assert coordinator._phase_switch_last_result == "register_verified"
         assert coordinator._phase_switch_last_target == "3P"
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_restore_pending is False
@@ -528,6 +585,47 @@ def test_restore_default_phase_noops_when_already_in_default_mode():
 
         coordinator.client.write.assert_not_called()
         assert coordinator._phase_switch_last_result == "already_in_target_phase"
+        assert coordinator._phase_switch_last_target == "3P"
+
+    asyncio.run(_run())
+
+
+def test_restore_default_phase_rewrites_when_register_matches_but_physical_phases_do_not():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=1))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=True, phases_in_use=1),
+                    WallboxState(available=True, charging_active=True, phases_in_use=1),
+                ]
+            )
+        )
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                charge_point_phase_count=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                current_limit_a=9.0,
+                phases_in_use=1,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        await coordinator.async_restore_default_phase_mode()
+
+        assert coordinator.client.write.await_args_list[0].args == (SET_CHARGE_CURRENT_A, 0)
+        assert coordinator.client.write.await_args_list[1].args == (PHASE_SWITCH_MODE, 1)
+        assert coordinator._phase_switch_last_result == "register_verified_physical_mismatch"
         assert coordinator._phase_switch_last_target == "3P"
 
     asyncio.run(_run())
@@ -725,12 +823,14 @@ def test_reset_phase_switch_state_clears_diagnostics():
     coordinator._phase_switch_last_result = "blocked"
     coordinator._phase_switch_last_block_reason = "vehicle_likely_1p"
     coordinator._phase_switch_last_target = "3P"
+    coordinator._phase_switch_state = "blocked"
 
     coordinator.reset_phase_switch_state()
 
     assert coordinator._phase_switch_last_result is None
     assert coordinator._phase_switch_last_block_reason is None
     assert coordinator._phase_switch_last_target is None
+    assert coordinator._phase_switch_state == "idle"
 
 
 def test_pause_and_resume_buttons_use_charging_enabled_state():

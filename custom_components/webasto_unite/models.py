@@ -434,6 +434,7 @@ class RuntimeSnapshot:
     phase_switch_last_result: Optional[str] = None
     phase_switch_last_block_reason: Optional[str] = None
     phase_switch_last_target: Optional[str] = None
+    phase_switch_state: Optional[str] = None
     dominant_limit_reason: Optional[str] = None
     fallback_active: bool = False
     last_client_error: str | None = None
@@ -510,6 +511,7 @@ class RuntimeSnapshot:
             "phase_switch_last_result": self.phase_switch_last_result,
             "phase_switch_last_block_reason": self.phase_switch_last_block_reason,
             "phase_switch_last_target": self.phase_switch_last_target,
+            "phase_switch_state": self.phase_switch_state,
             "dominant_limit_reason": self.dominant_limit_reason,
             "fallback_active": self.fallback_active,
             "last_client_error": self.last_client_error,

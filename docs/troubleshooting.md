@@ -116,6 +116,7 @@ Check:
 - vehicle is connected
 - `Phase Switch Available`
 - `Phase Switch Block Reason`
+- `Phase Switch State`
 - `Vehicle Phase Capability`
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch.
@@ -123,6 +124,8 @@ Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is norm
 If `Phase Switch Block Reason` says `Charger Preconfigured 1P`, register `404` reports that the charger itself is configured as 1P. In that case the integration blocks 1P/3P switching.
 
 Use `Restore Default Phase Mode` if register `405` was manually changed and you want to return to the configured `Charger Configuration`.
+
+If `Last Phase Switch Result` says `Register Verified, Physical Mismatch`, register `405` accepted the requested value but the active charging session did not physically move to the requested phase count. This is useful test information and means phase switching should not be automated for that scenario yet.
 
 If `Phase Restore Pending` stays on after unplug, check the charger connection and `Last Phase Switch Block Reason`, then use `Restore Default Phase Mode` manually.
 

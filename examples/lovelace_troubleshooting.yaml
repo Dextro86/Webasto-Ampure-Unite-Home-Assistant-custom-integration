@@ -86,6 +86,8 @@ cards:
         name: Phase Switch Available
       - entity: sensor.webasto_unite_phase_switch_block_reason
         name: Phase Switch Block Reason
+      - entity: sensor.webasto_unite_phase_switch_state
+        name: Phase Switch State
       - entity: sensor.webasto_unite_phase_session_override
         name: Phase Session Override
       - entity: sensor.webasto_unite_phase_restore_pending

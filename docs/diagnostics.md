@@ -99,6 +99,13 @@ Automatic phase switching is not included. Manual phase switching is experimenta
 
 Manual switching uses register `404` only as charger configuration/capability context and register `405` as the writable phase-switch mode. Measured active phases are diagnostic only.
 
+Manual phase switching reports two different checks:
+
+- Register verification: register `405` readback matches the requested value.
+- Physical verification: after charging resumes, measured active phases match the requested phase count for multiple polls.
+
+This distinction matters because some chargers can accept the register write before the current charging session physically changes phases.
+
 `Default Phase Mode` is derived from `Charger Configuration` and used by the restore button/service.
 
 `Phase Session Override`, `Phase Session Target` and `Phase Restore Pending` show whether a manual switch has temporarily moved register `405` away from `Charger Configuration` and whether restore still needs attention.
@@ -117,6 +124,7 @@ Useful diagnostic entities:
 - `Last Phase Switch Result`
 - `Last Phase Switch Block Reason`
 - `Last Phase Switch Target`
+- `Phase Switch State`
 
 ## Debug Logging
 

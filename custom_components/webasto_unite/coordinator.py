@@ -146,6 +146,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_switch_last_result: str | None = None
         self._phase_switch_last_block_reason: str | None = None
         self._phase_switch_last_target: str | None = None
+        self._phase_switch_state: str | None = "idle"
         self._phase_session_override_active = False
         self._phase_session_target: str | None = None
         self._phase_restore_pending = False
@@ -268,6 +269,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._phase_switch_last_block_reason = None
         if not hasattr(self, "_phase_switch_last_target"):
             self._phase_switch_last_target = None
+        if not hasattr(self, "_phase_switch_state"):
+            self._phase_switch_state = "idle"
         if not hasattr(self, "_phase_session_override_active"):
             self._phase_session_override_active = False
         if not hasattr(self, "_phase_session_target"):
@@ -279,6 +282,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self.phase_switch_manager.last_result = self._phase_switch_last_result
             self.phase_switch_manager.last_block_reason = self._phase_switch_last_block_reason
             self.phase_switch_manager.last_target = self._phase_switch_last_target
+            self.phase_switch_manager.state = self._phase_switch_state or "idle"
         if not hasattr(self, "_external_current_a"):
             self._external_current_a = None
         if not hasattr(self, "_phase_switch_sleep"):
@@ -457,6 +461,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 write_queue=self.write_queue,
                 flush_lock=self.write_runtime.flush_lock,
                 sleep=self._phase_switch_sleep,
+                read_wallbox=self._read_wallbox_for_phase_switch,
             )
         finally:
             self._sync_phase_switch_diagnostics()
@@ -473,10 +478,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         target_phases = 1 if self._configured_installed_phases() == PHASE_MODE_1P else 3
         current_snapshot = getattr(self, "data", None)
         wallbox = wallbox or getattr(current_snapshot, "wallbox", None)
-        if wallbox is not None and wallbox.phase_switch_mode_raw == (0 if target_phases == 1 else 1):
+        if (
+            wallbox is not None
+            and wallbox.phase_switch_mode_raw == (0 if target_phases == 1 else 1)
+            and self._observed_phases_match_target(wallbox, target_phases)
+        ):
             self.phase_switch_manager.last_target = f"{target_phases}P"
             self.phase_switch_manager.last_result = "already_in_target_phase"
             self.phase_switch_manager.last_block_reason = None
+            self.phase_switch_manager.state = "already_in_target_phase"
             self._sync_phase_switch_diagnostics()
             self._clear_phase_session_override()
             if request_refresh:
@@ -492,6 +502,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 write_queue=self.write_queue,
                 flush_lock=self.write_runtime.flush_lock,
                 sleep=self._phase_switch_sleep,
+                read_wallbox=self._read_wallbox_for_phase_switch,
                 require_vehicle=False,
             )
         finally:
@@ -509,6 +520,19 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_switch_last_result = self.phase_switch_manager.last_result
         self._phase_switch_last_block_reason = self.phase_switch_manager.last_block_reason
         self._phase_switch_last_target = self.phase_switch_manager.last_target
+        self._phase_switch_state = self.phase_switch_manager.state
+
+    async def _read_wallbox_for_phase_switch(self) -> WallboxState | None:
+        if not hasattr(self, "wallbox_reader"):
+            current_snapshot = getattr(self, "data", None)
+            return getattr(current_snapshot, "wallbox", None)
+        return await self.wallbox_reader.read_wallbox_state(self._configured_installed_phases())
+
+    @staticmethod
+    def _observed_phases_match_target(wallbox: WallboxState, target_phases: int) -> bool:
+        if not wallbox.charging_active:
+            return True
+        return wallbox.phases_in_use == target_phases
 
     def _update_phase_session_override(self, target_phases: int) -> None:
         default_target = 1 if self._configured_installed_phases() == PHASE_MODE_1P else 3
@@ -775,6 +799,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 phase_switch_last_result=self._phase_switch_last_result,
                 phase_switch_last_block_reason=self._phase_switch_last_block_reason,
                 phase_switch_last_target=self._phase_switch_last_target,
+                phase_switch_state=self._phase_switch_state,
                 dominant_limit_reason=decision.dominant_limit_reason.value if decision.dominant_limit_reason is not None else None,
                 fallback_active=decision.fallback_active,
                 last_client_error=self.client.stats.last_error,
