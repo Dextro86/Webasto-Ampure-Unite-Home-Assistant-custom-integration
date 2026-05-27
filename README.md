@@ -150,7 +150,7 @@ Manual switching separates pause confirmation, register verification and physica
 
 Manual switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode.
 
-The integration also exposes diagnostic-only phase policy sensors. These show what future Solar automatic phase switching would request, but they do not perform automatic switching.
+The integration also exposes diagnostic-only phase policy sensors. These show what future Solar automatic phase switching would request, how long the request has been stable, whether cooldown/session guards would block it, and whether the dry-run policy would be ready. They do not perform automatic switching.
 
 ## Stability-First Design
 

@@ -113,6 +113,15 @@ This distinction matters because some chargers can accept the register write bef
 
 `Phase Policy Decision` is diagnostic-only. It shows what the future Solar phase-switching policy would request, but it never writes register `405`.
 
+The auto-policy dry run also exposes:
+
+- `Phase Policy Auto Ready`: true only when the same 1P/3P target has been stable long enough and no dry-run guard blocks it.
+- `Phase Policy Auto Block Reason`: for example `Waiting For Stable Surplus`, `Cooldown Active` or `Session Switch Limit Reached`.
+- `Phase Policy Stable Time`: how long the current dry-run target has remained stable.
+- `Phase Policy Required Stable Time`: the required stability window before automatic switching would be allowed.
+- `Phase Policy Cooldown Remaining`: remaining cooldown after a phase switch.
+- `Phase Policy Session Switch Count` and `Phase Policy Session Switch Limit`: dry-run protection against excessive switching in one plug-in session.
+
 Useful diagnostic entities:
 
 - `Charger Configured Phases`

@@ -78,7 +78,7 @@ Phase engine currently supports only experimental manual phase-switch execution.
 
 Phase restore is restart-safe: if register `405` differs from `Charger Configuration` and no vehicle is connected, the coordinator may restore it. If a vehicle is connected, it only marks restore pending.
 
-Phase policy is currently diagnostic-only. It evaluates whether Solar conditions would justify 1P or 3P, but it does not execute automatic phase switching.
+Phase policy is currently diagnostic-only. It evaluates whether Solar conditions would justify 1P or 3P, tracks how long the same target has remained stable, applies dry-run cooldown/session-count guards, and reports whether future automatic switching would be ready. It does not execute automatic phase switching.
 
 ## Safety Philosophy
 

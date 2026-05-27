@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import timedelta
 from time import monotonic
 
@@ -105,9 +106,16 @@ from .models import (
     normalize_solar_override_strategy,
 )
 from .operating_status import build_operating_state
-from .phase_engine import PHASE_SWITCH_RESUME_RETRY_PAUSE_S, PhaseSwitchManager
+from .phase_engine import PHASE_SWITCH_RESUME_RETRY_PAUSE_S, REGISTER_ACCEPTED_RESULTS, PhaseSwitchManager
 from .phase_observer import build_phase_observability
-from .phase_policy import evaluate_phase_policy
+from .phase_policy import (
+    AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
+    AUTO_PHASE_STABLE_TO_1P_S,
+    AUTO_PHASE_STABLE_TO_3P_S,
+    AUTO_PHASE_SWITCH_COOLDOWN_S,
+    PhasePolicyDecision,
+    evaluate_phase_policy,
+)
 from .registers import SET_CHARGE_CURRENT_A
 from .runtime_guards import RuntimeGuards
 from .sensor_adapter import HaSensorAdapter
@@ -150,6 +158,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_session_override_active = False
         self._phase_session_target: str | None = None
         self._phase_restore_pending = False
+        self._phase_policy_candidate_target: str | None = None
+        self._phase_policy_candidate_since_monotonic: float | None = None
+        self._phase_policy_last_switch_monotonic: float | None = None
+        self._phase_policy_session_switch_count = 0
         self.phase_switch_manager = PhaseSwitchManager()
         self._external_current_a: float | None = None
         self._sensor_unsubscribers = []
@@ -277,6 +289,14 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._phase_session_target = None
         if not hasattr(self, "_phase_restore_pending"):
             self._phase_restore_pending = False
+        if not hasattr(self, "_phase_policy_candidate_target"):
+            self._phase_policy_candidate_target = None
+        if not hasattr(self, "_phase_policy_candidate_since_monotonic"):
+            self._phase_policy_candidate_since_monotonic = None
+        if not hasattr(self, "_phase_policy_last_switch_monotonic"):
+            self._phase_policy_last_switch_monotonic = None
+        if not hasattr(self, "_phase_policy_session_switch_count"):
+            self._phase_policy_session_switch_count = 0
         if not hasattr(self, "phase_switch_manager"):
             self.phase_switch_manager = PhaseSwitchManager()
             self.phase_switch_manager.last_result = self._phase_switch_last_result
@@ -468,7 +488,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
         finally:
             self._sync_phase_switch_diagnostics()
-        self._update_phase_session_override(target_phases)
+        if self._phase_switch_last_result in REGISTER_ACCEPTED_RESULTS:
+            self._record_phase_policy_switch_attempt()
+            self._update_phase_session_override(target_phases)
         await self.async_request_refresh()
 
     async def async_restore_default_phase_mode(
@@ -513,6 +535,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
         finally:
             self._sync_phase_switch_diagnostics()
+        if wallbox is not None and wallbox.vehicle_connected and self._phase_switch_last_result in REGISTER_ACCEPTED_RESULTS:
+            self._record_phase_policy_switch_attempt()
         self._clear_phase_session_override()
         if request_refresh:
             await self.async_request_refresh()
@@ -521,6 +545,67 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._ensure_runtime_defaults()
         self.phase_switch_manager.reset()
         self._sync_phase_switch_diagnostics()
+
+    def _reset_phase_policy_dry_run_state(self) -> None:
+        self._phase_policy_candidate_target = None
+        self._phase_policy_candidate_since_monotonic = None
+        self._phase_policy_last_switch_monotonic = None
+        self._phase_policy_session_switch_count = 0
+
+    def _record_phase_policy_switch_attempt(self) -> None:
+        self._phase_policy_last_switch_monotonic = monotonic()
+        self._phase_policy_session_switch_count += 1
+        self._phase_policy_candidate_target = None
+        self._phase_policy_candidate_since_monotonic = None
+
+    def _apply_phase_policy_dry_run(self, phase_policy: PhasePolicyDecision) -> PhasePolicyDecision:
+        now = monotonic()
+        cooldown_remaining_s = 0.0
+        if self._phase_policy_last_switch_monotonic is not None:
+            cooldown_remaining_s = max(
+                0.0,
+                AUTO_PHASE_SWITCH_COOLDOWN_S - (now - self._phase_policy_last_switch_monotonic),
+            )
+
+        target = phase_policy.target if phase_policy.decision in {"would_request_1p", "would_request_3p"} else None
+        if target is None:
+            self._phase_policy_candidate_target = None
+            self._phase_policy_candidate_since_monotonic = None
+            return replace(
+                phase_policy,
+                auto_ready=False,
+                auto_block_reason=phase_policy.block_reason,
+                stable_elapsed_s=None,
+                stable_required_s=None,
+                cooldown_remaining_s=round(cooldown_remaining_s, 1),
+                session_switch_count=self._phase_policy_session_switch_count,
+                session_switch_limit=AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
+            )
+
+        if self._phase_policy_candidate_target != target:
+            self._phase_policy_candidate_target = target
+            self._phase_policy_candidate_since_monotonic = now
+
+        stable_elapsed_s = max(0.0, now - (self._phase_policy_candidate_since_monotonic or now))
+        stable_required_s = AUTO_PHASE_STABLE_TO_1P_S if target == "1P" else AUTO_PHASE_STABLE_TO_3P_S
+        auto_block_reason = None
+        if cooldown_remaining_s > 0:
+            auto_block_reason = "cooldown_active"
+        elif self._phase_policy_session_switch_count >= AUTO_PHASE_MAX_SWITCHES_PER_SESSION:
+            auto_block_reason = "session_switch_limit_reached"
+        elif stable_elapsed_s < stable_required_s:
+            auto_block_reason = "waiting_for_stable_surplus"
+
+        return replace(
+            phase_policy,
+            auto_ready=auto_block_reason is None,
+            auto_block_reason=auto_block_reason,
+            stable_elapsed_s=round(stable_elapsed_s, 1),
+            stable_required_s=stable_required_s,
+            cooldown_remaining_s=round(cooldown_remaining_s, 1),
+            session_switch_count=self._phase_policy_session_switch_count,
+            session_switch_limit=AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
+        )
 
     def _sync_phase_switch_diagnostics(self) -> None:
         self._phase_switch_last_result = self.phase_switch_manager.last_result
@@ -683,6 +768,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 self._fixed_current_until_unplug_active = False
                 self.controller.reset_solar_state()
                 self.controller.reset_session_phase_observation()
+                self._reset_phase_policy_dry_run_state()
 
             if self._phase_session_override_active and self._last_vehicle_connected and not wallbox.vehicle_connected:
                 self._phase_restore_pending = True
@@ -699,6 +785,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
             if not self._last_vehicle_connected and wallbox.vehicle_connected:
                 self.controller.reset_current_write_state()
+                self._reset_phase_policy_dry_run_state()
 
             self._last_vehicle_connected = wallbox.vehicle_connected
 
@@ -731,6 +818,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 filtered_surplus_w=self.controller.solar_state.filtered_surplus_w,
                 phase_restore_pending=self._phase_restore_pending,
             )
+            phase_policy = self._apply_phase_policy_dry_run(phase_policy)
 
             # Apply transient/startup guards after the controller decision is
             # built, but before anything is enqueued for writing.
@@ -818,6 +906,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 phase_policy_target=phase_policy.target,
                 phase_policy_required_surplus_1p_w=phase_policy.required_surplus_1p_w,
                 phase_policy_required_surplus_3p_w=phase_policy.required_surplus_3p_w,
+                phase_policy_auto_ready=phase_policy.auto_ready,
+                phase_policy_auto_block_reason=phase_policy.auto_block_reason,
+                phase_policy_stable_elapsed_s=phase_policy.stable_elapsed_s,
+                phase_policy_stable_required_s=phase_policy.stable_required_s,
+                phase_policy_cooldown_remaining_s=phase_policy.cooldown_remaining_s,
+                phase_policy_session_switch_count=phase_policy.session_switch_count,
+                phase_policy_session_switch_limit=phase_policy.session_switch_limit,
                 phase_switch_last_result=self._phase_switch_last_result,
                 phase_switch_last_block_reason=self._phase_switch_last_block_reason,
                 phase_switch_last_target=self._phase_switch_last_target,

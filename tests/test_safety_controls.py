@@ -38,6 +38,7 @@ from custom_components.webasto_unite.models import ChargeMode, ControlConfig, Co
 from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoRequestedCurrentNumber, WebastoFixedCurrentNumber
 from custom_components.webasto_unite.number import async_setup_entry as number_async_setup_entry
 from custom_components.webasto_unite.operating_status import build_operating_state
+from custom_components.webasto_unite.phase_policy import AUTO_PHASE_STABLE_TO_1P_S, PhasePolicyDecision
 from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 from custom_components.webasto_unite.runtime_guards import RuntimeGuards, RuntimeGuardState
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
@@ -542,6 +543,55 @@ def test_manual_phase_switch_reports_physical_timeout_when_register_confirms_but
     asyncio.run(_run())
 
 
+def test_manual_phase_switch_keeps_session_override_when_register_confirmed_but_physical_times_out():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=0))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=False, active_power_w=0.0),
+                    *[
+                        WallboxState(
+                            available=True,
+                            charging_active=True,
+                            phases_in_use=3,
+                            phase_switch_mode_raw=0,
+                        )
+                        for _ in range(24)
+                    ],
+                ]
+            )
+        )
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                charge_point_phase_count=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                current_limit_a=16.0,
+                phases_in_use=3,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        await coordinator.async_request_phase_switch(1)
+
+        assert coordinator._phase_switch_last_result == "physical_timeout"
+        assert coordinator._phase_session_override_active is True
+        assert coordinator._phase_session_target == "1P"
+        assert coordinator._phase_restore_pending is False
+
+    asyncio.run(_run())
+
+
 def test_manual_phase_switch_retries_resume_when_vehicle_does_not_resume():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -600,6 +650,43 @@ def test_manual_phase_switch_retries_resume_when_vehicle_does_not_resume():
         assert coordinator.write_runtime.last_control_write_value_a == 16.0
 
     asyncio.run(_run())
+
+
+def test_phase_policy_dry_run_waits_for_stable_target_before_auto_ready():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._phase_policy_candidate_target = None
+    coordinator._phase_policy_candidate_since_monotonic = None
+    coordinator._phase_policy_last_switch_monotonic = None
+    coordinator._phase_policy_session_switch_count = 0
+
+    initial = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
+
+    assert initial.auto_ready is False
+    assert initial.auto_block_reason == "waiting_for_stable_surplus"
+    assert initial.stable_required_s == AUTO_PHASE_STABLE_TO_1P_S
+
+    coordinator._phase_policy_candidate_since_monotonic = monotonic() - AUTO_PHASE_STABLE_TO_1P_S - 1
+
+    ready = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
+
+    assert ready.auto_ready is True
+    assert ready.auto_block_reason is None
+    assert ready.stable_elapsed_s >= AUTO_PHASE_STABLE_TO_1P_S
+
+
+def test_phase_policy_dry_run_cooldown_blocks_auto_ready_after_switch():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._phase_policy_candidate_target = "1P"
+    coordinator._phase_policy_candidate_since_monotonic = monotonic() - AUTO_PHASE_STABLE_TO_1P_S - 1
+    coordinator._phase_policy_last_switch_monotonic = monotonic()
+    coordinator._phase_policy_session_switch_count = 1
+
+    decision = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
+
+    assert decision.auto_ready is False
+    assert decision.auto_block_reason == "cooldown_active"
+    assert decision.cooldown_remaining_s > 0
+    assert decision.session_switch_count == 1
 
 
 def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():

@@ -39,6 +39,14 @@ _TERMINAL_STATES = {
     "already_in_target_phase",
 }
 
+REGISTER_ACCEPTED_RESULTS = {
+    "register_verified",
+    "physical_verified",
+    "physical_timeout",
+    "vehicle_did_not_resume",
+    "already_in_target_phase",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class PhaseSwitchPlan:

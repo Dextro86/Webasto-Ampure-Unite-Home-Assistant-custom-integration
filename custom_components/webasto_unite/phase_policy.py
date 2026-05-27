@@ -6,6 +6,11 @@ from .const import PHASE_SWITCHING_MODE_MANUAL_ONLY
 from .electrical import voltage_sum_for_phases
 from .models import ChargeMode, ControlDecision, ControlReason, SolarControlStrategy, WallboxState
 
+AUTO_PHASE_STABLE_TO_1P_S = 300.0
+AUTO_PHASE_STABLE_TO_3P_S = 600.0
+AUTO_PHASE_SWITCH_COOLDOWN_S = 1200.0
+AUTO_PHASE_MAX_SWITCHES_PER_SESSION = 4
+
 
 @dataclass(frozen=True, slots=True)
 class PhasePolicyDecision:
@@ -14,6 +19,13 @@ class PhasePolicyDecision:
     block_reason: str | None = None
     required_surplus_1p_w: float | None = None
     required_surplus_3p_w: float | None = None
+    auto_ready: bool = False
+    auto_block_reason: str | None = None
+    stable_elapsed_s: float | None = None
+    stable_required_s: float | None = None
+    cooldown_remaining_s: float | None = None
+    session_switch_count: int = 0
+    session_switch_limit: int = AUTO_PHASE_MAX_SWITCHES_PER_SESSION
 
 
 def evaluate_phase_policy(

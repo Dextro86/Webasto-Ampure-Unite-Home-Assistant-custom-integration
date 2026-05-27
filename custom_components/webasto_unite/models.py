@@ -431,6 +431,13 @@ class RuntimeSnapshot:
     phase_policy_target: Optional[str] = None
     phase_policy_required_surplus_1p_w: Optional[float] = None
     phase_policy_required_surplus_3p_w: Optional[float] = None
+    phase_policy_auto_ready: bool = False
+    phase_policy_auto_block_reason: Optional[str] = None
+    phase_policy_stable_elapsed_s: Optional[float] = None
+    phase_policy_stable_required_s: Optional[float] = None
+    phase_policy_cooldown_remaining_s: Optional[float] = None
+    phase_policy_session_switch_count: int = 0
+    phase_policy_session_switch_limit: int = 0
     phase_switch_last_result: Optional[str] = None
     phase_switch_last_block_reason: Optional[str] = None
     phase_switch_last_target: Optional[str] = None
@@ -513,6 +520,13 @@ class RuntimeSnapshot:
             "phase_policy_target": self.phase_policy_target,
             "phase_policy_required_surplus_1p_w": self.phase_policy_required_surplus_1p_w,
             "phase_policy_required_surplus_3p_w": self.phase_policy_required_surplus_3p_w,
+            "phase_policy_auto_ready": self.phase_policy_auto_ready,
+            "phase_policy_auto_block_reason": self.phase_policy_auto_block_reason,
+            "phase_policy_stable_elapsed_s": self.phase_policy_stable_elapsed_s,
+            "phase_policy_stable_required_s": self.phase_policy_stable_required_s,
+            "phase_policy_cooldown_remaining_s": self.phase_policy_cooldown_remaining_s,
+            "phase_policy_session_switch_count": self.phase_policy_session_switch_count,
+            "phase_policy_session_switch_limit": self.phase_policy_session_switch_limit,
             "phase_switch_last_result": self.phase_switch_last_result,
             "phase_switch_last_block_reason": self.phase_switch_last_block_reason,
             "phase_switch_last_target": self.phase_switch_last_target,
