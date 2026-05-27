@@ -89,9 +89,9 @@ cards:
       - entity: sensor.webasto_unite_phase_policy_block_reason
         name: Phase Policy Block Reason
       - entity: button.webasto_unite_request_1p_phase_mode
-        name: Request 1P Phase Mode
+        name: Request 1P Mode
       - entity: button.webasto_unite_request_3p_phase_mode
-        name: Request 3P Phase Mode
+        name: Request 3P Mode
       - entity: button.webasto_unite_restore_default_phase_mode
         name: Restore Default Phase Mode
 

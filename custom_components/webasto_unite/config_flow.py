@@ -329,8 +329,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         )
 
         schema: dict[Any, Any] = {
-            vol.Optional("connection", default=connection_defaults): section(connection_schema, {"collapsed": False}),
-            vol.Optional("general_charging", default=general_defaults): section(general_schema, {"collapsed": False}),
+            vol.Optional("connection", default=connection_defaults): section(connection_schema, {"collapsed": True}),
+            vol.Optional("general_charging", default=general_defaults): section(general_schema, {"collapsed": True}),
             vol.Optional("dynamic_load_balancing", default=dlb_defaults): section(vol.Schema(dlb_fields), {"collapsed": True}),
             vol.Optional("solar_charging", default=solar_defaults): section(vol.Schema(solar_fields), {"collapsed": True}),
             vol.Optional("advanced", default=advanced_defaults): section(advanced_schema, {"collapsed": True}),

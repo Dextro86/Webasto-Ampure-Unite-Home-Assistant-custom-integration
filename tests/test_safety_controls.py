@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from homeassistant.config_entries import ConfigEntryNotReady
+from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.webasto_unite.config_flow import (
@@ -795,6 +796,12 @@ def test_manual_phase_switch_buttons_call_phase_switch_services():
         restore = WebastoRestoreDefaultPhaseButton(coordinator)
         reset = WebastoResetPhaseSwitchStateButton(coordinator)
 
+        assert request_1p._attr_name == "Request 1P Mode"
+        assert request_3p._attr_name == "Request 3P Mode"
+        assert not hasattr(request_1p, "_attr_entity_category")
+        assert not hasattr(request_3p, "_attr_entity_category")
+        assert not hasattr(restore, "_attr_entity_category")
+        assert reset._attr_entity_category == EntityCategory.DIAGNOSTIC
         assert request_1p.available is True
         assert request_3p.available is True
 
@@ -1001,8 +1008,8 @@ def test_options_flow_schema_is_grouped_into_sections():
             "solar_charging",
             "advanced",
         }
-        assert result["data_schema"].args[0]["connection"].options["collapsed"] is False
-        assert result["data_schema"].args[0]["general_charging"].options["collapsed"] is False
+        assert result["data_schema"].args[0]["connection"].options["collapsed"] is True
+        assert result["data_schema"].args[0]["general_charging"].options["collapsed"] is True
         assert result["data_schema"].args[0]["dynamic_load_balancing"].options["collapsed"] is True
         assert result["data_schema"].args[0]["solar_charging"].options["collapsed"] is True
 

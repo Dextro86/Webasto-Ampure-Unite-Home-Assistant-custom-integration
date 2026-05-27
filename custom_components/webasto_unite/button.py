@@ -94,8 +94,6 @@ class WebastoResumeChargingButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
 
 class _WebastoPhaseSwitchButton(WebastoUniteCoordinatorEntity, ButtonEntity):
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
     @property
     def available(self) -> bool:
         data = getattr(self.coordinator, "data", None)
@@ -107,7 +105,7 @@ class _WebastoPhaseSwitchButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
 
 class WebastoRequestPhase1PButton(_WebastoPhaseSwitchButton):
-    _attr_name = "Request 1P Phase Mode"
+    _attr_name = "Request 1P Mode"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
@@ -120,7 +118,7 @@ class WebastoRequestPhase1PButton(_WebastoPhaseSwitchButton):
 
 
 class WebastoRequestPhase3PButton(_WebastoPhaseSwitchButton):
-    _attr_name = "Request 3P Phase Mode"
+    _attr_name = "Request 3P Mode"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)

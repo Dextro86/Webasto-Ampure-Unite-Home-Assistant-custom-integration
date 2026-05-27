@@ -101,7 +101,7 @@ disable_fixed_current_until_unplug:
       required: true
       example: "abc123"
 request_phase_1p:
-  name: Request 1P Phase Mode
+  name: Request 1P Mode
   description: Experimental manual phase switch request to 1P. Requires Phase Switching Mode to be Manual Only. Writes and verifies register 405.
   fields:
     entry_id:
@@ -110,7 +110,7 @@ request_phase_1p:
       required: true
       example: "abc123"
 request_phase_3p:
-  name: Request 3P Phase Mode
+  name: Request 3P Mode
   description: Experimental manual phase switch request to 3P. Requires Phase Switching Mode to be Manual Only. Writes and verifies register 405.
   fields:
     entry_id:
