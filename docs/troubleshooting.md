@@ -62,7 +62,7 @@ In Monitoring Only mode the integration still calculates `Final Target` for diag
 
 Set `Integration Charging Control` to `Enabled` if you want the integration to write the calculated current target to the charger.
 
-Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging On/Off`, `Requested Current` or the `set_current` service. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
+Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging On/Off`, `External Requested Current` or the `set_current` service. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
 
 Useful diagnostics for this case:
 

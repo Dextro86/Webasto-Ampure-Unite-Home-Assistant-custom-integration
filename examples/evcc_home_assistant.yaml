@@ -8,7 +8,7 @@
 #   Integration Charging Control = External Controller
 #
 # Important:
-#   EVCC setMaxCurrent should point to Requested Current, not Maximum Current.
+#   EVCC setMaxCurrent should point to External Requested Current, not Maximum Current.
 #   Maximum Current is only the configured safety upper bound.
 
 chargers:

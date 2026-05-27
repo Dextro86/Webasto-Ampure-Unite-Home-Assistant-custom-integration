@@ -12,17 +12,18 @@ from .models import ControlMode
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [
-            WebastoMaximumCurrentNumber(coordinator),
-            WebastoRequestedCurrentNumber(coordinator),
-            WebastoFixedCurrentNumber(coordinator),
-        ]
-    )
+    entities = [
+        WebastoMaximumCurrentNumber(coordinator),
+        WebastoFixedCurrentNumber(coordinator),
+    ]
+    if coordinator.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
+        entities.append(WebastoRequestedCurrentNumber(coordinator))
+    async_add_entities(entities)
 
 
 class WebastoMaximumCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
     _attr_name = "Maximum Current"
+    _attr_entity_registry_enabled_default = False
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 
@@ -49,7 +50,7 @@ class WebastoMaximumCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
 
 
 class WebastoRequestedCurrentNumber(WebastoUniteCoordinatorEntity, NumberEntity):
-    _attr_name = "Requested Current"
+    _attr_name = "External Requested Current"
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 

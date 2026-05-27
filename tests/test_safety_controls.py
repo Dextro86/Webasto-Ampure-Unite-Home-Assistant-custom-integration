@@ -35,6 +35,7 @@ from custom_components.webasto_unite.evcc import build_evcc_status
 from custom_components.webasto_unite.const import PHASE_SWITCHING_MODE_MANUAL_ONLY, SERVICE_RESTORE_DEFAULT_PHASE
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, DlbInputModel, HaSensorSnapshot, PhaseCurrents, SolarControlStrategy, SolarInputModel, RuntimeSnapshot, WallboxState
 from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoRequestedCurrentNumber, WebastoFixedCurrentNumber
+from custom_components.webasto_unite.number import async_setup_entry as number_async_setup_entry
 from custom_components.webasto_unite.operating_status import build_operating_state
 from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 from custom_components.webasto_unite.runtime_guards import RuntimeGuards, RuntimeGuardState
@@ -2144,6 +2145,7 @@ def test_requested_current_number_writes_directly_in_external_controller_mode():
         coordinator.async_request_refresh = AsyncMock()
 
         requested_current = WebastoRequestedCurrentNumber(coordinator)
+        assert requested_current._attr_name == "External Requested Current"
         await requested_current.async_set_native_value(24)
 
         client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 24)
@@ -2700,12 +2702,45 @@ def test_number_entities_use_runtime_current_limits():
     requested_current = WebastoRequestedCurrentNumber(coordinator)
     fixed_current = WebastoFixedCurrentNumber(coordinator)
 
+    assert current_limit._attr_entity_registry_enabled_default is False
     assert current_limit.native_min_value == 8.0
     assert current_limit.native_max_value == 32.0
     assert requested_current.native_min_value == 8.0
     assert requested_current.native_max_value == 16.0
     assert fixed_current.native_min_value == 8.0
     assert fixed_current.native_max_value == 16.0
+
+
+def test_requested_current_number_only_created_in_external_controller_mode():
+    async def _run():
+        entry = SimpleNamespace(entry_id="entry-id")
+        added_entities = []
+        hass = SimpleNamespace(
+            data={
+                "webasto_unite": {
+                    "entry-id": SimpleNamespace(
+                        control_config=ControlConfig(control_mode=ControlMode.MANAGED_CONTROL),
+                        entry=entry,
+                    )
+                }
+            }
+        )
+
+        def _add_entities(entities):
+            added_entities.extend(entities)
+
+        await number_async_setup_entry(hass, entry, _add_entities)
+        assert not any(isinstance(entity, WebastoRequestedCurrentNumber) for entity in added_entities)
+
+        added_entities.clear()
+        hass.data["webasto_unite"]["entry-id"].control_config = ControlConfig(
+            control_mode=ControlMode.EXTERNAL_CONTROLLER
+        )
+
+        await number_async_setup_entry(hass, entry, _add_entities)
+        assert any(isinstance(entity, WebastoRequestedCurrentNumber) for entity in added_entities)
+
+    asyncio.run(_run())
 
 
 def test_diagnostics_redacts_identity_fields():

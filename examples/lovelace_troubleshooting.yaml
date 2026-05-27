@@ -16,10 +16,8 @@ cards:
         name: Solar Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
         name: Fixed Current Until Unplug
-      - entity: number.webasto_unite_current_limit
-        name: Maximum Current
       - entity: number.webasto_unite_requested_current
-        name: Requested Current
+        name: External Requested Current
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
       - entity: sensor.webasto_unite_control_reason

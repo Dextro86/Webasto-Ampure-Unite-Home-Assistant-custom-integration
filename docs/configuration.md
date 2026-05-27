@@ -71,7 +71,7 @@ This means a Home Assistant restart does not automatically resume charging if ch
 
 When `Integration Charging Control` is `Monitoring Only`, `Charging Behavior` shows `Monitoring Only - Not Writing`. `Final Target` may still show the current the integration would choose, but that value is diagnostic only and is not written to the charger.
 
-When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. `Maximum Current` remains the configured upper limit.
+When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `External Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. `Maximum Current` remains the configured upper limit.
 
 `Pause Charging` and `Resume Charging` buttons are also available when `Integration Charging Control` is `Enabled` or `External Controller`. They are convenience controls for the same charging-enabled state:
 
@@ -103,6 +103,8 @@ Important current settings:
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
 
 `Maximum Current (A)` is the single configured upper limit. `Normal` mode targets this value directly. `Fixed Current`, `Fixed Current Until Unplug` and Solar can still be capped by `Maximum Current (A)`, DLB and charger/session limits.
+
+The legacy/config `Maximum Current` number entity is disabled by default so it does not appear as a normal dashboard control. Change this value through the integration settings unless you intentionally need the service/entity for automation compatibility.
 
 If DLB input becomes unavailable, the integration falls back to `Fallback Current (A)`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured sensors.
 
@@ -402,13 +404,13 @@ Recommended setup when EVCC is the active charging manager:
 - Do not run EVCC Solar control and this integration's Solar control at the same time.
 - Automatic phase switching is not provided by this integration. Experimental manual phase switching is not intended for EVCC automation yet.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `Requested Current`.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `External Requested Current`.
 
 Relevant entities:
 
 - `IEC 61851 State`: charger status for EVCC (`A`, `B`, `C`, `E`, `F`).
 - `Charging On/Off`: enable/disable switch.
-- `Requested Current`: number entity for EVCC `setMaxCurrent`.
+- `External Requested Current`: number entity for EVCC `setMaxCurrent`.
 - `Maximum Current`: configured upper current limit. EVCC requests above this value are rejected.
 - `Active Power`: measured charger power.
 - `Current L1`, `Current L2`, `Current L3`: phase currents.

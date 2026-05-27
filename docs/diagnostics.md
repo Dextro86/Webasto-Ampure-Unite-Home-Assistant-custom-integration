@@ -67,7 +67,7 @@ Use these entities when `Final Target` and `Reported Current Limit` do not match
 
 In `Monitoring Only`, the integration may still calculate `Final Target`, but `Control Writes Enabled` is false and writes are not sent to the charger.
 
-In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off`, `Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`.
+In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off`, `External Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`.
 
 ## DLB Diagnostics
 

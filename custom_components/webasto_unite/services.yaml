@@ -28,7 +28,7 @@ set_max_current:
       required: true
       example: 20
 set_current:
-  name: Set Requested Current
+  name: Set External Requested Current
   description: Set the active requested charging current in External Controller mode. Use 0 A to pause charging.
   fields:
     entry_id:

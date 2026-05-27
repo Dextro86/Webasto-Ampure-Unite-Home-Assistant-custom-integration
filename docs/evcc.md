@@ -14,11 +14,11 @@ When EVCC controls charging:
 - Keep this integration's DLB disabled unless you intentionally want an additional local safety cap.
 - Do not use experimental manual phase switching for EVCC automation yet.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `Requested Current` as the external control path.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `External Requested Current` as the external control path.
 
 Important current-control distinction:
 
-- `Requested Current` is the active current command for EVCC. Use this for EVCC `setMaxCurrent`.
+- `External Requested Current` is the active current command for EVCC. Use this for EVCC `setMaxCurrent`.
 - `Maximum Current` is only the configured upper safety bound. Do not use it as the EVCC current command.
 
 ## Relevant Entities
@@ -31,8 +31,8 @@ Entity IDs depend on the Home Assistant entity registry. Always check the actual
 | Enable/disable charging | `switch.webasto_unite_charging_allowed` |
 | Pause charging | `button.webasto_unite_pause_charging` |
 | Resume charging | `button.webasto_unite_resume_charging` |
-| Set charging current | `number.webasto_unite_requested_current` |
-| Maximum allowed current | `number.webasto_unite_current_limit` |
+| Set charging current | `number.webasto_unite_requested_current` (`External Requested Current`) |
+| Maximum allowed current | configured in integration settings |
 | Active power | `sensor.webasto_unite_active_power` |
 | Current L1 | `sensor.webasto_unite_current_l1` |
 | Current L2 | `sensor.webasto_unite_current_l2` |
@@ -69,6 +69,8 @@ chargers:
 ```
 
 The same example is available as [examples/evcc_home_assistant.yaml](../examples/evcc_home_assistant.yaml).
+
+`Maximum Current` also exists as a legacy/config number entity, but it is disabled by default and should not be used as the EVCC current command.
 
 Do not configure `phaseswitch` for this integration yet. Manual phase switching is experimental and is not exposed as the EVCC Home Assistant phase-switch select with options `1` and `3`.
 
