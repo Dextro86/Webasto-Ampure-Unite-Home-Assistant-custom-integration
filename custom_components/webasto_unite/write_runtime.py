@@ -168,6 +168,14 @@ class WriteRuntime:
         )
         await self.flush_write_queue()
 
+    async def write_current_now(self, current_a: float, *, reason: str) -> None:
+        """Write a current immediately and keep diagnostics/write state in sync."""
+        value = int(round(current_a))
+        async with self.flush_lock:
+            await self.write_queue.clear()
+            await self.client.write(SET_CHARGE_CURRENT_A, value)
+            self._record_current_write(float(value), reason)
+
     async def flush_write_queue(self) -> None:
         async with self.flush_lock:
             while True:
@@ -184,13 +192,16 @@ class WriteRuntime:
                     self.state.last_keepalive_sent_monotonic = self._monotonic()
                     self.state.keepalive_sent_count += 1
                 if item.key == "current_limit":
-                    self.state.last_control_write_monotonic = self._monotonic()
-                    self.state.last_control_write_value_a = float(item.value)
-                    self.state.last_control_write_reason = item.reason
-                    self.state.last_control_write_register = item.register.name
-                    self.state.last_control_write_blocked_reason = None
-                    if self.controller is not None:
-                        self.controller.mark_current_written(float(item.value))
+                    self._record_current_write(float(item.value), item.reason)
+
+    def _record_current_write(self, current_a: float, reason: str | None) -> None:
+        self.state.last_control_write_monotonic = self._monotonic()
+        self.state.last_control_write_value_a = current_a
+        self.state.last_control_write_reason = reason
+        self.state.last_control_write_register = SET_CHARGE_CURRENT_A.name
+        self.state.last_control_write_blocked_reason = None
+        if self.controller is not None:
+            self.controller.mark_current_written(current_a)
 
     def keepalive_age_seconds(self) -> float | None:
         reference = self.state.last_keepalive_sent_monotonic or self.state.keepalive_started_monotonic

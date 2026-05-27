@@ -454,6 +454,10 @@ class RuntimeSnapshot:
     def pv_input_state(self) -> Optional[str]:
         return self.solar_input_state
 
+    @property
+    def observed_session_phase_usage(self) -> Optional[str]:
+        return self.vehicle_phase_capability
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "wallbox": asdict(self.wallbox),
@@ -498,6 +502,7 @@ class RuntimeSnapshot:
             "phase_switch_available": self.phase_switch_available,
             "phase_switch_block_reason": self.phase_switch_block_reason,
             "vehicle_phase_capability": self.vehicle_phase_capability,
+            "observed_session_phase_usage": self.observed_session_phase_usage,
             "phase_switching_mode": self.phase_switching_mode,
             "phase_switch_default_mode": self.phase_switch_default_mode,
             "phase_session_override_active": self.phase_session_override_active,

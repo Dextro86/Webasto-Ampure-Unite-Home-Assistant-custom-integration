@@ -144,7 +144,7 @@ Experimental manual phase switching is available only when `Phase Switching Mode
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch. Manual phase switching is intended for testing and validation, not for unattended automation yet.
 
-Manual switching separates register verification from physical verification. The integration writes `0 A`, waits until the pause is actually observed, writes register `405`, checks that register `405` stays on the requested value, resumes charging and then observes the measured active phases. `Register Verified` means register `405` accepted and held the request. `Physical Verified` means the measured charging phases also match the request. If charging does not pause, the switch is aborted with `Pause Not Confirmed`.
+Manual switching separates pause confirmation, register verification and physical verification. The integration uses the same internal pause/resume semantics as the `Pause Charging` and `Resume Charging` controls, waits until the pause is actually observed, writes register `405`, checks that register `405` stays on the requested value, resumes charging and then observes the measured active phases. `Register Verified` means register `405` accepted and held the request. `Physical Verified` means the measured charging phases also match the request. If charging does not pause, the switch is aborted with `Pause Not Confirmed`.
 
 `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` and can run without a connected vehicle.
 

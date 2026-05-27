@@ -32,7 +32,7 @@ def build_phase_observability(wallbox: WallboxState) -> PhaseObservability:
         phase_switch_register_available=register_available,
         phase_switch_available=block_reason is None,
         phase_switch_block_reason=block_reason,
-        vehicle_phase_capability=detect_vehicle_phase_capability(wallbox),
+        vehicle_phase_capability=detect_observed_session_phase_usage(wallbox),
         write_register_address=PHASE_SWITCH_MODE.address,
         write_value_1p=PHASE_SWITCH_VALUE_1P,
         write_value_3p=PHASE_SWITCH_VALUE_3P,
@@ -49,14 +49,19 @@ def interpret_phase_switch_mode(raw_value: int | None) -> str | None:
     return "Unknown"
 
 
-def detect_vehicle_phase_capability(wallbox: WallboxState) -> str:
+def detect_observed_session_phase_usage(wallbox: WallboxState) -> str:
     if not wallbox.vehicle_connected or not wallbox.charging_active:
         return "unknown"
     if wallbox.phases_in_use == 3:
-        return "likely_3p"
+        return "observed_3p"
     if wallbox.phases_in_use == 1:
-        return "likely_1p"
+        return "observed_1p"
     return "unknown"
+
+
+def detect_vehicle_phase_capability(wallbox: WallboxState) -> str:
+    """Backward-compatible alias for observed session phase usage."""
+    return detect_observed_session_phase_usage(wallbox)
 
 
 def _phase_switch_block_reason(wallbox: WallboxState, register_available: bool) -> str | None:

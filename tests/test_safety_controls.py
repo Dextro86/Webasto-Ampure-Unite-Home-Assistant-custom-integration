@@ -393,6 +393,8 @@ def test_manual_phase_switch_pauses_writes_phase_and_resumes():
         assert coordinator._phase_switch_last_target == "1P"
         assert coordinator._phase_session_override_active is True
         assert coordinator._phase_session_target == "1P"
+        assert coordinator.write_runtime.last_control_write_reason == "phase_switch_resume"
+        assert coordinator.write_runtime.last_control_write_value_a == 16.0
 
     asyncio.run(_run())
 
@@ -580,6 +582,8 @@ def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():
         assert coordinator.client.write.await_args_list[0].args == (SET_CHARGE_CURRENT_A, 0)
         assert len(coordinator.client.write.await_args_list) == 1
         assert coordinator._phase_switch_last_result == "pause_not_confirmed"
+        assert coordinator.write_runtime.last_control_write_reason == "phase_switch_pause"
+        assert coordinator.write_runtime.last_control_write_value_a == 0.0
 
     asyncio.run(_run())
 

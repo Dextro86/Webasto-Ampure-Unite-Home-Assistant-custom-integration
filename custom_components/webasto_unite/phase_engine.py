@@ -33,6 +33,7 @@ _TERMINAL_STATES = {
     "register_reverted",
     "register_verified",
     "physical_verified",
+    "vehicle_did_not_resume",
     "physical_timeout",
     "already_in_target_phase",
 }
@@ -84,6 +85,8 @@ class PhaseSwitchManager:
         flush_lock: asyncio.Lock,
         sleep,
         read_wallbox=None,
+        pause_charging=None,
+        resume_charging=None,
         require_vehicle: bool = True,
     ) -> None:
         if self._lock.locked():
@@ -117,6 +120,8 @@ class PhaseSwitchManager:
                 flush_lock=flush_lock,
                 sleep=sleep,
                 read_wallbox=read_wallbox,
+                pause_charging=pause_charging,
+                resume_charging=resume_charging,
             )
 
     async def _execute_plan(
@@ -128,18 +133,23 @@ class PhaseSwitchManager:
         flush_lock: asyncio.Lock,
         sleep,
         read_wallbox=None,
+        pause_charging=None,
+        resume_charging=None,
     ) -> None:
         await write_queue.clear()
         try:
             if plan.was_charging:
                 self.state = "pausing"
-                await self._write_direct(
-                    client=client,
-                    write_queue=write_queue,
-                    flush_lock=flush_lock,
-                    register=SET_CHARGE_CURRENT_A,
-                    value=0,
-                )
+                if pause_charging is not None:
+                    await pause_charging()
+                else:
+                    await self._write_direct(
+                        client=client,
+                        write_queue=write_queue,
+                        flush_lock=flush_lock,
+                        register=SET_CHARGE_CURRENT_A,
+                        value=0,
+                    )
                 if not await self._wait_for_pause_confirmed(read_wallbox=read_wallbox, sleep=sleep):
                     self.last_result = "pause_not_confirmed"
                     self.last_block_reason = "pause_not_confirmed"
@@ -170,13 +180,16 @@ class PhaseSwitchManager:
                 self.state = "waiting_before_resume"
                 await sleep(PHASE_SWITCH_WAIT_BEFORE_RESUME_S)
                 self.state = "resuming"
-                await self._write_direct(
-                    client=client,
-                    write_queue=write_queue,
-                    flush_lock=flush_lock,
-                    register=SET_CHARGE_CURRENT_A,
-                    value=int(round(plan.resume_current_a)),
-                )
+                if resume_charging is not None:
+                    await resume_charging(plan.resume_current_a)
+                else:
+                    await self._write_direct(
+                        client=client,
+                        write_queue=write_queue,
+                        flush_lock=flush_lock,
+                        register=SET_CHARGE_CURRENT_A,
+                        value=int(round(plan.resume_current_a)),
+                    )
         except Exception as err:  # noqa: BLE001
             if self.last_result in {"pause_not_confirmed", "register_unverified", "register_reverted"}:
                 raise
@@ -250,6 +263,7 @@ class PhaseSwitchManager:
     async def _observe_physical_phase_result(self, plan: PhaseSwitchPlan, *, read_wallbox, sleep) -> str | None:
         self.state = "observing_physical"
         stable_physical_reads = 0
+        saw_charging = False
         polls = int(PHASE_SWITCH_PHYSICAL_VERIFY_TIMEOUT_S / PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S)
         for _ in range(max(1, polls)):
             await sleep(PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S)
@@ -258,13 +272,15 @@ class PhaseSwitchManager:
                 continue
             if wallbox.phase_switch_mode_raw is not None and wallbox.phase_switch_mode_raw != plan.write_value:
                 return "register_reverted"
+            if wallbox.charging_active:
+                saw_charging = True
             if wallbox.charging_active and wallbox.phases_in_use == plan.target_phases:
                 stable_physical_reads += 1
                 if stable_physical_reads >= PHASE_SWITCH_REQUIRED_STABLE_POLLS:
                     return "physical_verified"
             else:
                 stable_physical_reads = 0
-        return "physical_timeout"
+        return "physical_timeout" if saw_charging else "vehicle_did_not_resume"
 
     def reset(self) -> None:
         self.last_result = None

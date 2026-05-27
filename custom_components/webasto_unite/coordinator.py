@@ -462,6 +462,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 flush_lock=self.write_runtime.flush_lock,
                 sleep=self._phase_switch_sleep,
                 read_wallbox=self._read_wallbox_for_phase_switch,
+                pause_charging=self._phase_switch_pause_charging,
+                resume_charging=self._phase_switch_resume_charging,
             )
         finally:
             self._sync_phase_switch_diagnostics()
@@ -503,6 +505,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 flush_lock=self.write_runtime.flush_lock,
                 sleep=self._phase_switch_sleep,
                 read_wallbox=self._read_wallbox_for_phase_switch,
+                pause_charging=self._phase_switch_pause_charging,
+                resume_charging=self._phase_switch_resume_charging,
                 require_vehicle=False,
             )
         finally:
@@ -527,6 +531,14 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             current_snapshot = getattr(self, "data", None)
             return getattr(current_snapshot, "wallbox", None)
         return await self.wallbox_reader.read_wallbox_state(self._configured_installed_phases())
+
+    async def _phase_switch_pause_charging(self) -> None:
+        self.pause_charging()
+        await self.write_runtime.write_current_now(0.0, reason="phase_switch_pause")
+
+    async def _phase_switch_resume_charging(self, current_a: float) -> None:
+        self.resume_charging()
+        await self.write_runtime.write_current_now(current_a, reason="phase_switch_resume")
 
     @staticmethod
     def _observed_phases_match_target(wallbox: WallboxState, target_phases: int) -> bool:

@@ -125,7 +125,7 @@ def test_phase_observer_reports_manual_switch_availability():
     assert state.phase_switch_register_available is True
     assert state.phase_switch_available is True
     assert state.phase_switch_block_reason is None
-    assert state.vehicle_phase_capability == "likely_3p"
+    assert state.vehicle_phase_capability == "observed_3p"
     assert state.write_register_address == 405
 
 
@@ -147,14 +147,14 @@ def test_phase_observer_blocks_when_charger_is_preconfigured_1p():
     assert state.phase_switch_block_reason == "charger_preconfigured_1p"
 
 
-def test_vehicle_phase_capability_is_observed_only():
+def test_observed_session_phase_usage_is_observed_only():
     assert detect_vehicle_phase_capability(WallboxState(vehicle_connected=False)) == "unknown"
     assert detect_vehicle_phase_capability(
         WallboxState(vehicle_connected=True, charging_active=True, phases_in_use=1)
-    ) == "likely_1p"
+    ) == "observed_1p"
     assert detect_vehicle_phase_capability(
         WallboxState(vehicle_connected=True, charging_active=True, phases_in_use=3)
-    ) == "likely_3p"
+    ) == "observed_3p"
 
 
 def test_phase_switch_diagnostic_sensors_are_exposed():
@@ -164,6 +164,7 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["phase_switch_mode"].entity_category == "diagnostic"
     assert sensors["phase_switch_available"].entity_category == "diagnostic"
     assert sensors["phase_switch_block_reason"].entity_category == "diagnostic"
+    assert sensors["vehicle_phase_capability"].name == "Observed Session Phase Usage"
     assert sensors["vehicle_phase_capability"].entity_category == "diagnostic"
     assert sensors["phase_switching_mode"].entity_category == "diagnostic"
     assert sensors["phase_switch_default_mode"].entity_category == "diagnostic"

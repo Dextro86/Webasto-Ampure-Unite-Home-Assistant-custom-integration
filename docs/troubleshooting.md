@@ -117,7 +117,7 @@ Check:
 - `Phase Switch Available`
 - `Phase Switch Block Reason`
 - `Phase Switch State`
-- `Vehicle Phase Capability`
+- `Observed Session Phase Usage`
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch.
 
@@ -127,7 +127,9 @@ Use `Restore Default Phase Mode` if register `405` was manually changed and you 
 
 If `Last Phase Switch Result` says `Pause Not Confirmed`, the integration wrote `0 A` but the charger kept drawing current. In that case the integration intentionally did not write register `405`.
 
-If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value but the active charging session did not physically move to the requested phase count within the observation window. This is useful test information and means phase switching should not be automated for that scenario yet.
+If `Last Phase Switch Result` says `Vehicle Did Not Resume`, register `405` accepted and held the requested value but the vehicle did not start charging again after resume.
+
+If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value and charging did resume, but the active charging session did not physically move to the requested phase count within the observation window. This is useful test information and means phase switching should not be automated for that scenario yet.
 
 If `Last Phase Switch Result` says `Register Reverted`, the charger accepted register `405` briefly but later reported a different value again.
 

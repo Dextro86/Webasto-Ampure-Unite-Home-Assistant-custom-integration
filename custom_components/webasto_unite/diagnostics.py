@@ -73,6 +73,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "phase_switch_available": coordinator.data.phase_switch_available,
                 "phase_switch_block_reason": coordinator.data.phase_switch_block_reason,
                 "vehicle_phase_capability": coordinator.data.vehicle_phase_capability,
+                "observed_session_phase_usage": coordinator.data.observed_session_phase_usage,
                 "phase_switching_mode": coordinator.data.phase_switching_mode,
                 "phase_switch_default_mode": coordinator.data.phase_switch_default_mode,
                 "phase_session_override_active": coordinator.data.phase_session_override_active,

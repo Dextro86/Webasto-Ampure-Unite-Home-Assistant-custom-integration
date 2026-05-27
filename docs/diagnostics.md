@@ -121,7 +121,7 @@ Useful diagnostic entities:
 - `Phase Switch Mode Raw`
 - `Phase Switch Available`
 - `Phase Switch Block Reason`
-- `Vehicle Phase Capability`
+- `Observed Session Phase Usage`
 - `Last Phase Switch Result`
 - `Last Phase Switch Block Reason`
 - `Last Phase Switch Target`
