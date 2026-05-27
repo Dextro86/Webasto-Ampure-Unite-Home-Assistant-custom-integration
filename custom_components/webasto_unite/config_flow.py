@@ -30,17 +30,6 @@ from .config_validation import (
 )
 from .models import ChargeMode, ControlMode, DlbInputModel, DlbSensorScope, SolarControlStrategy, SolarGridPowerDirection, SolarInputModel, SolarOverrideStrategy, SolarSensorFailureBehavior, normalize_solar_control_strategy, normalize_solar_override_strategy
 
-
-def _solar_mode_label(strategy: str | SolarControlStrategy) -> str:
-    normalized = normalize_solar_control_strategy(strategy)
-    if normalized == SolarControlStrategy.ECO_SOLAR:
-        return "Eco Solar"
-    if normalized == SolarControlStrategy.SMART_SOLAR:
-        return "Smart Solar"
-    if normalized == SolarControlStrategy.SOLAR_BOOST:
-        return "Solar Boost"
-    return "Solar"
-
 PHASE_OPTIONS = [PHASE_MODE_1P, PHASE_MODE_3P]
 PHASE_SELECTOR_OPTIONS = [
     {"value": PHASE_MODE_1P, "label": "1P"},
@@ -81,7 +70,7 @@ SOLAR_SENSOR_FAILURE_BEHAVIOR_OPTIONS = [
     {"value": SolarSensorFailureBehavior.CONTINUE_MINIMUM.value, "label": "Continue at Solar Minimum Current"},
 ]
 SOLAR_OVERRIDE_STRATEGY_OPTIONS = [
-    {"value": SolarOverrideStrategy.INHERIT.value, "label": "Use Solar Strategy"},
+    {"value": SolarOverrideStrategy.INHERIT.value, "label": "Use Default Solar Mode"},
     {"value": SolarOverrideStrategy.ECO_SOLAR.value, "label": "Eco Solar"},
     {"value": SolarOverrideStrategy.SMART_SOLAR.value, "label": "Smart Solar"},
     {"value": SolarOverrideStrategy.SOLAR_BOOST.value, "label": "Solar Boost"},
@@ -233,12 +222,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                         options=[
                             {"value": ChargeMode.OFF.value, "label": "Off"},
                             {"value": ChargeMode.NORMAL.value, "label": "Normal"},
-                            {
-                                "value": ChargeMode.SOLAR.value,
-                                "label": _solar_mode_label(
-                                    current.get(CONF_SOLAR_CONTROL_STRATEGY, SolarControlStrategy.DISABLED.value)
-                                ),
-                            },
+                            {"value": ChargeMode.SOLAR.value, "label": "Solar"},
                             {"value": ChargeMode.FIXED_CURRENT.value, "label": "Fixed Current"},
                         ]
                     )

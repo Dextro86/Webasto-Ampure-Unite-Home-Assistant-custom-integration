@@ -395,6 +395,7 @@ class RuntimeSnapshot:
     keepalive_write_failures: int
     queue_depth: int
     pending_write_kind: str | None
+    active_solar_strategy: Optional[SolarControlStrategy] = None
     control_writes_enabled: bool = False
     last_control_write_value_a: Optional[float] = None
     last_control_write_reason: Optional[str] = None
@@ -421,6 +422,15 @@ class RuntimeSnapshot:
     phase_switch_block_reason: Optional[str] = None
     vehicle_phase_capability: Optional[str] = None
     phase_switching_mode: Optional[str] = None
+    phase_switch_default_mode: Optional[str] = None
+    phase_session_override_active: bool = False
+    phase_session_target: Optional[str] = None
+    phase_restore_pending: bool = False
+    phase_policy_decision: Optional[str] = None
+    phase_policy_block_reason: Optional[str] = None
+    phase_policy_target: Optional[str] = None
+    phase_policy_required_surplus_1p_w: Optional[float] = None
+    phase_policy_required_surplus_3p_w: Optional[float] = None
     phase_switch_last_result: Optional[str] = None
     phase_switch_last_block_reason: Optional[str] = None
     phase_switch_last_target: Optional[str] = None
@@ -451,6 +461,7 @@ class RuntimeSnapshot:
             "operating_state": self.operating_state,
             "control_mode": self.control_mode.value,
             "control_reason": self.control_reason,
+            "active_solar_strategy": self.active_solar_strategy.value if self.active_solar_strategy else None,
             "charging_paused": self.charging_paused,
             "solar_until_unplug_active": self.solar_until_unplug_active,
             "fixed_current_until_unplug_active": self.fixed_current_until_unplug_active,
@@ -487,6 +498,15 @@ class RuntimeSnapshot:
             "phase_switch_block_reason": self.phase_switch_block_reason,
             "vehicle_phase_capability": self.vehicle_phase_capability,
             "phase_switching_mode": self.phase_switching_mode,
+            "phase_switch_default_mode": self.phase_switch_default_mode,
+            "phase_session_override_active": self.phase_session_override_active,
+            "phase_session_target": self.phase_session_target,
+            "phase_restore_pending": self.phase_restore_pending,
+            "phase_policy_decision": self.phase_policy_decision,
+            "phase_policy_block_reason": self.phase_policy_block_reason,
+            "phase_policy_target": self.phase_policy_target,
+            "phase_policy_required_surplus_1p_w": self.phase_policy_required_surplus_1p_w,
+            "phase_policy_required_surplus_3p_w": self.phase_policy_required_surplus_3p_w,
             "phase_switch_last_result": self.phase_switch_last_result,
             "phase_switch_last_block_reason": self.phase_switch_last_block_reason,
             "phase_switch_last_target": self.phase_switch_last_target,

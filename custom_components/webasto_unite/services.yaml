@@ -10,12 +10,12 @@ set_mode:
       example: "abc123"
     mode:
       name: Mode
-      description: Charge Mode to apply.
+      description: Charge Mode to apply. Use off, normal, fixed_current, eco_solar, smart_solar or solar_boost.
       required: true
-      example: "solar"
+      example: "smart_solar"
 set_max_current:
   name: Set Maximum Current
-  description: Set the Maximum Current used by normal charging mode. In External Controller mode this writes the requested current directly to the charger.
+  description: Set the configured Maximum Current limit used as the upper bound for integration and external control.
   fields:
     entry_id:
       name: Entry ID
@@ -24,12 +24,26 @@ set_max_current:
       example: "abc123"
     current_a:
       name: Current
-      description: Maximum Current in amperes.
+      description: Maximum allowed current in amperes.
+      required: true
+      example: 20
+set_current:
+  name: Set Requested Current
+  description: Set the active requested charging current in External Controller mode. Use 0 A to pause charging.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
+    current_a:
+      name: Current
+      description: Requested charging current in amperes.
       required: true
       example: 20
 set_user_limit:
   name: Set Maximum Current
-  description: Legacy service alias. Sets the Maximum Current used by normal charging mode. In External Controller mode this writes the requested current directly to the charger.
+  description: Legacy service alias. Sets the configured Maximum Current limit.
   fields:
     entry_id:
       name: Entry ID
@@ -68,24 +82,6 @@ disable_solar_until_unplug:
       description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
-enable_pv_until_unplug:
-  name: Enable PV Until Unplug
-  description: Legacy alias for Enable Solar Until Unplug.
-  fields:
-    entry_id:
-      name: Entry ID
-      description: Config entry ID of the Webasto Unite integration instance.
-      required: true
-      example: "abc123"
-disable_pv_until_unplug:
-  name: Disable PV Until Unplug
-  description: Legacy alias for Disable Solar Until Unplug.
-  fields:
-    entry_id:
-      name: Entry ID
-      description: Config entry ID of the Webasto Unite integration instance.
-      required: true
-      example: "abc123"
 enable_fixed_current_until_unplug:
   name: Enable Fixed Current Until Unplug
   description: Temporarily use Fixed Current charging until the vehicle is unplugged.
@@ -106,7 +102,7 @@ disable_fixed_current_until_unplug:
       example: "abc123"
 request_phase_1p:
   name: Request 1P Phase Mode
-  description: Experimental manual phase switch request to 1P. Requires Phase Switching Mode to be Manual Only.
+  description: Experimental manual phase switch request to 1P. Requires Phase Switching Mode to be Manual Only. Writes and verifies register 405.
   fields:
     entry_id:
       name: Entry ID
@@ -115,7 +111,16 @@ request_phase_1p:
       example: "abc123"
 request_phase_3p:
   name: Request 3P Phase Mode
-  description: Experimental manual phase switch request to 3P. Requires Phase Switching Mode to be Manual Only.
+  description: Experimental manual phase switch request to 3P. Requires Phase Switching Mode to be Manual Only. Writes and verifies register 405.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
+restore_default_phase:
+  name: Restore Default Phase Mode
+  description: Restore the phase mode derived from Charger Configuration. Requires Phase Switching Mode to be Manual Only. Can run without a connected vehicle.
   fields:
     entry_id:
       name: Entry ID

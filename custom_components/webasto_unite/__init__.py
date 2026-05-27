@@ -18,20 +18,27 @@ from .const import (
     PLATFORMS,
     SERVICE_REQUEST_PHASE_1P,
     SERVICE_REQUEST_PHASE_3P,
+    SERVICE_RESTORE_DEFAULT_PHASE,
     SERVICE_RESET_PHASE_SWITCH_STATE,
+    SERVICE_SET_CURRENT,
     SERVICE_SET_MAX_CURRENT,
     SERVICE_SET_MODE,
     SERVICE_SET_USER_LIMIT,
     SERVICE_TRIGGER_RECONNECT,
 )
-from .models import ChargeMode, ControlMode, normalize_charge_mode
+from .models import ChargeMode, ControlMode, SolarControlStrategy, normalize_charge_mode, normalize_solar_control_strategy
 from .coordinator import WebastoUniteCoordinator
 from .modbus_client import ModbusClientError
 
 _SERVICE_SCHEMA_MODE = vol.Schema(
     {
         vol.Required("entry_id"): cv.string,
-        vol.Required("mode"): vol.In(sorted({m.value for m in ChargeMode} | {"pv"})),
+        vol.Required("mode"): vol.In(
+            sorted(
+                {m.value for m in ChargeMode}
+                | {"pv", "eco_solar", "smart_solar", "solar_boost", "surplus", "min_plus_surplus"}
+            )
+        ),
     }
 )
 _SERVICE_SCHEMA_RECONNECT = vol.Schema({vol.Required("entry_id"): cv.string})
@@ -67,18 +74,29 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_set_mode(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
-        coordinator.set_mode(
-            normalize_charge_mode(call.data["mode"], coordinator.control_config.solar_control_strategy)
-        )
+        raw_mode = call.data["mode"]
+        try:
+            solar_strategy = normalize_solar_control_strategy(raw_mode)
+        except ValueError:
+            solar_strategy = None
+        if solar_strategy is not None and solar_strategy != SolarControlStrategy.DISABLED:
+            coordinator.set_mode(ChargeMode.SOLAR, solar_strategy)
+        else:
+            coordinator.set_mode(
+                normalize_charge_mode(raw_mode, coordinator.control_config.solar_control_strategy)
+            )
         await coordinator.async_request_refresh()
 
     async def handle_set_limit(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
-        if coordinator.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
-            await coordinator.async_set_external_current_limit(call.data["current_a"])
-            await coordinator.async_request_refresh()
-            return
         coordinator.set_max_current(call.data["current_a"])
+        await coordinator.async_request_refresh()
+
+    async def handle_set_current(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(call.data["entry_id"])
+        if coordinator.control_config.control_mode != ControlMode.EXTERNAL_CONTROLLER:
+            raise HomeAssistantError("set_current requires Integration Charging Control = External Controller")
+        await coordinator.async_set_external_current_limit(call.data["current_a"])
         await coordinator.async_request_refresh()
 
     async def handle_reconnect(call: ServiceCall) -> None:
@@ -124,7 +142,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         coordinator.reset_phase_switch_state()
         await coordinator.async_request_refresh()
 
+    async def handle_restore_default_phase(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(call.data["entry_id"])
+        try:
+            await coordinator.async_restore_default_phase_mode()
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(str(err)) from err
+
     hass.services.async_register(DOMAIN, SERVICE_SET_MODE, handle_set_mode, schema=_SERVICE_SCHEMA_MODE)
+    hass.services.async_register(DOMAIN, SERVICE_SET_CURRENT, handle_set_current, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_SET_MAX_CURRENT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_SET_USER_LIMIT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_TRIGGER_RECONNECT, handle_reconnect, schema=_SERVICE_SCHEMA_RECONNECT)
@@ -140,6 +166,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         handle_disable_solar_until_unplug,
         schema=_SERVICE_SCHEMA_SESSION,
     )
+    # Legacy PV-named service aliases stay registered for existing automations.
     hass.services.async_register(
         DOMAIN,
         SERVICE_ENABLE_PV_UNTIL_UNPLUG,
@@ -180,6 +207,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         DOMAIN,
         SERVICE_RESET_PHASE_SWITCH_STATE,
         handle_reset_phase_switch_state,
+        schema=_SERVICE_SCHEMA_SESSION,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESTORE_DEFAULT_PHASE,
+        handle_restore_default_phase,
         schema=_SERVICE_SCHEMA_SESSION,
     )
     return True

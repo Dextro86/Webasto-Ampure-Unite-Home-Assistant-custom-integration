@@ -60,8 +60,12 @@ def detect_vehicle_phase_capability(wallbox: WallboxState) -> str:
 
 
 def _phase_switch_block_reason(wallbox: WallboxState, register_available: bool) -> str | None:
+    if wallbox.charge_point_phase_count == 1:
+        return "charger_preconfigured_1p"
+    if wallbox.charge_point_phase_count not in (None, 3):
+        return "charger_phase_config_unknown"
     if wallbox.installed_phases != 3:
-        return "charger_not_configured_3p"
+        return "integration_configured_1p"
     if not register_available:
         return "phase_switch_register_unavailable"
     if not wallbox.vehicle_connected:

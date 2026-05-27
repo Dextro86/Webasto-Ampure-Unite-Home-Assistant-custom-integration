@@ -62,7 +62,7 @@ In Monitoring Only mode the integration still calculates `Final Target` for diag
 
 Set `Integration Charging Control` to `Enabled` if you want the integration to write the calculated current target to the charger.
 
-Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging On/Off` and `Maximum Current`. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
+Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging On/Off`, `Requested Current` or the `set_current` service. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
 
 Useful diagnostics for this case:
 
@@ -118,4 +118,12 @@ Check:
 - `Phase Switch Block Reason`
 - `Vehicle Phase Capability`
 
-Requests to 3P are blocked when the current session is observed as `Likely 1P`.
+Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch.
+
+If `Phase Switch Block Reason` says `Charger Preconfigured 1P`, register `404` reports that the charger itself is configured as 1P. In that case the integration blocks 1P/3P switching.
+
+Use `Restore Default Phase Mode` if register `405` was manually changed and you want to return to the configured `Charger Configuration`.
+
+If `Phase Restore Pending` stays on after unplug, check the charger connection and `Last Phase Switch Block Reason`, then use `Restore Default Phase Mode` manually.
+
+After a restart, `Phase Restore Pending` can also mean register `405` differs from `Charger Configuration` while a vehicle is still connected. The integration intentionally does not phase-switch blindly in that situation.

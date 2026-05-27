@@ -23,7 +23,8 @@ from custom_components.webasto_unite.registers import (
     RegisterType,
     ValueType,
 )
-from custom_components.webasto_unite.models import ChargingState, PhaseCurrents, WallboxState
+from custom_components.webasto_unite.const import PHASE_SWITCHING_MODE_MANUAL_ONLY
+from custom_components.webasto_unite.models import ChargeMode, ChargingState, ControlDecision, ControlReason, PhaseCurrents, SolarControlStrategy, WallboxState
 from custom_components.webasto_unite.phase_observer import (
     PHASE_SWITCH_VALUE_1P,
     PHASE_SWITCH_VALUE_3P,
@@ -31,6 +32,7 @@ from custom_components.webasto_unite.phase_observer import (
     detect_vehicle_phase_capability,
     interpret_phase_switch_mode,
 )
+from custom_components.webasto_unite.phase_policy import evaluate_phase_policy
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 
@@ -110,6 +112,7 @@ def test_phase_switch_mode_interpretation_uses_known_webasto_values():
 def test_phase_observer_reports_manual_switch_availability():
     wallbox = WallboxState(
         installed_phases=3,
+        charge_point_phase_count=3,
         vehicle_connected=True,
         phase_switch_mode_raw=1,
         charging_active=True,
@@ -127,12 +130,21 @@ def test_phase_observer_reports_manual_switch_availability():
 
 
 def test_phase_observer_blocks_when_register_is_unavailable():
-    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, phase_switch_mode_raw=None)
+    wallbox = WallboxState(installed_phases=3, charge_point_phase_count=3, vehicle_connected=True, phase_switch_mode_raw=None)
 
     state = build_phase_observability(wallbox)
 
     assert state.phase_switch_available is False
     assert state.phase_switch_block_reason == "phase_switch_register_unavailable"
+
+
+def test_phase_observer_blocks_when_charger_is_preconfigured_1p():
+    wallbox = WallboxState(installed_phases=3, charge_point_phase_count=1, vehicle_connected=True, phase_switch_mode_raw=1)
+
+    state = build_phase_observability(wallbox)
+
+    assert state.phase_switch_available is False
+    assert state.phase_switch_block_reason == "charger_preconfigured_1p"
 
 
 def test_vehicle_phase_capability_is_observed_only():
@@ -154,10 +166,109 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["phase_switch_block_reason"].entity_category == "diagnostic"
     assert sensors["vehicle_phase_capability"].entity_category == "diagnostic"
     assert sensors["phase_switching_mode"].entity_category == "diagnostic"
+    assert sensors["phase_switch_default_mode"].entity_category == "diagnostic"
+    assert sensors["phase_session_override_active"].entity_category == "diagnostic"
+    assert sensors["phase_session_target"].entity_category == "diagnostic"
+    assert sensors["phase_restore_pending"].entity_category == "diagnostic"
+    assert sensors["phase_policy_decision"].entity_category == "diagnostic"
+    assert sensors["phase_policy_block_reason"].entity_category == "diagnostic"
+    assert sensors["phase_policy_target"].entity_category == "diagnostic"
+    assert sensors["phase_policy_required_surplus_1p"].entity_category == "diagnostic"
+    assert sensors["phase_policy_required_surplus_3p"].entity_category == "diagnostic"
     assert sensors["phase_switch_last_result"].entity_category == "diagnostic"
     assert sensors["control_writes_enabled"].entity_category == "diagnostic"
     assert sensors["last_control_write_reason"].entity_category == "diagnostic"
     assert sensors["last_control_write_blocked_reason"].entity_category == "diagnostic"
+
+
+def test_phase_policy_would_request_1p_when_surplus_supports_1p_but_not_3p():
+    decision = evaluate_phase_policy(
+        effective_mode=ChargeMode.SOLAR,
+        solar_strategy=SolarControlStrategy.ECO_SOLAR,
+        phase_switching_mode=PHASE_SWITCHING_MODE_MANUAL_ONLY,
+        configured_installed_phases="3p",
+        wallbox=WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            vehicle_connected=True,
+            phase_switch_mode_raw=1,
+            voltage_l1_v=230.0,
+            voltage_l2_v=230.0,
+            voltage_l3_v=230.0,
+        ),
+        control_decision=ControlDecision(
+            charging_enabled=True,
+            target_current_a=6.0,
+            reason=ControlReason.SOLAR_MODE,
+            final_target_a=6.0,
+        ),
+        solar_input_state="ready",
+        filtered_surplus_w=1600.0,
+        phase_restore_pending=False,
+    )
+
+    assert decision.decision == "would_request_1p"
+    assert decision.target == "1P"
+    assert decision.required_surplus_1p_w == 1380.0
+    assert decision.required_surplus_3p_w == 4140.0
+
+
+def test_phase_policy_would_request_3p_when_surplus_supports_3p():
+    decision = evaluate_phase_policy(
+        effective_mode=ChargeMode.SOLAR,
+        solar_strategy=SolarControlStrategy.ECO_SOLAR,
+        phase_switching_mode=PHASE_SWITCHING_MODE_MANUAL_ONLY,
+        configured_installed_phases="3p",
+        wallbox=WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            vehicle_connected=True,
+            phase_switch_mode_raw=0,
+            voltage_l1_v=230.0,
+            voltage_l2_v=230.0,
+            voltage_l3_v=230.0,
+        ),
+        control_decision=ControlDecision(
+            charging_enabled=True,
+            target_current_a=6.0,
+            reason=ControlReason.SOLAR_MODE,
+            final_target_a=6.0,
+        ),
+        solar_input_state="ready",
+        filtered_surplus_w=4500.0,
+        phase_restore_pending=False,
+    )
+
+    assert decision.decision == "would_request_3p"
+    assert decision.target == "3P"
+
+
+def test_phase_policy_blocks_when_dlb_is_limiting():
+    decision = evaluate_phase_policy(
+        effective_mode=ChargeMode.SOLAR,
+        solar_strategy=SolarControlStrategy.ECO_SOLAR,
+        phase_switching_mode=PHASE_SWITCHING_MODE_MANUAL_ONLY,
+        configured_installed_phases="3p",
+        wallbox=WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            vehicle_connected=True,
+            phase_switch_mode_raw=1,
+        ),
+        control_decision=ControlDecision(
+            charging_enabled=True,
+            target_current_a=6.0,
+            reason=ControlReason.DLB_LIMITED,
+            dominant_limit_reason=ControlReason.DLB_LIMITED,
+            final_target_a=6.0,
+        ),
+        solar_input_state="ready",
+        filtered_surplus_w=4500.0,
+        phase_restore_pending=False,
+    )
+
+    assert decision.decision == "blocked"
+    assert decision.block_reason == "dlb_limited"
 
 
 def test_voltage_and_session_time_registers_are_available():

@@ -32,25 +32,25 @@ class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_charge_mode"
 
-    def _mode_labels(self) -> dict[ChargeMode, str]:
+    def _base_mode_labels(self) -> dict[ChargeMode, str]:
         return {
             ChargeMode.OFF: "Off",
             ChargeMode.NORMAL: "Normal",
-            ChargeMode.SOLAR: _solar_mode_label(self.coordinator.control_config.solar_control_strategy),
             ChargeMode.FIXED_CURRENT: "Fixed Current",
         }
 
     @property
     def options(self) -> list[str]:
-        labels = self._mode_labels()
-        modes = [ChargeMode.OFF, ChargeMode.NORMAL, ChargeMode.FIXED_CURRENT]
+        labels = self._base_mode_labels()
+        options = [labels[ChargeMode.OFF], labels[ChargeMode.NORMAL]]
         if self.coordinator.control_config.solar_control_strategy != SolarControlStrategy.DISABLED:
-            modes.insert(2, ChargeMode.SOLAR)
-        return [labels[mode] for mode in modes]
+            options.extend(["Eco Solar", "Smart Solar", "Solar Boost"])
+        options.append(labels[ChargeMode.FIXED_CURRENT])
+        return options
 
     @property
     def current_option(self) -> str | None:
-        labels = self._mode_labels()
+        labels = self._base_mode_labels()
         if self.coordinator.data is None:
             return labels[ChargeMode.NORMAL]
         current_mode = self.coordinator.data.mode
@@ -59,10 +59,20 @@ class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
             and self.coordinator.control_config.solar_control_strategy == SolarControlStrategy.DISABLED
         ):
             return labels[ChargeMode.NORMAL]
+        if current_mode == ChargeMode.SOLAR:
+            return _solar_mode_label(self.coordinator.data.active_solar_strategy or self.coordinator.active_solar_strategy)
         return labels[current_mode]
 
     async def async_select_option(self, option: str) -> None:
-        labels = self._mode_labels()
+        labels = self._base_mode_labels()
         mode_by_label = {label: mode for mode, label in labels.items()}
-        self.coordinator.set_mode(mode_by_label[option])
+        solar_by_label = {
+            "Eco Solar": SolarControlStrategy.ECO_SOLAR,
+            "Smart Solar": SolarControlStrategy.SMART_SOLAR,
+            "Solar Boost": SolarControlStrategy.SOLAR_BOOST,
+        }
+        if option in solar_by_label:
+            self.coordinator.set_mode(ChargeMode.SOLAR, solar_by_label[option])
+        else:
+            self.coordinator.set_mode(mode_by_label[option])
         await self.coordinator.async_request_refresh()

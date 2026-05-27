@@ -1,0 +1,31 @@
+# Example EVCC charger configuration through Home Assistant.
+#
+# Replace every entity ID with the actual entity ID from your Home Assistant
+# instance. Existing installations may have different entity IDs because Home
+# Assistant preserves entity registry names.
+#
+# Recommended integration setting:
+#   Integration Charging Control = External Controller
+#
+# Important:
+#   EVCC setMaxCurrent should point to Requested Current, not Maximum Current.
+#   Maximum Current is only the configured safety upper bound.
+
+chargers:
+  - name: webasto_unite_ha
+    type: template
+    template: homeassistant
+    uri: http://homeassistant.local:8123
+    token: ${HA_TOKEN}
+    status: sensor.webasto_unite_iec_61851_state
+    enabled: switch.webasto_unite_charging_allowed
+    enable: switch.webasto_unite_charging_allowed
+    setMaxCurrent: number.webasto_unite_requested_current
+    power: sensor.webasto_unite_active_power
+    energy: sensor.webasto_unite_energy_meter
+    currentL1: sensor.webasto_unite_current_l1
+    currentL2: sensor.webasto_unite_current_l2
+    currentL3: sensor.webasto_unite_current_l3
+    voltageL1: sensor.webasto_unite_voltage_l1
+    voltageL2: sensor.webasto_unite_voltage_l2
+    voltageL3: sensor.webasto_unite_voltage_l3

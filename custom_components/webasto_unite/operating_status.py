@@ -12,7 +12,9 @@ def build_operating_state(
     solar_until_unplug_active: bool,
     control_config: ControlConfig,
     decision,
+    solar_strategy: SolarControlStrategy | None = None,
 ) -> str:
+    solar_strategy = solar_strategy or control_config.solar_control_strategy
     if control_config.control_mode == ControlMode.KEEPALIVE_ONLY:
         return "monitoring_only_not_writing"
     if control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
@@ -37,7 +39,7 @@ def build_operating_state(
         effective_mode == ChargeMode.SOLAR
         and solar_until_unplug_active
         and WallboxController.resolve_effective_solar_strategy(
-            control_config.solar_control_strategy,
+            solar_strategy,
             control_config.solar_until_unplug_strategy,
             True,
         )
@@ -53,11 +55,11 @@ def build_operating_state(
     if decision.dominant_limit_reason == ControlReason.DLB_LIMITED:
         return "dlb_limited"
     if effective_mode == ChargeMode.SOLAR:
-        if control_config.solar_control_strategy == SolarControlStrategy.ECO_SOLAR:
+        if solar_strategy == SolarControlStrategy.ECO_SOLAR:
             return "eco_solar"
-        if control_config.solar_control_strategy == SolarControlStrategy.SMART_SOLAR:
+        if solar_strategy == SolarControlStrategy.SMART_SOLAR:
             return "smart_solar"
-        if control_config.solar_control_strategy == SolarControlStrategy.SOLAR_BOOST:
+        if solar_strategy == SolarControlStrategy.SOLAR_BOOST:
             return "solar_boost"
         return "solar"
     return "normal"

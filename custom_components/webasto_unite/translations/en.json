@@ -45,7 +45,7 @@
             },
             "data_description": {
               "installed_phases": "Set how the charger is configured for this integration. Use 1P for a single-phase charger setup. Use 3P for a three-phase charger setup; the integration can still detect when a connected vehicle charges on only one phase.",
-              "control_mode": "Enabled lets this integration control charging. External Controller lets EVCC or another Home Assistant controller set charging current through the exposed entities. Monitoring Only only reads data and sends keepalive.",
+              "control_mode": "Enabled lets this integration control charging. External Controller lets EVCC or another Home Assistant controller set charging current through Requested Current. Monitoring Only only reads data and sends keepalive.",
               "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
               "min_current": "Lowest current in amperes the integration may request. Charging below 6 A is normally not supported.",
               "max_current": "Normal charging target and highest current in amperes the integration may request. Set this to match the charger and installation limit.",
@@ -89,7 +89,7 @@
           "solar_charging": {
             "name": "Solar Charging",
             "data": {
-              "solar_control_strategy": "Solar Strategy",
+              "solar_control_strategy": "Default Solar Mode",
               "solar_input_model": "Solar Input Source",
               "solar_grid_power_direction": "Grid Power Direction",
               "solar_sensor_failure_behavior": "Solar Sensor Failure Behavior",
@@ -107,7 +107,7 @@
               "solar_min_current": "Solar Minimum Current (A)"
             },
             "data_description": {
-              "solar_control_strategy": "Choose how strictly the integration should follow available solar surplus.",
+              "solar_control_strategy": "Default Solar mode used after restart and when Solar is selected without a specific runtime Solar mode.",
               "solar_input_model": "Choose how solar input is provided. DSMR Import/Export Sensors are recommended for P1 meters with separate consumption and production sensors.",
               "solar_grid_power_direction": "Choose which sign means export to the grid. Export is treated as available solar surplus.",
               "solar_sensor_failure_behavior": "What Smart Solar and Solar Boost should do when Solar input is stale, unavailable or invalid. Continuing at Solar Minimum Current may use grid power. Eco Solar always pauses.",
@@ -135,7 +135,7 @@
               "retries": "Retry Attempts"
             },
             "data_description": {
-              "phase_switching_mode": "Experimental manual 1P/3P switching. Off is recommended unless you explicitly want to test manual phase switching.",
+              "phase_switching_mode": "Experimental manual 1P/3P switching. Off is recommended unless you explicitly want to test manual phase switching with the 1P/3P buttons or services.",
               "keepalive_interval": "Interval in seconds between keepalive writes.",
               "control_sensor_timeout": "Maximum sensor age in seconds before DLB or Solar input is treated as unsafe.",
               "timeout": "How many seconds the integration waits for a charger response.",

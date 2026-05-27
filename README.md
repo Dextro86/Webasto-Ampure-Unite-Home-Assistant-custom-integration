@@ -91,14 +91,12 @@ Detailed instructions: [Installation](docs/installation.md)
 
 - `Off`
 - `Normal`
-- `Solar`
-- `Fixed Current`
-
-Solar strategies:
-
 - `Eco Solar`
 - `Smart Solar`
 - `Solar Boost`
+- `Fixed Current`
+
+The configured `Default Solar Mode` is used after restart when `Default Mode` is set to Solar. During normal use, the `Charge Mode` entity lets you select a specific Solar mode directly.
 
 Temporary session overrides:
 
@@ -133,18 +131,24 @@ The integration exposes entities and diagnostics that can be used by EVCC throug
 
 Use `Integration Charging Control = External Controller` when EVCC is the active charging manager. Check the actual Home Assistant entity IDs before copying the example configuration.
 
-See [EVCC compatibility](docs/evcc.md).
+See [EVCC compatibility](docs/evcc.md) and the [EVCC Home Assistant example](examples/evcc_home_assistant.yaml).
 
 ## Phase Switching
 
 Automatic phase switching is not included.
 
-Experimental manual phase switching is available only when `Phase Switching Mode = Manual Only`. It is off by default and must be triggered explicitly through services. The known register mapping used by the integration is:
+Experimental manual phase switching is available only when `Phase Switching Mode = Manual Only`. It is off by default and must be triggered explicitly through the 1P/3P buttons or services. The known register mapping used by the integration is:
 
-- register `404`: charger-reported phase configuration (`0 = 1P`, `1 = 3P`)
-- register `405`: experimental phase-switch mode (`0 = 1P`, `1 = 3P`)
+- input register `404`: charger preconfigured phase count (`0 = 1P`, `1 = 3P`). If this reports 1P, phase switching is blocked.
+- holding register `405`: phase-switch mode (`0 = 1P`, `1 = 3P`). Manual switching writes and verifies this register.
 
-Manual phase switching is intended for testing and validation, not for unattended automation yet.
+Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch. Manual phase switching is intended for testing and validation, not for unattended automation yet.
+
+`Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` and can run without a connected vehicle.
+
+Manual switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode.
+
+The integration also exposes diagnostic-only phase policy sensors. These show what future Solar automatic phase switching would request, but they do not perform automatic switching.
 
 ## Stability-First Design
 

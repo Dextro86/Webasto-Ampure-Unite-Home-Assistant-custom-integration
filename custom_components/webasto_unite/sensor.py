@@ -15,7 +15,7 @@ from .entity import WebastoUniteCoordinatorEntity
 from .evcc import build_evcc_status
 from .models import ChargeMode
 from .phase_observer import PHASE_SWITCH_VALUE_1P, PHASE_SWITCH_VALUE_3P
-from .registers import PHASE_SWITCH_MODE
+from .registers import NUMBER_OF_PHASES, PHASE_SWITCH_MODE
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -33,13 +33,22 @@ SENSORS = (
     WebastoSensorDescription(key="cable_state_text", name="Cable State", value_key="cable_state_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="evse_fault_code", name="EVSE Fault Code", value_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="effective_active_phases", name="Effective Active Phases", value_key="phases_in_use", entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="charger_reported_phases", name="Charger Reported Phases", value_key="charge_point_phase_count", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="charger_reported_phases", name="Charger Configured Phases", value_key="charge_point_phase_count", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_mode", name="Phase Switch Mode", value_key="phase_switch_mode", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_mode_raw", name="Phase Switch Mode Raw", value_key="phase_switch_mode_raw", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_available", name="Phase Switch Available", value_key="phase_switch_available", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_block_reason", name="Phase Switch Block Reason", value_key="phase_switch_block_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="vehicle_phase_capability", name="Vehicle Phase Capability", value_key="vehicle_phase_capability", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switching_mode", name="Phase Switching Mode", value_key="phase_switching_mode", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_switch_default_mode", name="Default Phase Mode", value_key="phase_switch_default_mode", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_session_override_active", name="Phase Session Override", value_key="phase_session_override_active", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_session_target", name="Phase Session Target", value_key="phase_session_target", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_restore_pending", name="Phase Restore Pending", value_key="phase_restore_pending", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_policy_decision", name="Phase Policy Decision", value_key="phase_policy_decision", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_policy_block_reason", name="Phase Policy Block Reason", value_key="phase_policy_block_reason", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_policy_target", name="Phase Policy Target", value_key="phase_policy_target", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_policy_required_surplus_1p", name="Phase Policy Required Surplus 1P", value_key="phase_policy_required_surplus_1p_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_policy_required_surplus_3p", name="Phase Policy Required Surplus 3P", value_key="phase_policy_required_surplus_3p_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_last_result", name="Last Phase Switch Result", value_key="phase_switch_last_result", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_last_block_reason", name="Last Phase Switch Block Reason", value_key="phase_switch_last_block_reason", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_switch_last_target", name="Last Phase Switch Target", value_key="phase_switch_last_target", entity_category=EntityCategory.DIAGNOSTIC),
@@ -137,6 +146,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
         if self.entity_description.key == "phase_switch_mode":
             return {
                 "source": "register_405",
+                "capability_source": "register_404",
+                "capability_register": NUMBER_OF_PHASES.address,
                 "read_register": PHASE_SWITCH_MODE.address,
                 "write_register": PHASE_SWITCH_MODE.address,
                 "write_value_1p": PHASE_SWITCH_VALUE_1P,
@@ -282,18 +293,37 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "likely_3p": "Likely 3P",
                 "unknown": "Unknown",
                 "charger_not_configured_3p": "Charger Not Configured 3P",
+                "charger_preconfigured_1p": "Charger Preconfigured 1P",
+                "charger_phase_config_unknown": "Charger Phase Configuration Unknown",
+                "integration_configured_1p": "Integration Configured 1P",
                 "phase_switch_register_unavailable": "Phase Switch Register Unavailable",
                 "vehicle_not_connected": "Vehicle Not Connected",
                 "manual_only": "Manual Only",
+                "1p": "1P",
+                "3p": "3P",
                 "manual_phase_switching_disabled": "Manual Phase Switching Disabled",
                 "integration_control_disabled": "Integration Control Disabled",
+                "phase_switch_in_progress": "Phase Switch in Progress",
+                "phase_switching_not_manual_only": "Phase Switching Not Manual Only",
+                "charger_not_preconfigured_3p": "Charger Not Preconfigured 3P",
+                "phase_restore_pending": "Phase Restore Pending",
+                "not_solar_mode": "Not Solar Mode",
+                "solar_input_not_ready": "Solar Input Not Ready",
+                "dlb_limited": "DLB Limited",
+                "would_request_1p": "Would Request 1P",
+                "would_request_3p": "Would Request 3P",
+                "no_action": "No Action",
                 "invalid_target_phase": "Invalid Target Phase",
                 "charger_state_unavailable": "Charger State Unavailable",
                 "charger_unavailable": "Charger Unavailable",
                 "vehicle_likely_1p": "Vehicle Likely 1P",
                 "already_in_target_phase": "Already In Target Phase",
+                "phase_switch_verify_unavailable": "Phase Switch Verification Unavailable",
+                "phase_switch_verify_mismatch": "Phase Switch Verification Mismatch",
                 "blocked": "Blocked",
                 "failed": "Failed",
                 "requested": "Requested",
+                "verified": "Verified",
+                "unverified": "Unverified",
             }.get(value, value)
         return value

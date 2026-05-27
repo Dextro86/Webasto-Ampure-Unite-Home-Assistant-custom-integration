@@ -18,6 +18,8 @@ cards:
         name: Fixed Current Until Unplug
       - entity: number.webasto_unite_current_limit
         name: Maximum Current
+      - entity: number.webasto_unite_requested_current
+        name: Requested Current
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
       - entity: sensor.webasto_unite_control_reason
@@ -49,7 +51,7 @@ cards:
       - entity: sensor.webasto_unite_dlb_limit
         name: DLB Limit
       - entity: sensor.webasto_unite_actual_current
-        name: Max Phase Current
+        name: Actual Phase Current
       - entity: sensor.webasto_unite_effective_active_phases
         name: Effective Active Phases
       - entity: sensor.webasto_unite_current_l1
@@ -65,8 +67,52 @@ cards:
     entities:
       - entity: sensor.webasto_unite_solar_surplus_input
         name: Solar Surplus Input
+      - entity: sensor.webasto_unite_solar_raw_input
+        name: Solar Raw Input
+      - entity: sensor.webasto_unite_solar_filtered_input
+        name: Solar Filtered Input
+      - entity: sensor.webasto_unite_solar_target
+        name: Solar Target
       - entity: sensor.webasto_unite_solar_input_state
         name: Solar Input State
+
+  - type: entities
+    title: Manual Phase Switching
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_charger_configured_phases
+        name: Charger Configured Phases
+      - entity: sensor.webasto_unite_phase_switch_mode
+        name: Phase Switch Mode
+      - entity: sensor.webasto_unite_phase_switch_available
+        name: Phase Switch Available
+      - entity: sensor.webasto_unite_phase_switch_block_reason
+        name: Phase Switch Block Reason
+      - entity: sensor.webasto_unite_phase_session_override
+        name: Phase Session Override
+      - entity: sensor.webasto_unite_phase_restore_pending
+        name: Phase Restore Pending
+      - entity: button.webasto_unite_request_1p_phase_mode
+        name: Request 1P Phase Mode
+      - entity: button.webasto_unite_request_3p_phase_mode
+        name: Request 3P Phase Mode
+      - entity: button.webasto_unite_restore_default_phase_mode
+        name: Restore Default Phase Mode
+
+  - type: entities
+    title: Phase Policy Preview
+    show_header_toggle: false
+    entities:
+      - entity: sensor.webasto_unite_phase_policy_decision
+        name: Phase Policy Decision
+      - entity: sensor.webasto_unite_phase_policy_block_reason
+        name: Phase Policy Block Reason
+      - entity: sensor.webasto_unite_phase_policy_target
+        name: Phase Policy Target
+      - entity: sensor.webasto_unite_phase_policy_required_surplus_1p
+        name: Required Surplus 1P
+      - entity: sensor.webasto_unite_phase_policy_required_surplus_3p
+        name: Required Surplus 3P
 
   - type: entities
     title: Charger Context

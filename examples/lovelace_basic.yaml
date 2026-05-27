@@ -18,6 +18,8 @@ cards:
         name: Fixed Current Until Unplug
       - entity: number.webasto_unite_current_limit
         name: Maximum Current
+      - entity: number.webasto_unite_requested_current
+        name: Requested Current
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
 
@@ -38,7 +40,7 @@ cards:
       - entity: sensor.webasto_unite_active_power
         name: Active Power
       - entity: sensor.webasto_unite_actual_current
-        name: Max Phase Current
+        name: Actual Phase Current
       - entity: sensor.webasto_unite_session_energy
         name: Session Energy
       - entity: sensor.webasto_unite_session_duration

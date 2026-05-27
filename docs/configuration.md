@@ -58,7 +58,7 @@ Recommended first setup:
 2. Confirm that monitoring, connection state, currents and power values look correct.
 3. Switch `Integration Charging Control` to `Enabled` only after the monitored values are plausible, or choose `External Controller` when EVCC should manage charging current.
 
-If you want the integration to return to Solar charging after a Home Assistant restart, set `Default Mode` to the Solar option. The label of that option follows the configured Solar strategy, so it appears as `Eco Solar`, `Smart Solar` or `Solar Boost`. Solar must still be configured with a valid Solar strategy and sensor setup; otherwise startup falls back to `Normal`.
+If you want the integration to return to Solar charging after a Home Assistant restart, set `Default Mode` to `Solar` and configure `Default Solar Mode`. During normal use, the `Charge Mode` entity lets you choose `Eco Solar`, `Smart Solar` or `Solar Boost` directly. Solar must still be configured with a valid Solar mode and sensor setup; otherwise startup falls back to `Normal`.
 
 Restart behavior is intentionally split in two parts:
 
@@ -71,7 +71,7 @@ This means a Home Assistant restart does not automatically resume charging if ch
 
 When `Integration Charging Control` is `Monitoring Only`, `Charging Behavior` shows `Monitoring Only - Not Writing`. `Final Target` may still show the current the integration would choose, but that value is diagnostic only and is not written to the charger.
 
-When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `Maximum Current` remain writable so EVCC or another controller can control the charger through Home Assistant.
+When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. `Maximum Current` remains the configured upper limit.
 
 `Pause Charging` and `Resume Charging` buttons are also available when `Integration Charging Control` is `Enabled` or `External Controller`. They are convenience controls for the same charging-enabled state:
 
@@ -157,7 +157,7 @@ available current estimate = 25 - 2 - (18 - 15) = 20 A
 
 Main settings:
 
-- `Solar Strategy`
+- `Default Solar Mode`
 - `Solar Input Source`
 - `Grid Power Direction`
 - `Solar Sensor Failure Behavior`
@@ -174,14 +174,14 @@ Main settings:
 - `Solar Minimum Pause (s)`
 - `Solar Minimum Current (A)`
 
-Solar Strategy:
+Default Solar Mode:
 
 - `Disabled`: do not use Solar charging.
 - `Eco Solar`: charge only when enough surplus is available.
 - `Smart Solar`: charge at least at `Solar Minimum Current (A)` when Solar input is valid, and increase only when the total Solar input supports more than that minimum.
 - `Solar Boost`: charge at `Solar Minimum Current (A)` and add available Solar surplus on top.
 
-Solar charging is disabled by default. Enable it only after selecting suitable Solar input sensors.
+Solar charging is disabled by default. Enable it only after selecting suitable Solar input sensors. `Default Solar Mode` is the Solar mode used after restart and when a generic Solar service/mode is selected. The runtime `Charge Mode` selector can still choose `Eco Solar`, `Smart Solar` or `Solar Boost` directly.
 
 `Smart Solar` is not pure surplus-only charging. It may charge at `Solar Minimum Current (A)` when there is little or no surplus, as long as the Solar input is valid. It raises current when the calculated Solar input supports more than the minimum. Use `Eco Solar` if you want Solar charging to wait until enough surplus is present.
 
@@ -329,7 +329,7 @@ In `Eco Solar`, the integration also requires enough surplus to support at least
 
 It does not permanently change the selected base `Charge Mode`. It stays active until the vehicle is unplugged or until you disable the override manually.
 
-The `Solar Until Unplug Mode` can inherit the normal Solar strategy or use a separate Solar strategy for this temporary session.
+The `Solar Until Unplug Mode` can inherit the active/default Solar mode or use a separate Solar mode for this temporary session.
 
 ## Advanced
 
@@ -359,15 +359,17 @@ What this means:
 
 - The integration does not switch the Webasto/Ampure phase-switch register automatically.
 - Manual phase switching is off by default.
-- Manual switching is only exposed through explicit services: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
-- The service pauses charging with `0 A`, writes register `405`, and resumes the previous current if the charger was already charging.
+- Manual switching is exposed through explicit buttons/services: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
+- The button/service pauses charging with `0 A`, writes register `405`, verifies register `405`, and resumes the previous current if the charger was already charging.
+- `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405`. This can run without a connected vehicle.
+- A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration tries to restore `405` back to `Charger Configuration`.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects `Effective Active Phases` from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:
-  - Register `404`: charger-reported phase configuration (`0 = 1P`, `1 = 3P`), shown as `Charger Reported Phases`.
+  - Register `404`: charger preconfigured phase count (`0 = 1P`, `1 = 3P`), shown as `Charger Configured Phases`. If this reports `1P`, phase switching is blocked.
   - Register `405`: experimental phase-switch mode register, shown as `Phase Switch Mode Raw` and `Phase Switch Mode`.
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
-- `Vehicle Phase Capability` is observed from measured phase currents during active charging and can be `Likely 1P`, `Likely 3P` or `Unknown`.
+- `Vehicle Phase Capability` is observed from measured phase currents during active charging and can be `Likely 1P`, `Likely 3P` or `Unknown`. This is diagnostic only and is not used to auto-correct register `405`.
 - `Phase Switch Available` and `Phase Switch Block Reason` indicate whether the basic preconditions appear suitable for manual switching.
 
 Manual switch requests are blocked when:
@@ -376,9 +378,15 @@ Manual switch requests are blocked when:
 - `Integration Charging Control` is `Monitoring Only`.
 - The charger is unavailable.
 - No vehicle is connected.
-- The phase-switch register cannot be read.
-- The charger is configured as `1P`.
-- A request to `3P` is made while the vehicle is observed as `Likely 1P`.
+- The phase-switch register `405` cannot be read.
+- Register `404` reports that the charger is preconfigured as `1P`.
+- The integration itself is configured as `1P`.
+
+`Restore Default Phase Mode` is the exception to the vehicle-connected requirement. It is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session.
+
+If automatic restore fails, `Phase Restore Pending` remains active in diagnostics.
+
+After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration`. If no vehicle is connected and register `404` confirms the charger is 3P-capable when needed, it restores `405` to `Charger Configuration`. If a vehicle is connected, it does not switch blindly and only marks `Phase Restore Pending`.
 
 The charger may still have its own physical or firmware-level phase configuration. Treat manual phase switching as experimental and verify behavior on your own charger before using it in automations.
 
@@ -394,13 +402,14 @@ Recommended setup when EVCC is the active charging manager:
 - Do not run EVCC Solar control and this integration's Solar control at the same time.
 - Automatic phase switching is not provided by this integration. Experimental manual phase switching is not intended for EVCC automation yet.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `Maximum Current`.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `Requested Current`.
 
 Relevant entities:
 
 - `IEC 61851 State`: charger status for EVCC (`A`, `B`, `C`, `E`, `F`).
 - `Charging On/Off`: enable/disable switch.
-- `Maximum Current`: number entity for EVCC `setMaxCurrent`.
+- `Requested Current`: number entity for EVCC `setMaxCurrent`.
+- `Maximum Current`: configured upper current limit. EVCC requests above this value are rejected.
 - `Active Power`: measured charger power.
 - `Current L1`, `Current L2`, `Current L3`: phase currents.
 - `EVCC Status`: diagnostic support sensor with stable attributes.
@@ -415,9 +424,9 @@ chargers:
     uri: http://homeassistant.local:8123
     token: ${HA_TOKEN}
     status: sensor.webasto_unite_iec_61851_state
-    enabled: switch.webasto_unite_allow_charging
-    enable: switch.webasto_unite_allow_charging
-    setMaxCurrent: number.webasto_unite_current_limit
+    enabled: switch.webasto_unite_charging_allowed
+    enable: switch.webasto_unite_charging_allowed
+    setMaxCurrent: number.webasto_unite_requested_current
     power: sensor.webasto_unite_active_power
     energy: sensor.webasto_unite_energy_meter
     currentL1: sensor.webasto_unite_current_l1
@@ -429,6 +438,8 @@ chargers:
 ```
 
 If EVCC cannot enable charging, verify that `Charging On/Off` is available in Home Assistant. It is unavailable when `Integration Charging Control` is `Monitoring Only`.
+
+Existing Home Assistant installations can have different entity IDs because Home Assistant preserves entity registry names. Always check the actual entity IDs before copying the EVCC example.
 
 Do not configure EVCC `phaseswitch` for this integration yet. Experimental manual phase switching is not intended for EVCC automation and is not exposed as the EVCC Home Assistant phase-switch select with options `1` and `3`.
 
