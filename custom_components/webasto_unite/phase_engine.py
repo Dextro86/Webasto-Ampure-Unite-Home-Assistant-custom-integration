@@ -18,6 +18,7 @@ PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S = 90.0
 PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S = 5.0
 PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S = 60.0
 PHASE_SWITCH_WAIT_BEFORE_RESUME_S = 20.0
+PHASE_SWITCH_RESUME_RETRY_PAUSE_S = 10.0
 PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S = 5.0
 PHASE_SWITCH_PHYSICAL_VERIFY_TIMEOUT_S = 120.0
 PHASE_SWITCH_REQUIRED_STABLE_POLLS = 2
@@ -87,6 +88,7 @@ class PhaseSwitchManager:
         read_wallbox=None,
         pause_charging=None,
         resume_charging=None,
+        retry_resume_charging=None,
         require_vehicle: bool = True,
     ) -> None:
         if self._lock.locked():
@@ -122,6 +124,7 @@ class PhaseSwitchManager:
                 read_wallbox=read_wallbox,
                 pause_charging=pause_charging,
                 resume_charging=resume_charging,
+                retry_resume_charging=retry_resume_charging,
             )
 
     async def _execute_plan(
@@ -135,6 +138,7 @@ class PhaseSwitchManager:
         read_wallbox=None,
         pause_charging=None,
         resume_charging=None,
+        retry_resume_charging=None,
     ) -> None:
         await write_queue.clear()
         try:
@@ -200,6 +204,14 @@ class PhaseSwitchManager:
 
         if plan.was_charging and read_wallbox is not None:
             physical_result = await self._observe_physical_phase_result(plan, read_wallbox=read_wallbox, sleep=sleep)
+            if physical_result == "vehicle_did_not_resume" and retry_resume_charging is not None:
+                self.state = "resume_retry"
+                await retry_resume_charging(plan.resume_current_a or 0.0)
+                physical_result = await self._observe_physical_phase_result(
+                    plan,
+                    read_wallbox=read_wallbox,
+                    sleep=sleep,
+                )
             if physical_result is not None:
                 self.last_result = physical_result
                 self.last_block_reason = None if physical_result == "physical_verified" else physical_result

@@ -127,7 +127,7 @@ Use `Restore Default Phase Mode` if register `405` was manually changed and you 
 
 If `Last Phase Switch Result` says `Pause Not Confirmed`, the integration wrote `0 A` but the charger kept drawing current. In that case the integration intentionally did not write register `405`.
 
-If `Last Phase Switch Result` says `Vehicle Did Not Resume`, register `405` accepted and held the requested value but the vehicle did not start charging again after resume.
+If `Last Phase Switch Result` says `Vehicle Did Not Resume`, register `405` accepted and held the requested value but the vehicle did not start charging again after the normal resume and one bounded retry. In practice this usually means the car needs a physical reconnect or a longer CP/session reset than the integration can safely do automatically.
 
 If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value and charging did resume, but the active charging session did not physically move to the requested phase count within the observation window. This is useful test information and means phase switching should not be automated for that scenario yet.
 

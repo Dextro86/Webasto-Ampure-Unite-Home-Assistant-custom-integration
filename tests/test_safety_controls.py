@@ -542,6 +542,66 @@ def test_manual_phase_switch_reports_physical_timeout_when_register_confirms_but
     asyncio.run(_run())
 
 
+def test_manual_phase_switch_retries_resume_when_vehicle_does_not_resume():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=0))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=False, active_power_w=0.0),
+                    *[
+                        WallboxState(
+                            available=True,
+                            charging_active=False,
+                            phases_in_use=0,
+                            phase_switch_mode_raw=0,
+                        )
+                        for _ in range(24)
+                    ],
+                    WallboxState(available=True, charging_active=True, phases_in_use=1, phase_switch_mode_raw=0),
+                    WallboxState(available=True, charging_active=True, phases_in_use=1, phase_switch_mode_raw=0),
+                ]
+            )
+        )
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                charge_point_phase_count=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                current_limit_a=16.0,
+                phases_in_use=3,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        await coordinator.async_request_phase_switch(1)
+
+        write_calls = [call.args for call in coordinator.client.write.await_args_list]
+        assert write_calls == [
+            (SET_CHARGE_CURRENT_A, 0),
+            (PHASE_SWITCH_MODE, 0),
+            (SET_CHARGE_CURRENT_A, 16),
+            (SET_CHARGE_CURRENT_A, 0),
+            (SET_CHARGE_CURRENT_A, 16),
+        ]
+        assert coordinator._phase_switch_last_result == "physical_verified"
+        assert coordinator._phase_switch_state == "physical_verified"
+        assert coordinator.write_runtime.last_control_write_reason == "phase_switch_resume_retry"
+        assert coordinator.write_runtime.last_control_write_value_a == 16.0
+
+    asyncio.run(_run())
+
+
 def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
