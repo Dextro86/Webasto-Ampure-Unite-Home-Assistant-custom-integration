@@ -13,11 +13,29 @@ from .phase_observer import (
 from .registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 
 
-PHASE_SWITCH_WAIT_BEFORE_WRITE_S = 20.0
-PHASE_SWITCH_WAIT_BEFORE_REGISTER_VERIFY_S = 20.0
+PHASE_SWITCH_MIN_PAUSE_CONFIRM_S = 20.0
+PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S = 90.0
+PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S = 5.0
+PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S = 60.0
 PHASE_SWITCH_WAIT_BEFORE_RESUME_S = 20.0
 PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S = 5.0
-PHASE_SWITCH_PHYSICAL_VERIFY_POLLS = 2
+PHASE_SWITCH_PHYSICAL_VERIFY_TIMEOUT_S = 120.0
+PHASE_SWITCH_REQUIRED_STABLE_POLLS = 2
+PHASE_SWITCH_PAUSE_CURRENT_THRESHOLD_A = 1.0
+PHASE_SWITCH_PAUSE_POWER_THRESHOLD_W = 150.0
+
+_TERMINAL_STATES = {
+    "idle",
+    "blocked",
+    "failed",
+    "pause_not_confirmed",
+    "register_unverified",
+    "register_reverted",
+    "register_verified",
+    "physical_verified",
+    "physical_timeout",
+    "already_in_target_phase",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +67,10 @@ class PhaseSwitchManager:
         self.last_block_reason: str | None = None
         self.last_target: str | None = None
         self.state: str = "idle"
+
+    @property
+    def active(self) -> bool:
+        return self._lock.locked() and self.state not in _TERMINAL_STATES
 
     async def request(
         self,
@@ -108,54 +130,66 @@ class PhaseSwitchManager:
         read_wallbox=None,
     ) -> None:
         await write_queue.clear()
-        verify_error: str | None = None
-        register_verified = False
         try:
-            async with flush_lock:
-                if plan.was_charging:
-                    self.state = "pausing"
-                    await client.write(SET_CHARGE_CURRENT_A, 0)
-                    self.state = "waiting_before_write"
-                    await sleep(PHASE_SWITCH_WAIT_BEFORE_WRITE_S)
+            if plan.was_charging:
+                self.state = "pausing"
+                await self._write_direct(
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                    register=SET_CHARGE_CURRENT_A,
+                    value=0,
+                )
+                if not await self._wait_for_pause_confirmed(read_wallbox=read_wallbox, sleep=sleep):
+                    self.last_result = "pause_not_confirmed"
+                    self.last_block_reason = "pause_not_confirmed"
+                    self.state = "pause_not_confirmed"
+                    raise ValueError("Phase switch blocked: pause_not_confirmed")
 
-                self.state = "writing_register"
-                await client.write(PHASE_SWITCH_MODE, plan.write_value)
-                self.state = "waiting_before_register_verify"
-                await sleep(PHASE_SWITCH_WAIT_BEFORE_REGISTER_VERIFY_S)
+            self.state = "writing_register"
+            await self._write_direct(
+                client=client,
+                write_queue=write_queue,
+                flush_lock=flush_lock,
+                register=PHASE_SWITCH_MODE,
+                value=plan.write_value,
+            )
 
-                self.state = "verifying_register"
-                try:
-                    readback = int(await client.read(PHASE_SWITCH_MODE))
-                except Exception as err:  # noqa: BLE001
-                    readback = None
-                    verify_error = f"phase_switch_verify_unavailable:{err}"
+            register_result = await self._wait_for_register_target(
+                client=client,
+                plan=plan,
+                sleep=sleep,
+            )
+            if register_result != "register_verified":
+                self.last_result = register_result
+                self.last_block_reason = register_result
+                self.state = register_result
+                raise ValueError(f"Phase switch could not be verified: {register_result}")
 
-                if readback is not None and readback != plan.write_value:
-                    verify_error = f"phase_switch_verify_mismatch:{readback}"
-                register_verified = verify_error is None
-
-                if plan.was_charging and plan.resume_current_a is not None:
-                    self.state = "waiting_before_resume"
-                    await sleep(PHASE_SWITCH_WAIT_BEFORE_RESUME_S)
-                    self.state = "resuming"
-                    await client.write(SET_CHARGE_CURRENT_A, int(round(plan.resume_current_a)))
+            if plan.was_charging and plan.resume_current_a is not None:
+                self.state = "waiting_before_resume"
+                await sleep(PHASE_SWITCH_WAIT_BEFORE_RESUME_S)
+                self.state = "resuming"
+                await self._write_direct(
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                    register=SET_CHARGE_CURRENT_A,
+                    value=int(round(plan.resume_current_a)),
+                )
         except Exception as err:  # noqa: BLE001
+            if self.last_result in {"pause_not_confirmed", "register_unverified", "register_reverted"}:
+                raise
             self.last_result = "failed"
             self.last_block_reason = str(err)
             self.state = "failed"
             raise
 
-        if verify_error is not None:
-            self.last_result = "register_unverified"
-            self.last_block_reason = verify_error
-            self.state = "register_unverified"
-            raise ValueError(f"Phase switch could not be verified: {verify_error}")
-
-        if register_verified and plan.was_charging and read_wallbox is not None:
+        if plan.was_charging and read_wallbox is not None:
             physical_result = await self._observe_physical_phase_result(plan, read_wallbox=read_wallbox, sleep=sleep)
             if physical_result is not None:
                 self.last_result = physical_result
-                self.last_block_reason = None if physical_result == "physical_verified" else "physical_phase_mismatch"
+                self.last_block_reason = None if physical_result == "physical_verified" else physical_result
                 self.state = physical_result
                 return
 
@@ -163,23 +197,74 @@ class PhaseSwitchManager:
         self.last_block_reason = None
         self.state = "register_verified"
 
+    async def _write_direct(self, *, client, write_queue, flush_lock: asyncio.Lock, register, value: int) -> None:
+        async with flush_lock:
+            await write_queue.clear()
+            await client.write(register, value)
+
+    async def _wait_for_pause_confirmed(self, *, read_wallbox, sleep) -> bool:
+        self.state = "waiting_for_pause"
+        await sleep(PHASE_SWITCH_MIN_PAUSE_CONFIRM_S)
+        if read_wallbox is None:
+            return False
+
+        polls = int(PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S / PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
+        for index in range(max(1, polls)):
+            wallbox = await read_wallbox()
+            if _pause_is_confirmed(wallbox):
+                return True
+            if index < polls - 1:
+                await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
+        return False
+
+    async def _wait_for_register_target(self, *, client, plan: PhaseSwitchPlan, sleep) -> str:
+        self.state = "verifying_register"
+        stable_target_reads = 0
+        saw_target = False
+        saw_read_error = False
+        polls = int(PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S / PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
+        for _ in range(max(1, polls)):
+            await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
+            try:
+                readback = int(await client.read(PHASE_SWITCH_MODE))
+            except Exception:  # noqa: BLE001
+                saw_read_error = True
+                stable_target_reads = 0
+                continue
+
+            if readback == plan.write_value:
+                saw_target = True
+                stable_target_reads += 1
+                if stable_target_reads >= PHASE_SWITCH_REQUIRED_STABLE_POLLS:
+                    return "register_verified"
+                continue
+
+            stable_target_reads = 0
+            if saw_target:
+                return "register_reverted"
+
+        if saw_read_error and not saw_target:
+            return "register_unverified"
+        return "register_reverted" if saw_target else "register_unverified"
+
     async def _observe_physical_phase_result(self, plan: PhaseSwitchPlan, *, read_wallbox, sleep) -> str | None:
-        observed: list[int | None] = []
         self.state = "observing_physical"
-        for _ in range(PHASE_SWITCH_PHYSICAL_VERIFY_POLLS):
+        stable_physical_reads = 0
+        polls = int(PHASE_SWITCH_PHYSICAL_VERIFY_TIMEOUT_S / PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S)
+        for _ in range(max(1, polls)):
             await sleep(PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S)
             wallbox = await read_wallbox()
-            if wallbox is None or not wallbox.charging_active:
-                observed.append(None)
+            if wallbox is None:
                 continue
-            observed.append(wallbox.phases_in_use)
-
-        if observed and all(value == plan.target_phases for value in observed):
-            return "physical_verified"
-        if any(value is not None for value in observed):
-            self.last_block_reason = f"physical_phase_mismatch:{observed[-1]}"
-            return "register_verified_physical_mismatch"
-        return "register_verified"
+            if wallbox.phase_switch_mode_raw is not None and wallbox.phase_switch_mode_raw != plan.write_value:
+                return "register_reverted"
+            if wallbox.charging_active and wallbox.phases_in_use == plan.target_phases:
+                stable_physical_reads += 1
+                if stable_physical_reads >= PHASE_SWITCH_REQUIRED_STABLE_POLLS:
+                    return "physical_verified"
+            else:
+                stable_physical_reads = 0
+        return "physical_timeout"
 
     def reset(self) -> None:
         self.last_result = None
@@ -247,3 +332,17 @@ def _physical_phase_matches(wallbox: WallboxState, target_phases: int) -> bool:
     if not wallbox.charging_active:
         return True
     return wallbox.phases_in_use == target_phases
+
+
+def _pause_is_confirmed(wallbox: WallboxState | None) -> bool:
+    if wallbox is None:
+        return False
+    if not wallbox.charging_active:
+        return True
+    max_current = wallbox.phase_currents.max_present()
+    if max_current is None:
+        max_current = wallbox.actual_current_a
+    active_power = wallbox.active_power_w
+    if max_current is None or active_power is None:
+        return False
+    return max_current <= PHASE_SWITCH_PAUSE_CURRENT_THRESHOLD_A and active_power <= PHASE_SWITCH_PAUSE_POWER_THRESHOLD_W

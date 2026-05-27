@@ -125,7 +125,11 @@ If `Phase Switch Block Reason` says `Charger Preconfigured 1P`, register `404` r
 
 Use `Restore Default Phase Mode` if register `405` was manually changed and you want to return to the configured `Charger Configuration`.
 
-If `Last Phase Switch Result` says `Register Verified, Physical Mismatch`, register `405` accepted the requested value but the active charging session did not physically move to the requested phase count. This is useful test information and means phase switching should not be automated for that scenario yet.
+If `Last Phase Switch Result` says `Pause Not Confirmed`, the integration wrote `0 A` but the charger kept drawing current. In that case the integration intentionally did not write register `405`.
+
+If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value but the active charging session did not physically move to the requested phase count within the observation window. This is useful test information and means phase switching should not be automated for that scenario yet.
+
+If `Last Phase Switch Result` says `Register Reverted`, the charger accepted register `405` briefly but later reported a different value again.
 
 If `Phase Restore Pending` stays on after unplug, check the charger connection and `Last Phase Switch Block Reason`, then use `Restore Default Phase Mode` manually.
 

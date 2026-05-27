@@ -101,8 +101,9 @@ Manual switching uses register `404` only as charger configuration/capability co
 
 Manual phase switching reports two different checks:
 
-- Register verification: register `405` readback matches the requested value.
-- Physical verification: after charging resumes, measured active phases match the requested phase count for multiple polls.
+- Pause verification: after writing `0 A`, charging must actually drop to a low/paused state before register `405` is written.
+- Register verification: register `405` readback must hold the requested value for stable polls.
+- Physical verification: after charging resumes, measured active phases must match the requested phase count within the observation window.
 
 This distinction matters because some chargers can accept the register write before the current charging session physically changes phases.
 

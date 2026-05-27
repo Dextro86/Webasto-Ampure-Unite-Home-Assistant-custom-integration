@@ -818,13 +818,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return 1 if self._configured_installed_phases() == "1p" else 3
 
     def _allows_control_writes(self) -> bool:
-        return self.control_config.control_mode == ControlMode.MANAGED_CONTROL
+        return self.control_config.control_mode == ControlMode.MANAGED_CONTROL and not self._phase_switch_in_progress()
 
     def _allows_current_writes(self) -> bool:
         return self.control_config.control_mode in {
             ControlMode.MANAGED_CONTROL,
             ControlMode.EXTERNAL_CONTROLLER,
-        }
+        } and not self._phase_switch_in_progress()
 
     def _allows_static_sync(self) -> bool:
         return self.control_config.control_mode in {
@@ -833,9 +833,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         }
 
     def _control_write_blocked_reason(self) -> str:
+        if self._phase_switch_in_progress():
+            return "phase_switch_in_progress"
         if self.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
             return "external_controller_mode"
         return "monitoring_only"
+
+    def _phase_switch_in_progress(self) -> bool:
+        manager = getattr(self, "phase_switch_manager", None)
+        return bool(getattr(manager, "active", False))
 
     async def _keepalive_loop(self) -> None:
         sleep_s = max(1.0, min(self.control_config.keepalive_interval_s / 2.0, 5.0))

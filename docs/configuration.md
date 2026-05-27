@@ -362,7 +362,7 @@ What this means:
 - The integration does not switch the Webasto/Ampure phase-switch register automatically.
 - Manual phase switching is off by default.
 - Manual switching is exposed through explicit buttons/services: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
-- The button/service pauses charging with `0 A`, waits about 20 seconds, writes register `405`, waits about 20 seconds, verifies register `405`, waits about 20 seconds, resumes the previous current if the charger was already charging, and then observes the measured active phases for multiple polls.
+- The button/service pauses charging with `0 A`, waits until the charger actually appears paused, writes register `405`, verifies that register `405` holds the requested value, resumes the previous current if the charger was already charging, and then observes the measured active phases for a longer window.
 - `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405`. This can run without a connected vehicle.
 - A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration tries to restore `405` back to `Charger Configuration`.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
@@ -373,8 +373,8 @@ What this means:
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
 - `Vehicle Phase Capability` is observed from measured phase currents during active charging and can be `Likely 1P`, `Likely 3P` or `Unknown`. This is diagnostic only and is not used to auto-correct register `405`.
 - `Phase Switch Available` and `Phase Switch Block Reason` indicate whether the basic preconditions appear suitable for manual switching.
-- `Phase Switch State` shows the current step, for example `Pausing`, `Writing Phase Register`, `Verifying Phase Register`, `Observing Physical Phases`, `Register Verified`, `Physical Verified` or `Register Verified, Physical Mismatch`.
-- `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Register Verified, Physical Mismatch` means the charger accepted register `405`, but the active charging session still did not physically use the requested phase count.
+- `Phase Switch State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
+- `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after writing `0 A`, so the integration did not write the phase register. `Physical Timeout` means register `405` held the request, but the active charging session did not move to the requested phase count within the observation window. `Register Reverted` means register `405` fell back away from the requested value.
 
 Manual switch requests are blocked when:
 

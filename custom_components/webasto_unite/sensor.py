@@ -322,10 +322,12 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "phase_switch_verify_unavailable": "Phase Switch Verification Unavailable",
                 "phase_switch_verify_mismatch": "Phase Switch Verification Mismatch",
                 "physical_phase_mismatch": "Physical Phase Mismatch",
+                "pause_not_confirmed": "Pause Not Confirmed",
                 "blocked": "Blocked",
                 "failed": "Failed",
                 "requested": "Requested",
                 "pausing": "Pausing",
+                "waiting_for_pause": "Waiting For Pause",
                 "waiting_before_write": "Waiting Before Phase Write",
                 "writing_register": "Writing Phase Register",
                 "waiting_before_register_verify": "Waiting Before Register Verification",
@@ -337,7 +339,9 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "unverified": "Unverified",
                 "register_verified": "Register Verified",
                 "register_unverified": "Register Unverified",
+                "register_reverted": "Register Reverted",
                 "physical_verified": "Physical Verified",
+                "physical_timeout": "Physical Timeout",
                 "register_verified_physical_mismatch": "Register Verified, Physical Mismatch",
             }.get(value, value)
         return value

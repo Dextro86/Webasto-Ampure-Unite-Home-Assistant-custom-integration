@@ -74,7 +74,7 @@ Builds stable compatibility attributes and derived charger status for EVCC-style
 
 Phase observer exposes diagnostic phase information.
 
-Phase engine currently supports only experimental manual phase-switch execution. It owns the locked pause/write/verify/resume/observe sequence for register `405`. Register `404` is used as charger configuration/capability context. Register verification and physical phase observation are intentionally separate, because a charger can accept register `405` before the active charging session physically changes phases. Automatic phase switching is intentionally not included yet.
+Phase engine currently supports only experimental manual phase-switch execution. It owns the locked pause-confirm/write/verify/resume/observe sequence for register `405`. Register `404` is used as charger configuration/capability context. Pause confirmation, register verification and physical phase observation are intentionally separate, because a charger can keep charging after a `0 A` request or accept register `405` before the active charging session physically changes phases. Automatic phase switching is intentionally not included yet.
 
 Phase restore is restart-safe: if register `405` differs from `Charger Configuration` and no vehicle is connected, the coordinator may restore it. If a vehicle is connected, it only marks restore pending.
 
