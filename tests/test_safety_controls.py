@@ -303,6 +303,31 @@ def test_set_current_service_writes_in_external_controller_mode():
     coordinator.async_request_refresh.assert_awaited_once()
 
 
+def test_set_current_service_accepts_fractional_current_for_external_controller_mode():
+    class _Services:
+        def __init__(self):
+            self.handlers = {}
+
+        def async_register(self, domain, service, handler, schema=None):
+            self.handlers[(domain, service)] = handler
+
+    services = _Services()
+    coordinator = SimpleNamespace(
+        control_config=ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER),
+        async_set_external_current_limit=AsyncMock(),
+        async_request_refresh=AsyncMock(),
+    )
+    hass = SimpleNamespace(data={"webasto_unite": {"entry": coordinator}}, services=services)
+
+    asyncio.run(integration_async_setup(hass, {}))
+
+    handler = services.handlers[("webasto_unite", "set_current")]
+    asyncio.run(handler(SimpleNamespace(data={"entry_id": "entry", "current_a": 6.82})))
+
+    coordinator.async_set_external_current_limit.assert_awaited_once_with(6.82)
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
 def test_phase_switch_services_are_registered():
     class _Services:
         def __init__(self):
@@ -2444,6 +2469,33 @@ def test_external_controller_current_limit_writes_directly():
     asyncio.run(_run())
 
 
+def test_external_controller_current_limit_rounds_fractional_values_for_modbus_register():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.EXTERNAL_CONTROLLER,
+            min_current_a=6.0,
+            max_current_a=32.0,
+        )
+        coordinator.write_queue = WriteQueueManager()
+        client = SimpleNamespace(write=AsyncMock())
+        coordinator.write_runtime = WriteRuntime(
+            coordinator.control_config,
+            write_queue=coordinator.write_queue,
+            client=client,
+            controller=None,
+        )
+        coordinator._external_current_a = None
+
+        await coordinator.async_set_external_current_limit(6.82)
+
+        client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 7)
+        assert coordinator._external_current_a == 7.0
+        assert coordinator.write_runtime.last_control_write_reason == "external_controller"
+
+    asyncio.run(_run())
+
+
 def test_requested_current_number_writes_directly_in_external_controller_mode():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -2469,6 +2521,36 @@ def test_requested_current_number_writes_directly_in_external_controller_mode():
         await requested_current.async_set_native_value(24)
 
         client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 24)
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_requested_current_number_accepts_fractional_evcc_values_and_rounds_to_register_value():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.EXTERNAL_CONTROLLER,
+            min_current_a=6.0,
+            max_current_a=32.0,
+        )
+        coordinator.write_queue = WriteQueueManager()
+        client = SimpleNamespace(write=AsyncMock())
+        coordinator.write_runtime = WriteRuntime(
+            coordinator.control_config,
+            write_queue=coordinator.write_queue,
+            client=client,
+            controller=None,
+        )
+        coordinator._external_current_a = None
+        coordinator.async_request_refresh = AsyncMock()
+
+        requested_current = WebastoRequestedCurrentNumber(coordinator)
+        await requested_current.async_set_native_value(6.82)
+
+        client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 7)
+        assert coordinator._external_current_a == 7.0
         coordinator.async_request_refresh.assert_awaited_once()
 
     asyncio.run(_run())

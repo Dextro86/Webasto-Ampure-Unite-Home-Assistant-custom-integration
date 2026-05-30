@@ -63,6 +63,16 @@ def _coerce_whole_amp(value: float) -> float:
 _SERVICE_SCHEMA_LIMIT = vol.Schema({vol.Required("entry_id"): cv.string, vol.Required("current_a"): _coerce_whole_amp})
 
 
+def _coerce_current_number(value: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid("current_a must be a number") from err
+
+
+_SERVICE_SCHEMA_SET_CURRENT = vol.Schema({vol.Required("entry_id"): cv.string, vol.Required("current_a"): _coerce_current_number})
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
@@ -150,7 +160,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise HomeAssistantError(str(err)) from err
 
     hass.services.async_register(DOMAIN, SERVICE_SET_MODE, handle_set_mode, schema=_SERVICE_SCHEMA_MODE)
-    hass.services.async_register(DOMAIN, SERVICE_SET_CURRENT, handle_set_current, schema=_SERVICE_SCHEMA_LIMIT)
+    hass.services.async_register(DOMAIN, SERVICE_SET_CURRENT, handle_set_current, schema=_SERVICE_SCHEMA_SET_CURRENT)
     hass.services.async_register(DOMAIN, SERVICE_SET_MAX_CURRENT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_SET_USER_LIMIT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_TRIGGER_RECONNECT, handle_reconnect, schema=_SERVICE_SCHEMA_RECONNECT)

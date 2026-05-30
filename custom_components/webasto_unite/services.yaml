@@ -38,9 +38,9 @@ set_current:
       example: "abc123"
     current_a:
       name: Current
-      description: Requested charging current in amperes.
+      description: Requested charging current in amperes. Fractional values are accepted and rounded to the nearest whole ampere before writing to the charger.
       required: true
-      example: 20
+      example: 6.82
 set_user_limit:
   name: Set Maximum Current
   description: Legacy service alias. Sets the configured Maximum Current limit.

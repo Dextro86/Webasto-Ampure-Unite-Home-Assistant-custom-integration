@@ -703,8 +703,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     def _validate_external_current(self, current_a: float) -> float:
         current = float(current_a)
         rounded = round(current)
-        if abs(current - rounded) > 1e-6:
-            raise ValueError("External current must be a whole amp value")
         if rounded == 0:
             return 0.0
         if not self.control_config.min_current_a <= rounded <= self.control_config.max_current_a:

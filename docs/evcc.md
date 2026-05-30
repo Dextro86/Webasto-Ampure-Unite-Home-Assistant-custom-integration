@@ -20,6 +20,7 @@ Important current-control distinction:
 
 - `External Requested Current` is the active current command for EVCC. Use this for EVCC `setMaxCurrent`.
 - `Maximum Current` is only the configured upper safety bound. Do not use it as the EVCC current command.
+- EVCC may send fractional current values, for example `6.82 A`. The integration accepts these on the external-current path and rounds them to the nearest whole ampere before writing to the Webasto/Ampure Modbus current register, because the charger itself is controlled in whole amperes.
 
 ## Relevant Entities
 

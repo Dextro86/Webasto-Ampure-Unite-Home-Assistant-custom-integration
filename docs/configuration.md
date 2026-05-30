@@ -419,6 +419,8 @@ Relevant entities:
 - `Current L1`, `Current L2`, `Current L3`: phase currents.
 - `EVCC Status`: diagnostic support sensor with stable attributes.
 
+EVCC may send fractional current values such as `6.82 A`. The integration accepts those on `External Requested Current` and the `set_current` service, then rounds to the nearest whole ampere before writing to the Webasto/Ampure current register. The charger itself is controlled in whole amperes.
+
 Example `evcc.yaml` charger section. Replace every entity ID with the actual entity ID from your Home Assistant instance:
 
 ```yaml
