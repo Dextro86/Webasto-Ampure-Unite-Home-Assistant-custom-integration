@@ -267,10 +267,10 @@ class ControlConfig:
     solar_min_runtime_s: float = 0.0
     solar_min_pause_s: float = 0.0
     solar_min_current_a: float = 6.0
-    solar_smoothing_time_s: float = 20.0
+    solar_smoothing_time_s: float = 12.0
     solar_import_deadband_w: float = 150.0
-    solar_export_deadband_w: float = 250.0
-    solar_ramp_up_current_a: float = 1.0
+    solar_export_deadband_w: float = 150.0
+    solar_ramp_up_current_a: float = 2.0
     fixed_current_a: float = 6.0
     min_seconds_between_writes: float = 5.0
     min_current_change_a: float = 1.0

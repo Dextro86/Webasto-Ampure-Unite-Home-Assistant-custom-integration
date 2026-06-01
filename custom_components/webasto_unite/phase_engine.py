@@ -13,15 +13,15 @@ from .phase_observer import (
 from .registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 
 
-PHASE_SWITCH_MIN_PAUSE_CONFIRM_S = 20.0
+PHASE_SWITCH_MIN_PAUSE_CONFIRM_S = 30.0
 PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S = 90.0
 PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S = 5.0
 PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S = 60.0
-PHASE_SWITCH_WAIT_BEFORE_RESUME_S = 20.0
-PHASE_SWITCH_RESUME_RETRY_PAUSE_S = 10.0
+PHASE_SWITCH_WAIT_BEFORE_RESUME_S = 30.0
 PHASE_SWITCH_PHYSICAL_OBSERVATION_INTERVAL_S = 5.0
 PHASE_SWITCH_PHYSICAL_VERIFY_TIMEOUT_S = 120.0
 PHASE_SWITCH_REQUIRED_STABLE_POLLS = 2
+PHASE_SWITCH_MAX_SEQUENCE_ATTEMPTS = 2
 PHASE_SWITCH_PAUSE_CURRENT_THRESHOLD_A = 1.0
 PHASE_SWITCH_PAUSE_POWER_THRESHOLD_W = 150.0
 
@@ -96,7 +96,6 @@ class PhaseSwitchManager:
         read_wallbox=None,
         pause_charging=None,
         resume_charging=None,
-        retry_resume_charging=None,
         require_vehicle: bool = True,
     ) -> None:
         if self._lock.locked():
@@ -132,7 +131,6 @@ class PhaseSwitchManager:
                 read_wallbox=read_wallbox,
                 pause_charging=pause_charging,
                 resume_charging=resume_charging,
-                retry_resume_charging=retry_resume_charging,
             )
 
     async def _execute_plan(
@@ -146,89 +144,116 @@ class PhaseSwitchManager:
         read_wallbox=None,
         pause_charging=None,
         resume_charging=None,
-        retry_resume_charging=None,
     ) -> None:
         await write_queue.clear()
-        try:
-            if plan.was_charging:
-                self.state = "pausing"
-                if pause_charging is not None:
-                    await pause_charging()
-                else:
-                    await self._write_direct(
-                        client=client,
-                        write_queue=write_queue,
-                        flush_lock=flush_lock,
-                        register=SET_CHARGE_CURRENT_A,
-                        value=0,
-                    )
-                if not await self._wait_for_pause_confirmed(read_wallbox=read_wallbox, sleep=sleep):
-                    self.last_result = "pause_not_confirmed"
-                    self.last_block_reason = "pause_not_confirmed"
-                    self.state = "pause_not_confirmed"
-                    raise ValueError("Phase switch blocked: pause_not_confirmed")
-
-            self.state = "writing_register"
-            await self._write_direct(
-                client=client,
-                write_queue=write_queue,
-                flush_lock=flush_lock,
-                register=PHASE_SWITCH_MODE,
-                value=plan.write_value,
-            )
-
-            register_result = await self._wait_for_register_target(
-                client=client,
-                plan=plan,
-                sleep=sleep,
-            )
-            if register_result != "register_verified":
-                self.last_result = register_result
-                self.last_block_reason = register_result
-                self.state = register_result
-                raise ValueError(f"Phase switch could not be verified: {register_result}")
-
-            if plan.was_charging and plan.resume_current_a is not None:
-                self.state = "waiting_before_resume"
-                await sleep(PHASE_SWITCH_WAIT_BEFORE_RESUME_S)
-                self.state = "resuming"
-                if resume_charging is not None:
-                    await resume_charging(plan.resume_current_a)
-                else:
-                    await self._write_direct(
-                        client=client,
-                        write_queue=write_queue,
-                        flush_lock=flush_lock,
-                        register=SET_CHARGE_CURRENT_A,
-                        value=int(round(plan.resume_current_a)),
-                    )
-        except Exception as err:  # noqa: BLE001
-            if self.last_result in {"pause_not_confirmed", "register_unverified", "register_reverted"}:
-                raise
-            self.last_result = "failed"
-            self.last_block_reason = str(err)
-            self.state = "failed"
-            raise
-
-        if plan.was_charging and read_wallbox is not None:
-            physical_result = await self._observe_physical_phase_result(plan, read_wallbox=read_wallbox, sleep=sleep)
-            if physical_result == "vehicle_did_not_resume" and retry_resume_charging is not None:
-                self.state = "resume_retry"
-                await retry_resume_charging(plan.resume_current_a or 0.0)
-                physical_result = await self._observe_physical_phase_result(
+        attempts = PHASE_SWITCH_MAX_SEQUENCE_ATTEMPTS if plan.was_charging and read_wallbox is not None else 1
+        for attempt in range(attempts):
+            try:
+                await self._run_sequence_attempt(
                     plan,
-                    read_wallbox=read_wallbox,
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
                     sleep=sleep,
+                    read_wallbox=read_wallbox,
+                    pause_charging=pause_charging,
+                    resume_charging=resume_charging,
+                    retry=attempt > 0,
                 )
-            if physical_result is not None:
+            except Exception as err:  # noqa: BLE001
+                if self.last_result in {"pause_not_confirmed", "register_unverified", "register_reverted"}:
+                    raise
+                self.last_result = "failed"
+                self.last_block_reason = str(err)
+                self.state = "failed"
+                raise
+
+            if plan.was_charging and read_wallbox is not None:
+                physical_result = await self._observe_physical_phase_result(plan, read_wallbox=read_wallbox, sleep=sleep)
+                if physical_result == "physical_verified":
+                    self.last_result = physical_result
+                    self.last_block_reason = None
+                    self.state = physical_result
+                    return
+                if physical_result in {"physical_timeout", "vehicle_did_not_resume"} and attempt < attempts - 1:
+                    self.state = "retrying_sequence"
+                    continue
                 self.last_result = physical_result
-                self.last_block_reason = None if physical_result == "physical_verified" else physical_result
+                self.last_block_reason = physical_result
                 self.state = physical_result
                 return
 
         self.last_result = "register_verified"
         self.last_block_reason = None
         self.state = "register_verified"
+
+    async def _run_sequence_attempt(
+        self,
+        plan: PhaseSwitchPlan,
+        *,
+        client,
+        write_queue,
+        flush_lock: asyncio.Lock,
+        sleep,
+        read_wallbox=None,
+        pause_charging=None,
+        resume_charging=None,
+        retry: bool = False,
+    ) -> None:
+        if retry:
+            self.state = "retrying_sequence"
+        if plan.was_charging:
+            self.state = "retry_pausing" if retry else "pausing"
+            if pause_charging is not None:
+                await pause_charging()
+            else:
+                await self._write_direct(
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                    register=SET_CHARGE_CURRENT_A,
+                    value=0,
+                )
+            if not await self._wait_for_pause_confirmed(read_wallbox=read_wallbox, sleep=sleep):
+                self.last_result = "pause_not_confirmed"
+                self.last_block_reason = "pause_not_confirmed"
+                self.state = "pause_not_confirmed"
+                raise ValueError("Phase switch blocked: pause_not_confirmed")
+
+        self.state = "retry_writing_register" if retry else "writing_register"
+        await self._write_direct(
+            client=client,
+            write_queue=write_queue,
+            flush_lock=flush_lock,
+            register=PHASE_SWITCH_MODE,
+            value=plan.write_value,
+        )
+
+        register_result = await self._wait_for_register_target(
+            client=client,
+            plan=plan,
+            sleep=sleep,
+        )
+        if register_result != "register_verified":
+            self.last_result = register_result
+            self.last_block_reason = register_result
+            self.state = register_result
+            raise ValueError(f"Phase switch could not be verified: {register_result}")
+
+        if plan.was_charging and plan.resume_current_a is not None:
+            self.state = "retry_waiting_before_resume" if retry else "waiting_before_resume"
+            await sleep(PHASE_SWITCH_WAIT_BEFORE_RESUME_S)
+            self.state = "retry_resuming" if retry else "resuming"
+            if resume_charging is not None:
+                await resume_charging(plan.resume_current_a)
+            else:
+                await self._write_direct(
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                    register=SET_CHARGE_CURRENT_A,
+                    value=int(round(plan.resume_current_a)),
+                )
 
     async def _write_direct(self, *, client, write_queue, flush_lock: asyncio.Lock, register, value: int) -> None:
         async with flush_lock:
@@ -241,11 +266,16 @@ class PhaseSwitchManager:
         if read_wallbox is None:
             return False
 
+        stable_pause_reads = 0
         polls = int(PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S / PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
         for index in range(max(1, polls)):
             wallbox = await read_wallbox()
             if _pause_is_confirmed(wallbox):
-                return True
+                stable_pause_reads += 1
+                if stable_pause_reads >= PHASE_SWITCH_REQUIRED_STABLE_POLLS:
+                    return True
+            else:
+                stable_pause_reads = 0
             if index < polls - 1:
                 await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
         return False

@@ -178,7 +178,7 @@ def test_signed_grid_power_deadband_ignores_small_import_and_export():
     controller = make_controller()
 
     assert controller.resolve_surplus_power(HaSensorSnapshot(grid_power_w=-100.0)) == 0.0
-    assert controller.resolve_surplus_power(HaSensorSnapshot(surplus_power_w=200.0)) == 0.0
+    assert controller.resolve_surplus_power(HaSensorSnapshot(surplus_power_w=100.0)) == 0.0
     assert (
         controller.resolve_surplus_power(
             HaSensorSnapshot(grid_power_w=100.0),
@@ -194,7 +194,7 @@ def test_solar_surplus_smoothing_reduces_short_spikes(monkeypatch):
     controller = make_controller(
         solar_control_strategy="solar_boost",
         solar_min_current_a=6.0,
-        solar_smoothing_time_s=20.0,
+        solar_smoothing_time_s=12.0,
         solar_ramp_up_current_a=0.0,
     )
     wallbox = WallboxState(installed_phases=1, vehicle_connected=True)
@@ -214,7 +214,7 @@ def test_solar_surplus_smoothing_reduces_short_spikes(monkeypatch):
     )
 
     assert second.mode_target_a < 16.0
-    assert second.final_target_a == 6.9
+    assert second.final_target_a == 7.4
 
 
 def test_solar_ramp_up_limits_current_increase():

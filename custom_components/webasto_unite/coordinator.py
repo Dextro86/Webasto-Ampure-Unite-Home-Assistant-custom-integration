@@ -106,7 +106,7 @@ from .models import (
     normalize_solar_override_strategy,
 )
 from .operating_status import build_operating_state
-from .phase_engine import PHASE_SWITCH_RESUME_RETRY_PAUSE_S, REGISTER_ACCEPTED_RESULTS, PhaseSwitchManager
+from .phase_engine import REGISTER_ACCEPTED_RESULTS, PhaseSwitchManager
 from .phase_observer import build_phase_observability
 from .phase_policy import (
     AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
@@ -484,7 +484,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 read_wallbox=self._read_wallbox_for_phase_switch,
                 pause_charging=self._phase_switch_pause_charging,
                 resume_charging=self._phase_switch_resume_charging,
-                retry_resume_charging=self._phase_switch_retry_resume_charging,
             )
         finally:
             self._sync_phase_switch_diagnostics()
@@ -530,7 +529,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 read_wallbox=self._read_wallbox_for_phase_switch,
                 pause_charging=self._phase_switch_pause_charging,
                 resume_charging=self._phase_switch_resume_charging,
-                retry_resume_charging=self._phase_switch_retry_resume_charging,
                 require_vehicle=False,
             )
         finally:
@@ -626,14 +624,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
     async def _phase_switch_resume_charging(self, current_a: float) -> None:
         self.resume_charging()
         await self.write_runtime.write_current_now(current_a, reason="phase_switch_resume")
-
-    async def _phase_switch_retry_resume_charging(self, current_a: float) -> None:
-        self.controller.reset_current_write_state()
-        self.pause_charging()
-        await self.write_runtime.write_current_now(0.0, reason="phase_switch_resume_retry_pause")
-        await self._phase_switch_sleep(PHASE_SWITCH_RESUME_RETRY_PAUSE_S)
-        self.resume_charging()
-        await self.write_runtime.write_current_now(current_a, reason="phase_switch_resume_retry")
 
     @staticmethod
     def _observed_phases_match_target(wallbox: WallboxState, target_phases: int) -> bool:

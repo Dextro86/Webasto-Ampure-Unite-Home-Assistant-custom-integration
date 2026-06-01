@@ -211,7 +211,7 @@ target = 6 + (3000 / (230 * 3)) = about 10.3 A per phase
 
 The final current can still be capped by `Maximum Current (A)`, DLB, safety behavior and charger/session limits.
 
-Solar control is intentionally conservative. The integration smooths Solar input internally, ignores very small import/export changes around zero and ramps Solar current increases gradually. This reduces current bouncing from short clouds, P1 timing differences and sensor jitter. DLB and safety limits can still reduce the current immediately.
+Solar control is intentionally conservative. By default the integration smooths Solar input over about 12 seconds, ignores import/export changes smaller than about 150 W around zero and ramps Solar current increases by about 2 A per control step. This reduces current bouncing from short clouds, P1 timing differences and sensor jitter while still reacting reasonably quickly. DLB and safety limits can still reduce the current immediately.
 
 Solar diagnostic sensors expose the calculation path:
 
@@ -373,8 +373,8 @@ What this means:
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
 - `Observed Session Phase Usage` is observed from measured phase currents during active charging and can be `Observed 1P`, `Observed 3P` or `Unknown`. This is diagnostic only and is not a vehicle capability claim.
 - `Phase Switch Available` and `Phase Switch Block Reason` indicate whether the basic preconditions appear suitable for manual switching.
-- `Phase Switch State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Resume Retry`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
-- `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after the pause request, so the integration did not write the phase register. `Vehicle Did Not Resume` means charging did not restart after the normal resume and one bounded retry. `Physical Timeout` means charging did resume, but the active session did not move to the requested phase count within the observation window. `Register Reverted` means register `405` fell back away from the requested value.
+- `Phase Switch State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Retrying Phase Switch`, `Retry Pausing`, `Retry Writing Phase Register`, `Retry Waiting Before Resume`, `Retry Resuming`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
+- `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after the pause request, so the integration did not write the phase register. `Vehicle Did Not Resume` means charging did not restart after two full bounded phase-switch sequences. `Physical Timeout` means charging did resume, but the active session did not move to the requested phase count after two full bounded phase-switch sequences. `Register Reverted` means register `405` fell back away from the requested value.
 - `Phase Policy Decision` and the `Phase Policy Auto ...` sensors are dry-run only. They show whether future Solar automatic phase switching would be ready after stable surplus timing, cooldown and session-count guards. They do not write register `405`.
 
 Manual switch requests are blocked when:
