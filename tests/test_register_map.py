@@ -219,7 +219,7 @@ def test_phase_policy_would_request_1p_when_surplus_supports_1p_but_not_3p():
     assert decision.decision == "would_request_1p"
     assert decision.target == "1P"
     assert decision.required_surplus_1p_w == 1380.0
-    assert decision.required_surplus_3p_w == 4140.0
+    assert decision.required_surplus_3p_w == 4440.0
 
 
 def test_phase_policy_would_request_3p_when_surplus_supports_3p():

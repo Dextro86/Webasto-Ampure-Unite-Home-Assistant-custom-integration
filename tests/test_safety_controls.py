@@ -33,7 +33,11 @@ from custom_components.webasto_unite.controller import WallboxController
 from custom_components.webasto_unite.coordinator import WebastoUniteCoordinator
 from custom_components.webasto_unite.diagnostics import async_get_config_entry_diagnostics
 from custom_components.webasto_unite.evcc import build_evcc_status
-from custom_components.webasto_unite.const import PHASE_SWITCHING_MODE_MANUAL_ONLY, SERVICE_RESTORE_DEFAULT_PHASE
+from custom_components.webasto_unite.const import (
+    PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR,
+    PHASE_SWITCHING_MODE_MANUAL_ONLY,
+    SERVICE_RESTORE_DEFAULT_PHASE,
+)
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, DlbInputModel, HaSensorSnapshot, PhaseCurrents, SolarControlStrategy, SolarInputModel, RuntimeSnapshot, WallboxState
 from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoRequestedCurrentNumber, WebastoFixedCurrentNumber
 from custom_components.webasto_unite.number import async_setup_entry as number_async_setup_entry
@@ -43,7 +47,7 @@ from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE, SET_CHA
 from custom_components.webasto_unite.runtime_guards import RuntimeGuards, RuntimeGuardState
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.sensor_adapter import HaSensorAdapter
-from custom_components.webasto_unite.select import WebastoModeSelect
+from custom_components.webasto_unite.select import WebastoModeSelect, WebastoPhaseSwitchSelect
 from custom_components.webasto_unite.switch import WebastoChargingSwitch, WebastoFixedCurrentUntilUnplugSwitch, WebastoSolarUntilUnplugSwitch
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 from custom_components.webasto_unite.write_queue import WriteQueueManager
@@ -426,6 +430,52 @@ def test_manual_phase_switch_pauses_writes_phase_and_resumes():
     asyncio.run(_run())
 
 
+def test_external_controller_phase_switch_uses_safe_phase_flow():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(
+            control_mode=ControlMode.EXTERNAL_CONTROLLER,
+            min_current_a=6.0,
+            max_current_a=20.0,
+        )
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=0))
+        coordinator.wallbox_reader = SimpleNamespace(
+            read_wallbox_state=AsyncMock(
+                side_effect=[
+                    WallboxState(available=True, charging_active=False, active_power_w=0.0),
+                    WallboxState(available=True, charging_active=False, active_power_w=0.0),
+                    WallboxState(available=True, charging_active=True, phases_in_use=1, phase_switch_mode_raw=0),
+                    WallboxState(available=True, charging_active=True, phases_in_use=1, phase_switch_mode_raw=0),
+                ]
+            )
+        )
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.data = SimpleNamespace(
+            wallbox=WallboxState(
+                installed_phases=3,
+                charge_point_phase_count=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                current_limit_a=16.0,
+                phase_switch_mode_raw=1,
+            )
+        )
+
+        await coordinator.async_request_phase_switch(1)
+
+        assert coordinator.client.write.await_args_list[0].args == (SET_CHARGE_CURRENT_A, 0)
+        assert coordinator.client.write.await_args_list[1].args == (PHASE_SWITCH_MODE, 0)
+        assert coordinator.client.write.await_args_list[2].args == (SET_CHARGE_CURRENT_A, 16)
+        assert coordinator._phase_switch_last_result == "physical_verified"
+
+    asyncio.run(_run())
+
+
 def test_manual_3p_phase_switch_allows_likely_1p_vehicle_because_observation_is_diagnostic_only():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -775,6 +825,8 @@ def test_phase_policy_dry_run_waits_for_stable_target_before_auto_ready():
     coordinator._phase_policy_candidate_since_monotonic = None
     coordinator._phase_policy_last_switch_monotonic = None
     coordinator._phase_policy_session_switch_count = 0
+    coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
 
     initial = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
 
@@ -797,6 +849,8 @@ def test_phase_policy_dry_run_cooldown_blocks_auto_ready_after_switch():
     coordinator._phase_policy_candidate_since_monotonic = monotonic() - AUTO_PHASE_STABLE_TO_1P_S - 1
     coordinator._phase_policy_last_switch_monotonic = monotonic()
     coordinator._phase_policy_session_switch_count = 1
+    coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
 
     decision = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
 
@@ -804,6 +858,34 @@ def test_phase_policy_dry_run_cooldown_blocks_auto_ready_after_switch():
     assert decision.auto_block_reason == "cooldown_active"
     assert decision.cooldown_remaining_s > 0
     assert decision.session_switch_count == 1
+
+
+def test_automatic_solar_phase_policy_executes_ready_target_only_when_integration_controls():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.phase_switch_manager = SimpleNamespace(active=False)
+        coordinator.async_request_phase_switch = AsyncMock()
+
+        executed = await coordinator._maybe_execute_automatic_phase_policy(
+            PhasePolicyDecision(decision="would_request_3p", target="3P", auto_ready=True)
+        )
+
+        assert executed is True
+        coordinator.async_request_phase_switch.assert_awaited_once_with(3, request_refresh=False)
+
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
+        coordinator.async_request_phase_switch.reset_mock()
+
+        executed = await coordinator._maybe_execute_automatic_phase_policy(
+            PhasePolicyDecision(decision="would_request_1p", target="1P", auto_ready=True)
+        )
+
+        assert executed is False
+        coordinator.async_request_phase_switch.assert_not_awaited()
+
+    asyncio.run(_run())
 
 
 def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():
@@ -1257,6 +1339,27 @@ def test_manual_phase_switch_buttons_call_phase_switch_services():
         coordinator.async_restore_default_phase_mode.assert_awaited_once()
         coordinator.reset_phase_switch_state.assert_called_once()
         coordinator.async_request_refresh.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_phase_switch_select_exposes_evcc_compatible_options():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.data = SimpleNamespace(phase_switch_register_available=True, phase_switch_mode_raw=1)
+        coordinator.async_request_phase_switch = AsyncMock()
+
+        select = WebastoPhaseSwitchSelect(coordinator)
+
+        assert select.options == ["1", "3"]
+        assert select.current_option == "3"
+        assert select.available is True
+
+        await select.async_select_option("1")
+
+        coordinator.async_request_phase_switch.assert_awaited_once_with(1)
 
     asyncio.run(_run())
 

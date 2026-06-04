@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from .const import PHASE_SWITCHING_MODE_MANUAL_ONLY
+from .const import PHASE_SWITCHING_MODE_OFF
 from .models import ControlConfig, ControlMode, WallboxState
 from .phase_observer import (
     PHASE_SWITCH_VALUE_1P,
@@ -352,9 +352,9 @@ def build_manual_phase_switch_decision(
     This module only decides whether a manual request is allowed and what value
     should be written. The coordinator owns the actual Modbus writes.
     """
-    if phase_switching_mode != PHASE_SWITCHING_MODE_MANUAL_ONLY:
+    if phase_switching_mode == PHASE_SWITCHING_MODE_OFF:
         return _blocked("manual_phase_switching_disabled")
-    if config.control_mode != ControlMode.MANAGED_CONTROL:
+    if config.control_mode not in {ControlMode.MANAGED_CONTROL, ControlMode.EXTERNAL_CONTROLLER}:
         return _blocked("integration_control_disabled")
     if target_phases not in (1, 3):
         return _blocked("invalid_target_phase")

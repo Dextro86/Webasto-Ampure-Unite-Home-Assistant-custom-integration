@@ -6,7 +6,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PHASE_SWITCHING_MODE_MANUAL_ONLY
+from .const import DOMAIN, PHASE_SWITCHING_MODE_OFF
 from .entity import WebastoUniteCoordinatorEntity
 from .models import ControlMode
 
@@ -98,7 +98,7 @@ class _WebastoPhaseSwitchButton(WebastoUniteCoordinatorEntity, ButtonEntity):
     def available(self) -> bool:
         data = getattr(self.coordinator, "data", None)
         return (
-            getattr(self.coordinator, "_phase_switching_mode", None) == PHASE_SWITCHING_MODE_MANUAL_ONLY
+            getattr(self.coordinator, "_phase_switching_mode", None) != PHASE_SWITCHING_MODE_OFF
             and data is not None
             and data.phase_switch_available is True
         )
@@ -141,7 +141,7 @@ class WebastoRestoreDefaultPhaseButton(_WebastoPhaseSwitchButton):
     def available(self) -> bool:
         data = getattr(self.coordinator, "data", None)
         return (
-            getattr(self.coordinator, "_phase_switching_mode", None) == PHASE_SWITCHING_MODE_MANUAL_ONLY
+            getattr(self.coordinator, "_phase_switching_mode", None) != PHASE_SWITCHING_MODE_OFF
             and data is not None
             and data.phase_switch_register_available is True
         )

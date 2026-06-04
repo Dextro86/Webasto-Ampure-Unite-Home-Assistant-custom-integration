@@ -30,7 +30,7 @@ This is a community project developed with significant AI assistance. Active cha
 | Reconnect handling | Yes |
 | Advanced diagnostics | Yes |
 | Manual 1P/3P phase switching | Experimental, off by default |
-| Automatic phase switching | Not included |
+| Automatic Solar phase switching | Experimental, off by default |
 
 ## Why this integration exists
 
@@ -135,14 +135,14 @@ See [EVCC compatibility](docs/evcc.md) and the [EVCC Home Assistant example](exa
 
 ## Phase Switching
 
-Automatic phase switching is not included.
+Phase switching is experimental and off by default. `Manual Only` exposes explicit 1P/3P buttons, services and an EVCC-compatible phase select. `Automatic Solar` lets this integration request 1P/3P switches only while it owns Solar control.
 
-Experimental manual phase switching is available only when `Phase Switching Mode = Manual Only`. It is off by default and must be triggered explicitly through the 1P/3P buttons or services. The known register mapping used by the integration is:
+The known register mapping used by the integration is:
 
 - input register `404`: charger preconfigured phase count (`0 = 1P`, `1 = 3P`). If this reports 1P, phase switching is blocked.
 - holding register `405`: phase-switch mode (`0 = 1P`, `1 = 3P`). Manual switching writes and verifies this register.
 
-Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch. Manual phase switching is intended for testing and validation, not for unattended automation yet.
+Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch.
 
 Manual switching separates pause confirmation, register verification and physical verification. The integration uses the same internal pause/resume semantics as the `Pause Charging` and `Resume Charging` controls, waits until the pause is actually observed, writes register `405`, checks that register `405` stays on the requested value, resumes charging and then observes the measured active phases. `Register Verified` means register `405` accepted and held the request. `Physical Verified` means the measured charging phases also match the request. If charging does not pause, the switch is aborted with `Pause Not Confirmed`.
 
@@ -150,7 +150,7 @@ Manual switching separates pause confirmation, register verification and physica
 
 Manual switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode.
 
-The integration also exposes diagnostic-only phase policy sensors. These show what future Solar automatic phase switching would request, how long the request has been stable, whether cooldown/session guards would block it, and whether the dry-run policy would be ready. They do not perform automatic switching.
+Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires stable Solar surplus before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
 
 ## Stability-First Design
 

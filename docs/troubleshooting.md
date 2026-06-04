@@ -106,12 +106,12 @@ Do not use `Active Power` directly as an energy source.
 
 ## Manual Phase Switching Blocked
 
-Manual phase switching is experimental and off by default.
+Phase switching is experimental and off by default.
 
 Check:
 
-- `Phase Switching Mode = Manual Only`
-- `Integration Charging Control = Enabled`
+- `Phase Switching Mode` is `Manual Only` or `Automatic Solar`
+- `Integration Charging Control` is `Enabled` or `External Controller`
 - charger is connected and available
 - vehicle is connected
 - `Phase Switch Available`
@@ -129,7 +129,7 @@ If `Last Phase Switch Result` says `Pause Not Confirmed`, the integration wrote 
 
 If `Last Phase Switch Result` says `Vehicle Did Not Resume`, register `405` accepted and held the requested value but the vehicle did not start charging again after two full bounded phase-switch sequences. In practice this usually means the car needs a physical reconnect or a longer CP/session reset than the integration can safely do automatically.
 
-If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value and charging did resume, but the active charging session did not physically move to the requested phase count after two full bounded phase-switch sequences. This is useful test information and means phase switching should not be automated for that scenario yet.
+If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value and charging did resume, but the active charging session did not physically move to the requested phase count after two full bounded phase-switch sequences. This is useful test information; do not enable Automatic Solar phase switching for that charger/vehicle combination until manual switching is reliable.
 
 If `Last Phase Switch Result` says `Register Reverted`, the charger accepted register `405` briefly but later reported a different value again.
 

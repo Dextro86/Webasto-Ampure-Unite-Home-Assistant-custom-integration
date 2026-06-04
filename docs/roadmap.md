@@ -11,7 +11,6 @@
 
 ## Planned / Possible Improvements
 
-- optional automatic phase switching engine
 - more vehicle phase capability heuristics
 - additional EVCC compatibility attributes if needed
 - support snapshot service for issue reports
@@ -25,10 +24,10 @@ Phase switching should remain optional and conservative.
 Current state:
 
 - diagnostic phase observation exists
-- experimental manual-only phase switching exists
-- automatic phase switching is not included
+- experimental manual phase switching exists
+- experimental Automatic Solar phase switching exists and is disabled by default
 
-Future automatic phase switching should be:
+Automatic phase switching should remain:
 
 - disabled by default
 - session-aware

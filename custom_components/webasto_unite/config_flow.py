@@ -78,6 +78,7 @@ SOLAR_OVERRIDE_STRATEGY_OPTIONS = [
 PHASE_SWITCHING_MODE_OPTIONS = [
     {"value": PHASE_SWITCHING_MODE_OFF, "label": "Off"},
     {"value": PHASE_SWITCHING_MODE_MANUAL_ONLY, "label": "Manual Only (Experimental)"},
+    {"value": PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR, "label": "Automatic Solar (Experimental)"},
 ]
 def _entity_selector() -> selector.EntitySelector:
     return selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor"], multiple=False))
@@ -414,7 +415,11 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR] = SolarSensorFailureBehavior(
             validated[CONF_SOLAR_SENSOR_FAILURE_BEHAVIOR]
         ).value
-        if validated[CONF_PHASE_SWITCHING_MODE] not in {PHASE_SWITCHING_MODE_OFF, PHASE_SWITCHING_MODE_MANUAL_ONLY}:
+        if validated[CONF_PHASE_SWITCHING_MODE] not in {
+            PHASE_SWITCHING_MODE_OFF,
+            PHASE_SWITCHING_MODE_MANUAL_ONLY,
+            PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR,
+        }:
             raise vol.Invalid("phase_switching_mode_invalid")
         validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY] = normalize_solar_override_strategy(validated[CONF_SOLAR_UNTIL_UNPLUG_STRATEGY]).value
         validated.pop(CONF_USER_LIMIT, None)

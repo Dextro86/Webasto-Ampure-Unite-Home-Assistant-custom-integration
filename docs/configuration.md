@@ -355,13 +355,13 @@ Useful diagnostics:
 
 ## Phase Switching
 
-Automatic phase switching is still disabled in the stability-focused releases. Experimental manual phase switching is available only when `Phase Switching Mode` is set to `Manual Only`.
+Phase switching is experimental and off by default. `Manual Only` exposes explicit buttons, services and the phase select. `Automatic Solar` lets this integration request 1P/3P switches only while it owns Solar control.
 
 What this means:
 
-- The integration does not switch the Webasto/Ampure phase-switch register automatically.
-- Manual phase switching is off by default.
+- Phase switching is off by default.
 - Manual switching is exposed through explicit buttons/services: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
+- The `Phase Switch` select exposes EVCC-compatible options `1` and `3` and uses the same safe phase-switch sequence.
 - The button/service uses the same internal pause/resume semantics as `Pause Charging` and `Resume Charging`, waits until the charger actually appears paused, writes register `405`, verifies that register `405` holds the requested value, resumes charging if the charger was already charging, and then observes the measured active phases for a longer window.
 - `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405`. This can run without a connected vehicle.
 - A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration tries to restore `405` back to `Charger Configuration`.
@@ -375,7 +375,8 @@ What this means:
 - `Phase Switch Available` and `Phase Switch Block Reason` indicate whether the basic preconditions appear suitable for manual switching.
 - `Phase Switch State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Retrying Phase Switch`, `Retry Pausing`, `Retry Writing Phase Register`, `Retry Waiting Before Resume`, `Retry Resuming`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
 - `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after the pause request, so the integration did not write the phase register. `Vehicle Did Not Resume` means charging did not restart after two full bounded phase-switch sequences. `Physical Timeout` means charging did resume, but the active session did not move to the requested phase count after two full bounded phase-switch sequences. `Register Reverted` means register `405` fell back away from the requested value.
-- `Phase Policy Decision` and the `Phase Policy Auto ...` sensors are dry-run only. They show whether future Solar automatic phase switching would be ready after stable surplus timing, cooldown and session-count guards. They do not write register `405`.
+- `Phase Policy Decision` and the `Phase Policy Auto ...` sensors show whether Solar automatic phase switching is ready after stable surplus timing, cooldown and session-count guards. They write register `405` only when `Phase Switching Mode = Automatic Solar` and `Integration Charging Control = Enabled`.
+- Automatic Solar uses a 10 minute cooldown after a switch, limits automatic switching to 5 switches per connected session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P.
 
 Manual switch requests are blocked when:
 
@@ -405,7 +406,7 @@ Recommended setup when EVCC is the active charging manager:
 - Set `Default Mode` to `Normal`.
 - Keep this integration's Solar and DLB control disabled unless you intentionally want an additional local safety cap.
 - Do not run EVCC Solar control and this integration's Solar control at the same time.
-- Automatic phase switching is not provided by this integration. Experimental manual phase switching is not intended for EVCC automation yet.
+- Do not run EVCC Solar control and this integration's Automatic Solar phase switching at the same time. In `External Controller` mode, EVCC may request phase switches through the `Phase Switch` select, but this integration's own Automatic Solar policy does not run.
 
 In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `External Requested Current`.
 
@@ -442,13 +443,14 @@ chargers:
     voltageL1: sensor.webasto_unite_voltage_l1
     voltageL2: sensor.webasto_unite_voltage_l2
     voltageL3: sensor.webasto_unite_voltage_l3
+    phaseswitch: select.webasto_unite_phase_switch
 ```
 
 If EVCC cannot enable charging, verify that `Charging On/Off` is available in Home Assistant. It is unavailable when `Integration Charging Control` is `Monitoring Only`.
 
 Existing Home Assistant installations can have different entity IDs because Home Assistant preserves entity registry names. Always check the actual entity IDs before copying the EVCC example.
 
-Do not configure EVCC `phaseswitch` for this integration yet. Experimental manual phase switching is not intended for EVCC automation and is not exposed as the EVCC Home Assistant phase-switch select with options `1` and `3`.
+Configure EVCC `phaseswitch` only if you want EVCC to control 1P/3P switching. Use the `Phase Switch` select and verify the actual entity ID in Home Assistant.
 
 ## Important entities
 

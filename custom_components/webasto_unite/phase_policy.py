@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .const import PHASE_SWITCHING_MODE_MANUAL_ONLY
+from .const import PHASE_SWITCHING_MODE_OFF
 from .electrical import voltage_sum_for_phases
 from .models import ChargeMode, ControlDecision, ControlReason, SolarControlStrategy, WallboxState
 
 AUTO_PHASE_STABLE_TO_1P_S = 300.0
 AUTO_PHASE_STABLE_TO_3P_S = 600.0
-AUTO_PHASE_SWITCH_COOLDOWN_S = 1200.0
-AUTO_PHASE_MAX_SWITCHES_PER_SESSION = 4
+AUTO_PHASE_SWITCH_COOLDOWN_S = 600.0
+AUTO_PHASE_MAX_SWITCHES_PER_SESSION = 5
+AUTO_PHASE_TO_3P_SURPLUS_MARGIN_W = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +47,7 @@ def evaluate_phase_policy(
     automatic phase switching layer would request if execution were enabled.
     """
     required_1p = _required_surplus_w(1, wallbox, control_decision)
-    required_3p = _required_surplus_w(3, wallbox, control_decision)
+    required_3p = _required_surplus_w(3, wallbox, control_decision) + AUTO_PHASE_TO_3P_SURPLUS_MARGIN_W
 
     block_reason = _block_reason(
         effective_mode=effective_mode,
@@ -105,8 +106,8 @@ def _block_reason(
     filtered_surplus_w: float | None,
     phase_restore_pending: bool,
 ) -> str | None:
-    if phase_switching_mode != PHASE_SWITCHING_MODE_MANUAL_ONLY:
-        return "phase_switching_not_manual_only"
+    if phase_switching_mode == PHASE_SWITCHING_MODE_OFF:
+        return "phase_switching_off"
     if configured_installed_phases != "3p":
         return "integration_configured_1p"
     if wallbox.charge_point_phase_count != 3:

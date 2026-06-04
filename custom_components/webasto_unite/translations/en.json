@@ -135,7 +135,7 @@
               "retries": "Retry Attempts"
             },
             "data_description": {
-              "phase_switching_mode": "Experimental manual 1P/3P switching. Off is recommended unless you explicitly want to test manual phase switching with the 1P/3P buttons or services.",
+              "phase_switching_mode": "Experimental 1P/3P switching. Manual Only exposes buttons/services/select for Home Assistant or EVCC. Automatic Solar lets this integration switch phases only while it owns Solar control.",
               "keepalive_interval": "Interval in seconds between keepalive writes.",
               "control_sensor_timeout": "Maximum sensor age in seconds before DLB or Solar input is treated as unsafe.",
               "timeout": "How many seconds the integration waits for a charger response.",

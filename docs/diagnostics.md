@@ -95,11 +95,11 @@ Useful entities:
 
 ## Phase Diagnostics
 
-Automatic phase switching is not included. Manual phase switching is experimental and off by default.
+Phase switching is experimental and off by default. `Manual Only` exposes explicit controls and the EVCC-compatible phase select. `Automatic Solar` allows this integration to switch phases only while it owns Solar control.
 
-Manual switching uses register `404` only as charger configuration/capability context and register `405` as the writable phase-switch mode. Measured active phases are diagnostic only.
+Phase switching uses register `404` only as charger configuration/capability context and register `405` as the writable phase-switch mode. Measured active phases are diagnostic only.
 
-Manual phase switching reports two different checks:
+Phase switching reports separate checks:
 
 - Pause verification: after writing `0 A`, charging must actually drop to a low/paused state before register `405` is written.
 - Register verification: register `405` readback must hold the requested value for stable polls.
@@ -111,16 +111,16 @@ This distinction matters because some chargers can accept the register write bef
 
 `Phase Session Override`, `Phase Session Target` and `Phase Restore Pending` show whether a manual switch has temporarily moved register `405` away from `Charger Configuration` and whether restore still needs attention.
 
-`Phase Policy Decision` is diagnostic-only. It shows what the future Solar phase-switching policy would request, but it never writes register `405`.
+`Phase Policy Decision` shows what the Solar phase-switching policy would request. It writes register `405` only when `Phase Switching Mode = Automatic Solar` and this integration is in `Enabled` control mode.
 
-The auto-policy dry run also exposes:
+The auto-policy diagnostics also expose:
 
-- `Phase Policy Auto Ready`: true only when the same 1P/3P target has been stable long enough and no dry-run guard blocks it.
+- `Phase Policy Auto Ready`: true only when the same 1P/3P target has been stable long enough and no guard blocks it.
 - `Phase Policy Auto Block Reason`: for example `Waiting For Stable Surplus`, `Cooldown Active` or `Session Switch Limit Reached`.
 - `Phase Policy Stable Time`: how long the current dry-run target has remained stable.
 - `Phase Policy Required Stable Time`: the required stability window before automatic switching would be allowed.
 - `Phase Policy Cooldown Remaining`: remaining cooldown after a phase switch.
-- `Phase Policy Session Switch Count` and `Phase Policy Session Switch Limit`: dry-run protection against excessive switching in one plug-in session.
+- `Phase Policy Session Switch Count` and `Phase Policy Session Switch Limit`: protection against excessive automatic switching in one plug-in session.
 
 Useful diagnostic entities:
 

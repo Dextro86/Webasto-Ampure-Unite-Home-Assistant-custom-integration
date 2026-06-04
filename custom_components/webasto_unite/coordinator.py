@@ -81,6 +81,7 @@ from .const import (
     DEFAULT_UNIT_ID,
     DOMAIN,
     PHASE_MODE_1P,
+    PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR,
     PHASE_SWITCHING_MODE_OFF,
     STORAGE_KEY_CHARGING_STATE,
 )
@@ -467,7 +468,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         # Backward-compatible service alias.
         self.set_max_current(current_a)
 
-    async def async_request_phase_switch(self, target_phases: int) -> None:
+    async def async_request_phase_switch(self, target_phases: int, *, request_refresh: bool = True) -> None:
         self._ensure_runtime_defaults()
         current_snapshot = getattr(self, "data", None)
         wallbox = getattr(current_snapshot, "wallbox", None)
@@ -490,7 +491,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if self._phase_switch_last_result in REGISTER_ACCEPTED_RESULTS:
             self._record_phase_policy_switch_attempt()
             self._update_phase_session_override(target_phases)
-        await self.async_request_refresh()
+        if request_refresh:
+            await self.async_request_refresh()
 
     async def async_restore_default_phase_mode(
         self,
@@ -587,7 +589,11 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         stable_elapsed_s = max(0.0, now - (self._phase_policy_candidate_since_monotonic or now))
         stable_required_s = AUTO_PHASE_STABLE_TO_1P_S if target == "1P" else AUTO_PHASE_STABLE_TO_3P_S
         auto_block_reason = None
-        if cooldown_remaining_s > 0:
+        if getattr(self, "_phase_switching_mode", PHASE_SWITCHING_MODE_OFF) != PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR:
+            auto_block_reason = "automatic_phase_switching_disabled"
+        elif self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            auto_block_reason = "external_controller_mode"
+        elif cooldown_remaining_s > 0:
             auto_block_reason = "cooldown_active"
         elif self._phase_policy_session_switch_count >= AUTO_PHASE_MAX_SWITCHES_PER_SESSION:
             auto_block_reason = "session_switch_limit_reached"
@@ -604,6 +610,22 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             session_switch_count=self._phase_policy_session_switch_count,
             session_switch_limit=AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
         )
+
+    async def _maybe_execute_automatic_phase_policy(self, phase_policy: PhasePolicyDecision) -> bool:
+        if self._phase_switching_mode != PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR:
+            return False
+        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            return False
+        if not phase_policy.auto_ready or phase_policy.target not in {"1P", "3P"}:
+            return False
+        if self._phase_switch_in_progress():
+            return False
+        try:
+            await self.async_request_phase_switch(int(phase_policy.target[0]), request_refresh=False)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Automatic Solar phase switch to %s failed: %s", phase_policy.target, err)
+            return False
+        return True
 
     def _sync_phase_switch_diagnostics(self) -> None:
         self._phase_switch_last_result = self.phase_switch_manager.last_result
@@ -807,9 +829,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 phase_restore_pending=self._phase_restore_pending,
             )
             phase_policy = self._apply_phase_policy_dry_run(phase_policy)
+            automatic_phase_switch_executed = await self._maybe_execute_automatic_phase_policy(phase_policy)
 
             # Apply transient/startup guards after the controller decision is
             # built, but before anything is enqueued for writing.
+            if automatic_phase_switch_executed:
+                decision.should_write = False
             if self.runtime_guards.should_defer_startup_safe_current_fallback_write(
                 wallbox=wallbox,
                 sensors=sensors,

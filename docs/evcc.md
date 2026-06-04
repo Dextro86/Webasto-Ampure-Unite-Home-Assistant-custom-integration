@@ -12,7 +12,7 @@ When EVCC controls charging:
 - Set `Default Mode` to `Normal`.
 - Keep this integration's Solar control disabled. EVCC should be the Solar/loadpoint brain.
 - Keep this integration's DLB disabled unless you intentionally want an additional local safety cap.
-- Do not use experimental manual phase switching for EVCC automation yet.
+- If EVCC should control 1P/3P switching, configure EVCC `phaseswitch` to the `Phase Switch` select entity.
 
 In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `External Requested Current` as the external control path.
 
@@ -40,6 +40,7 @@ Entity IDs depend on the Home Assistant entity registry. Always check the actual
 | Current L3 | `sensor.webasto_unite_current_l3` |
 | Session energy | `sensor.webasto_unite_session_energy` |
 | Observed active phases | `sensor.webasto_unite_effective_active_phases` |
+| Phase switching | `select.webasto_unite_phase_switch` |
 | Compatibility diagnostics | `sensor.webasto_unite_evcc_status` |
 
 ## Example EVCC Charger Configuration
@@ -67,13 +68,14 @@ chargers:
     voltageL1: sensor.webasto_unite_voltage_l1
     voltageL2: sensor.webasto_unite_voltage_l2
     voltageL3: sensor.webasto_unite_voltage_l3
+    phaseswitch: select.webasto_unite_phase_switch
 ```
 
 The same example is available as [examples/evcc_home_assistant.yaml](../examples/evcc_home_assistant.yaml).
 
 `Maximum Current` also exists as a legacy/config number entity, but it is disabled by default and should not be used as the EVCC current command.
 
-Do not configure `phaseswitch` for this integration yet. Manual phase switching is experimental and is not exposed as the EVCC Home Assistant phase-switch select with options `1` and `3`.
+Configure `phaseswitch` only if you want EVCC to control 1P/3P switching. The select exposes EVCC-compatible options `1` and `3`, but every request still runs through this integration's safe phase-switch sequence.
 
 ## IEC 61851 State
 
@@ -110,7 +112,7 @@ Attributes ending in `_label` are intended for human reading. Other attributes a
 
 ## Limitations
 
-- Automatic phase switching is not available.
-- Manual phase switching is experimental and not intended for EVCC automation yet.
+- Phase switching is experimental and depends on charger/vehicle behavior.
+- In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar phase policy does not run.
 - EVCC and this integration should not both manage Solar charging at the same time.
 - `Monitoring Only` is not suitable for EVCC control because the control entities do not write current targets in that mode.
