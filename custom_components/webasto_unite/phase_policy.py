@@ -6,7 +6,7 @@ from .const import PHASE_SWITCHING_MODE_OFF
 from .electrical import voltage_sum_for_phases
 from .models import ChargeMode, ControlDecision, ControlReason, SolarControlStrategy, WallboxState
 
-AUTO_PHASE_STABLE_TO_1P_S = 300.0
+AUTO_PHASE_STABLE_TO_1P_S = 120.0
 AUTO_PHASE_STABLE_TO_3P_S = 600.0
 AUTO_PHASE_SWITCH_COOLDOWN_S = 600.0
 AUTO_PHASE_MAX_SWITCHES_PER_SESSION = 5
@@ -79,7 +79,15 @@ def evaluate_phase_policy(
             required_surplus_3p_w=required_3p,
         )
 
-    if required_1p <= filtered_surplus_w < required_3p and current_mode != "1P":
+    allows_minimum_grid_support = solar_strategy in {
+        SolarControlStrategy.SMART_SOLAR,
+        SolarControlStrategy.SOLAR_BOOST,
+    }
+    if (
+        (allows_minimum_grid_support or filtered_surplus_w >= required_1p)
+        and filtered_surplus_w < required_3p
+        and current_mode != "1P"
+    ):
         return PhasePolicyDecision(
             decision="would_request_1p",
             target="1P",

@@ -150,7 +150,7 @@ Manual switching separates pause confirmation, register verification and physica
 
 Manual switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode.
 
-Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires stable Solar surplus before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
+Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires a stable Solar phase target before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. `Eco Solar` remains surplus-only; `Smart Solar` and `Solar Boost` may request 1P even below the 1P surplus minimum because these modes intentionally allow baseline charging. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
 
 ## Stability-First Design
 

@@ -222,6 +222,66 @@ def test_phase_policy_would_request_1p_when_surplus_supports_1p_but_not_3p():
     assert decision.required_surplus_3p_w == 4440.0
 
 
+def test_phase_policy_eco_solar_does_not_request_1p_below_1p_minimum():
+    decision = evaluate_phase_policy(
+        effective_mode=ChargeMode.SOLAR,
+        solar_strategy=SolarControlStrategy.ECO_SOLAR,
+        phase_switching_mode=PHASE_SWITCHING_MODE_MANUAL_ONLY,
+        configured_installed_phases="3p",
+        wallbox=WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            vehicle_connected=True,
+            phase_switch_mode_raw=1,
+            voltage_l1_v=230.0,
+            voltage_l2_v=230.0,
+            voltage_l3_v=230.0,
+        ),
+        control_decision=ControlDecision(
+            charging_enabled=True,
+            target_current_a=6.0,
+            reason=ControlReason.SOLAR_MODE,
+            final_target_a=6.0,
+        ),
+        solar_input_state="ready",
+        filtered_surplus_w=600.0,
+        phase_restore_pending=False,
+    )
+
+    assert decision.decision == "no_action"
+    assert decision.target is None
+
+
+def test_phase_policy_smart_solar_requests_1p_below_1p_minimum():
+    decision = evaluate_phase_policy(
+        effective_mode=ChargeMode.SOLAR,
+        solar_strategy=SolarControlStrategy.SMART_SOLAR,
+        phase_switching_mode=PHASE_SWITCHING_MODE_MANUAL_ONLY,
+        configured_installed_phases="3p",
+        wallbox=WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            vehicle_connected=True,
+            phase_switch_mode_raw=1,
+            voltage_l1_v=230.0,
+            voltage_l2_v=230.0,
+            voltage_l3_v=230.0,
+        ),
+        control_decision=ControlDecision(
+            charging_enabled=True,
+            target_current_a=6.0,
+            reason=ControlReason.SOLAR_MODE,
+            final_target_a=6.0,
+        ),
+        solar_input_state="ready",
+        filtered_surplus_w=600.0,
+        phase_restore_pending=False,
+    )
+
+    assert decision.decision == "would_request_1p"
+    assert decision.target == "1P"
+
+
 def test_phase_policy_would_request_3p_when_surplus_supports_3p():
     decision = evaluate_phase_policy(
         effective_mode=ChargeMode.SOLAR,

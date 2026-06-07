@@ -831,7 +831,7 @@ def test_phase_policy_dry_run_waits_for_stable_target_before_auto_ready():
     initial = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
 
     assert initial.auto_ready is False
-    assert initial.auto_block_reason == "waiting_for_stable_surplus"
+    assert initial.auto_block_reason == "waiting_for_stable_phase_target"
     assert initial.stable_required_s == AUTO_PHASE_STABLE_TO_1P_S
 
     coordinator._phase_policy_candidate_since_monotonic = monotonic() - AUTO_PHASE_STABLE_TO_1P_S - 1

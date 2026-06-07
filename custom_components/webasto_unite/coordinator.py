@@ -598,7 +598,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         elif self._phase_policy_session_switch_count >= AUTO_PHASE_MAX_SWITCHES_PER_SESSION:
             auto_block_reason = "session_switch_limit_reached"
         elif stable_elapsed_s < stable_required_s:
-            auto_block_reason = "waiting_for_stable_surplus"
+            auto_block_reason = "waiting_for_stable_phase_target"
 
         return replace(
             phase_policy,

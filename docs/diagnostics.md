@@ -116,9 +116,9 @@ This distinction matters because some chargers can accept the register write bef
 The auto-policy diagnostics also expose:
 
 - `Phase Policy Auto Ready`: true only when the same 1P/3P target has been stable long enough and no guard blocks it.
-- `Phase Policy Auto Block Reason`: for example `Waiting For Stable Surplus`, `Cooldown Active` or `Session Switch Limit Reached`.
-- `Phase Policy Stable Time`: how long the current dry-run target has remained stable.
-- `Phase Policy Required Stable Time`: the required stability window before automatic switching would be allowed.
+- `Phase Policy Auto Block Reason`: for example `Waiting For Stable Phase Target`, `Cooldown Active` or `Session Switch Limit Reached`.
+- `Phase Policy Stable Target Time`: how long the current 1P/3P target has remained stable.
+- `Phase Policy Required Target Time`: the required stability window before automatic switching is allowed.
 - `Phase Policy Cooldown Remaining`: remaining cooldown after a phase switch.
 - `Phase Policy Session Switch Count` and `Phase Policy Session Switch Limit`: protection against excessive automatic switching in one plug-in session.
 
