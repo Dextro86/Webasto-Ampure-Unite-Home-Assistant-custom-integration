@@ -863,9 +863,19 @@ def test_phase_policy_dry_run_cooldown_blocks_auto_ready_after_switch():
 def test_automatic_solar_phase_policy_executes_ready_target_only_when_integration_controls():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.hass = SimpleNamespace(async_create_task=lambda coro: asyncio.create_task(coro))
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
         coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
-        coordinator.phase_switch_manager = SimpleNamespace(active=False)
+        coordinator.phase_switch_manager = SimpleNamespace(
+            active=False,
+            last_result=None,
+            last_block_reason=None,
+            last_target=None,
+            state="idle",
+        )
+        coordinator._phase_switch_task = None
+        coordinator._phase_restore_task = None
+        coordinator.async_request_refresh = AsyncMock()
         coordinator.async_request_phase_switch = AsyncMock()
 
         executed = await coordinator._maybe_execute_automatic_phase_policy(
@@ -873,7 +883,11 @@ def test_automatic_solar_phase_policy_executes_ready_target_only_when_integratio
         )
 
         assert executed is True
+        assert coordinator._phase_switch_task is not None
+        assert coordinator._phase_switch_in_progress() is True
+        await coordinator._phase_switch_task
         coordinator.async_request_phase_switch.assert_awaited_once_with(3, request_refresh=False)
+        coordinator.async_request_refresh.assert_awaited_once()
 
         coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
         coordinator.async_request_phase_switch.reset_mock()
@@ -884,6 +898,42 @@ def test_automatic_solar_phase_policy_executes_ready_target_only_when_integratio
 
         assert executed is False
         coordinator.async_request_phase_switch.assert_not_awaited()
+
+    asyncio.run(_run())
+
+
+def test_failed_automatic_phase_switch_sets_cooldown_without_counting_session_switch():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.hass = SimpleNamespace(async_create_task=lambda coro: asyncio.create_task(coro))
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.phase_switch_manager = SimpleNamespace(
+            active=False,
+            last_result="blocked",
+            last_block_reason="pause_not_confirmed",
+            last_target="1P",
+            state="blocked",
+        )
+        coordinator._phase_switch_task = None
+        coordinator._phase_restore_task = None
+        coordinator._phase_policy_last_switch_monotonic = None
+        coordinator._phase_policy_session_switch_count = 0
+        coordinator._phase_policy_candidate_target = "1P"
+        coordinator._phase_policy_candidate_since_monotonic = monotonic() - AUTO_PHASE_STABLE_TO_1P_S - 1
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.async_request_phase_switch = AsyncMock(side_effect=ValueError("pause_not_confirmed"))
+
+        executed = await coordinator._maybe_execute_automatic_phase_policy(
+            PhasePolicyDecision(decision="would_request_1p", target="1P", auto_ready=True)
+        )
+
+        assert executed is True
+        assert coordinator._phase_switch_task is not None
+        await coordinator._phase_switch_task
+        assert coordinator._phase_policy_last_switch_monotonic is not None
+        assert coordinator._phase_policy_session_switch_count == 0
+        assert coordinator._phase_policy_candidate_target is None
 
     asyncio.run(_run())
 
@@ -1094,10 +1144,14 @@ def test_phase_session_override_restores_default_after_unplug():
 
         snapshot = await coordinator._async_update_data()
 
+        assert coordinator._phase_restore_task is not None
+        assert snapshot.phase_restore_pending is True
+        await coordinator._phase_restore_task
+
         coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
-        assert snapshot.phase_session_override_active is False
-        assert snapshot.phase_session_target is None
-        assert snapshot.phase_restore_pending is False
+        assert coordinator._phase_session_override_active is False
+        assert coordinator._phase_session_target is None
+        assert coordinator._phase_restore_pending is False
         assert coordinator._last_vehicle_connected is False
 
     asyncio.run(_run())
@@ -1142,9 +1196,13 @@ def test_restart_phase_mismatch_without_vehicle_restores_default_phase():
 
         snapshot = await coordinator._async_update_data()
 
+        assert coordinator._phase_restore_task is not None
+        assert snapshot.phase_restore_pending is True
+        await coordinator._phase_restore_task
+
         coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
-        assert snapshot.phase_session_override_active is False
-        assert snapshot.phase_restore_pending is False
+        assert coordinator._phase_session_override_active is False
+        assert coordinator._phase_restore_pending is False
 
     asyncio.run(_run())
 
@@ -1192,6 +1250,54 @@ def test_restart_phase_mismatch_with_connected_vehicle_only_marks_restore_pendin
         assert snapshot.phase_session_override_active is True
         assert snapshot.phase_session_target == "1P"
         assert snapshot.phase_restore_pending is True
+
+    asyncio.run(_run())
+
+
+def test_existing_phase_session_override_does_not_become_restore_pending_while_connected():
+    async def _run():
+        wallbox = WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            available=True,
+            vehicle_connected=True,
+            phase_switch_mode_raw=0,
+        )
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.hass = SimpleNamespace(states=SimpleNamespace(get=lambda entity_id: None))
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.sensor_adapter = HaSensorAdapter(coordinator.hass)
+        coordinator.wallbox_reader = SimpleNamespace(read_wallbox_state=AsyncMock(return_value=wallbox))
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(
+            write=AsyncMock(),
+            read=AsyncMock(return_value=1),
+            stats=SimpleNamespace(last_error=None),
+        )
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._solar_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._last_vehicle_connected = True
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+        coordinator._phase_session_override_active = True
+        coordinator._phase_session_target = "1P"
+        coordinator._phase_restore_pending = False
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator._sensor_refresh_task = None
+        install_runtime_guards(coordinator, startup_ready=True)
+        install_mock_write_runtime(coordinator)
+
+        snapshot = await coordinator._async_update_data()
+
+        coordinator.client.write.assert_not_called()
+        assert snapshot.phase_session_override_active is True
+        assert snapshot.phase_session_target == "1P"
+        assert snapshot.phase_restore_pending is False
+        assert snapshot.phase_policy_block_reason != "phase_restore_pending"
 
     asyncio.run(_run())
 
@@ -1310,8 +1416,8 @@ def test_manual_phase_switch_buttons_call_phase_switch_services():
         coordinator.entry = make_config_entry()
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
         coordinator.data = SimpleNamespace(phase_switch_available=True, phase_switch_register_available=True)
-        coordinator.async_request_phase_switch = AsyncMock()
-        coordinator.async_restore_default_phase_mode = AsyncMock()
+        coordinator.async_schedule_phase_switch = AsyncMock()
+        coordinator.async_schedule_restore_default_phase_mode = AsyncMock()
         coordinator.reset_phase_switch_state = Mock()
         coordinator.async_request_refresh = AsyncMock()
 
@@ -1334,9 +1440,9 @@ def test_manual_phase_switch_buttons_call_phase_switch_services():
         await restore.async_press()
         await reset.async_press()
 
-        assert coordinator.async_request_phase_switch.await_args_list[0].args == (1,)
-        assert coordinator.async_request_phase_switch.await_args_list[1].args == (3,)
-        coordinator.async_restore_default_phase_mode.assert_awaited_once()
+        assert coordinator.async_schedule_phase_switch.await_args_list[0].args == (1,)
+        assert coordinator.async_schedule_phase_switch.await_args_list[1].args == (3,)
+        coordinator.async_schedule_restore_default_phase_mode.assert_awaited_once()
         coordinator.reset_phase_switch_state.assert_called_once()
         coordinator.async_request_refresh.assert_awaited_once()
 
@@ -1349,7 +1455,7 @@ def test_phase_switch_select_exposes_evcc_compatible_options():
         coordinator.entry = make_config_entry()
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
         coordinator.data = SimpleNamespace(phase_switch_register_available=True, phase_switch_mode_raw=1)
-        coordinator.async_request_phase_switch = AsyncMock()
+        coordinator.async_schedule_phase_switch = AsyncMock()
 
         select = WebastoPhaseSwitchSelect(coordinator)
 
@@ -1359,7 +1465,7 @@ def test_phase_switch_select_exposes_evcc_compatible_options():
 
         await select.async_select_option("1")
 
-        coordinator.async_request_phase_switch.assert_awaited_once_with(1)
+        coordinator.async_schedule_phase_switch.assert_awaited_once_with(1)
 
     asyncio.run(_run())
 
@@ -1370,7 +1476,7 @@ def test_manual_phase_switch_buttons_are_unavailable_when_phase_switch_is_blocke
         coordinator.entry = make_config_entry()
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
         coordinator.data = SimpleNamespace(phase_switch_available=False)
-        coordinator.async_request_phase_switch = AsyncMock()
+        coordinator.async_schedule_phase_switch = AsyncMock()
 
         request_1p = WebastoRequestPhase1PButton(coordinator)
 
@@ -1378,7 +1484,7 @@ def test_manual_phase_switch_buttons_are_unavailable_when_phase_switch_is_blocke
 
         await request_1p.async_press()
 
-        coordinator.async_request_phase_switch.assert_not_called()
+        coordinator.async_schedule_phase_switch.assert_not_called()
 
     asyncio.run(_run())
 

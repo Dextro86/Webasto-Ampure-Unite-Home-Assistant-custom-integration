@@ -115,4 +115,4 @@ class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         if option not in self.options:
             return
-        await self.coordinator.async_request_phase_switch(int(option))
+        await self.coordinator.async_schedule_phase_switch(int(option))

@@ -136,14 +136,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def handle_request_phase_1p(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
         try:
-            await coordinator.async_request_phase_switch(1)
+            await coordinator.async_schedule_phase_switch(1)
         except Exception as err:  # noqa: BLE001
             raise HomeAssistantError(str(err)) from err
 
     async def handle_request_phase_3p(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
         try:
-            await coordinator.async_request_phase_switch(3)
+            await coordinator.async_schedule_phase_switch(3)
         except Exception as err:  # noqa: BLE001
             raise HomeAssistantError(str(err)) from err
 
@@ -155,7 +155,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def handle_restore_default_phase(call: ServiceCall) -> None:
         coordinator = _get_coordinator(call.data["entry_id"])
         try:
-            await coordinator.async_restore_default_phase_mode()
+            await coordinator.async_schedule_restore_default_phase_mode()
         except Exception as err:  # noqa: BLE001
             raise HomeAssistantError(str(err)) from err
 

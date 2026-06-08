@@ -9,7 +9,7 @@ from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEne
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR, PHASE_SWITCHING_MODE_MANUAL_ONLY
 from .control_owner import derive_control_owner_from_snapshot, present_control_owner
 from .entity import WebastoUniteCoordinatorEntity
 from .evcc import build_evcc_status
@@ -160,7 +160,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "write_register": PHASE_SWITCH_MODE.address,
                 "write_value_1p": PHASE_SWITCH_VALUE_1P,
                 "write_value_3p": PHASE_SWITCH_VALUE_3P,
-                "writes_enabled": self.coordinator.data.phase_switching_mode == "manual_only",
+                "writes_enabled": self.coordinator.data.phase_switching_mode
+                in {PHASE_SWITCHING_MODE_MANUAL_ONLY, PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR},
             }
         if self.entity_description.key != "iec61851_state":
             return None
@@ -345,6 +346,8 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
                 "pause_not_confirmed": "Pause Not Confirmed",
                 "blocked": "Blocked",
                 "failed": "Failed",
+                "queued": "Queued",
+                "restore_queued": "Restore Queued",
                 "requested": "Requested",
                 "pausing": "Pausing",
                 "waiting_for_pause": "Waiting For Pause",

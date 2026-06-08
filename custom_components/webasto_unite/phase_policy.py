@@ -40,14 +40,15 @@ def evaluate_phase_policy(
     solar_input_state: str | None,
     filtered_surplus_w: float | None,
     phase_restore_pending: bool,
+    solar_min_current_a: float,
 ) -> PhasePolicyDecision:
     """Dry-run Solar phase switching policy.
 
     This function intentionally never writes. It only reports what the future
     automatic phase switching layer would request if execution were enabled.
     """
-    required_1p = _required_surplus_w(1, wallbox, control_decision)
-    required_3p = _required_surplus_w(3, wallbox, control_decision) + AUTO_PHASE_TO_3P_SURPLUS_MARGIN_W
+    required_1p = _required_surplus_w(1, wallbox, solar_min_current_a)
+    required_3p = _required_surplus_w(3, wallbox, solar_min_current_a) + AUTO_PHASE_TO_3P_SURPLUS_MARGIN_W
 
     block_reason = _block_reason(
         effective_mode=effective_mode,
@@ -135,12 +136,11 @@ def _block_reason(
     return None
 
 
-def _required_surplus_w(phase_count: int, wallbox: WallboxState, decision: ControlDecision) -> float:
-    target_current = decision.final_target_a or decision.mode_target_a or 6.0
+def _required_surplus_w(phase_count: int, wallbox: WallboxState, current_a: float) -> float:
     voltage_sum = voltage_sum_for_phases(
         phase_count,
         wallbox.voltage_l1_v,
         wallbox.voltage_l2_v,
         wallbox.voltage_l3_v,
     )
-    return float(target_current * voltage_sum)
+    return float(current_a * voltage_sum)

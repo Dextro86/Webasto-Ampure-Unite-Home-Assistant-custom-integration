@@ -114,7 +114,7 @@ class WebastoRequestPhase1PButton(_WebastoPhaseSwitchButton):
     async def async_press(self) -> None:
         if not self.available:
             return
-        await self.coordinator.async_request_phase_switch(1)
+        await self.coordinator.async_schedule_phase_switch(1)
 
 
 class WebastoRequestPhase3PButton(_WebastoPhaseSwitchButton):
@@ -127,7 +127,7 @@ class WebastoRequestPhase3PButton(_WebastoPhaseSwitchButton):
     async def async_press(self) -> None:
         if not self.available:
             return
-        await self.coordinator.async_request_phase_switch(3)
+        await self.coordinator.async_schedule_phase_switch(3)
 
 
 class WebastoRestoreDefaultPhaseButton(_WebastoPhaseSwitchButton):
@@ -149,7 +149,7 @@ class WebastoRestoreDefaultPhaseButton(_WebastoPhaseSwitchButton):
     async def async_press(self) -> None:
         if not self.available:
             return
-        await self.coordinator.async_restore_default_phase_mode()
+        await self.coordinator.async_schedule_restore_default_phase_mode()
 
 
 class WebastoResetPhaseSwitchStateButton(WebastoUniteCoordinatorEntity, ButtonEntity):

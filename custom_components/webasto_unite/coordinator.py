@@ -168,6 +168,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._sensor_unsubscribers = []
         self._keepalive_task: asyncio.Task | None = None
         self._sensor_refresh_task: asyncio.Task | None = None
+        self._phase_switch_task: asyncio.Task | None = None
+        self._phase_restore_task: asyncio.Task | None = None
         self._phase_switch_sleep = asyncio.sleep
         entry_id = getattr(entry, "entry_id", "default")
         self._charging_state_store = Store(hass, 1, f"{DOMAIN}.{entry_id}.{STORAGE_KEY_CHARGING_STATE}")
@@ -328,6 +330,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
         if not hasattr(self, "_sensor_refresh_task"):
             self._sensor_refresh_task = None
+        if not hasattr(self, "_phase_switch_task"):
+            self._phase_switch_task = getattr(self, "_automatic_phase_switch_task", None)
+        if not hasattr(self, "_phase_restore_task"):
+            self._phase_restore_task = None
 
     def _resolve_startup_mode(self, merged_options: dict) -> ChargeMode:
         try:
@@ -363,6 +369,20 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             except asyncio.CancelledError:
                 pass
             self._sensor_refresh_task = None
+        if self._phase_switch_task is not None:
+            self._phase_switch_task.cancel()
+            try:
+                await self._phase_switch_task
+            except asyncio.CancelledError:
+                pass
+            self._phase_switch_task = None
+        if self._phase_restore_task is not None:
+            self._phase_restore_task.cancel()
+            try:
+                await self._phase_restore_task
+            except asyncio.CancelledError:
+                pass
+            self._phase_restore_task = None
         for unsub in self._sensor_unsubscribers:
             unsub()
         self._sensor_unsubscribers.clear()
@@ -468,6 +488,42 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         # Backward-compatible service alias.
         self.set_max_current(current_a)
 
+    def _create_background_task(self, coro) -> asyncio.Task:
+        create_task = getattr(self.hass, "async_create_task", None) or asyncio.create_task
+        return create_task(coro)
+
+    async def async_schedule_phase_switch(self, target_phases: int, *, request_refresh: bool = True) -> None:
+        self._ensure_runtime_defaults()
+        if self._phase_switch_in_progress():
+            raise ValueError("Phase switch blocked: phase_switch_in_progress")
+        self._schedule_phase_switch_task(target_phases, source="manual")
+        if request_refresh:
+            await self.async_request_refresh()
+
+    def _schedule_phase_switch_task(self, target_phases: int, *, source: str) -> None:
+        self.phase_switch_manager.last_target = f"{target_phases}P"
+        self.phase_switch_manager.last_block_reason = None
+        self.phase_switch_manager.state = "queued"
+        self._sync_phase_switch_diagnostics()
+        self._phase_switch_task = self._create_background_task(
+            self._run_scheduled_phase_switch(target_phases, source=source)
+        )
+
+    async def _run_scheduled_phase_switch(self, target_phases: int, *, source: str) -> None:
+        failed_before_accept = True
+        try:
+            await self.async_request_phase_switch(target_phases, request_refresh=False)
+            failed_before_accept = self._phase_switch_last_result not in REGISTER_ACCEPTED_RESULTS
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("%s phase switch to %sP failed: %s", source.capitalize(), target_phases, err)
+        finally:
+            if source == "automatic" and failed_before_accept:
+                self._record_phase_policy_failed_attempt()
+            self._sync_phase_switch_diagnostics()
+            await self.async_request_refresh()
+
     async def async_request_phase_switch(self, target_phases: int, *, request_refresh: bool = True) -> None:
         self._ensure_runtime_defaults()
         current_snapshot = getattr(self, "data", None)
@@ -492,6 +548,42 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._record_phase_policy_switch_attempt()
             self._update_phase_session_override(target_phases)
         if request_refresh:
+            await self.async_request_refresh()
+
+    async def async_schedule_restore_default_phase_mode(
+        self,
+        wallbox: WallboxState | None = None,
+        *,
+        request_refresh: bool = True,
+    ) -> None:
+        self._ensure_runtime_defaults()
+        if self._phase_switch_in_progress():
+            raise ValueError("Phase restore blocked: phase_switch_in_progress")
+        self._schedule_phase_restore_task(wallbox)
+        if request_refresh:
+            await self.async_request_refresh()
+
+    def _schedule_phase_restore_task(self, wallbox: WallboxState | None = None) -> None:
+        target_phases = 1 if self._configured_installed_phases() == PHASE_MODE_1P else 3
+        self._phase_restore_pending = True
+        self.phase_switch_manager.last_target = f"{target_phases}P"
+        self.phase_switch_manager.last_block_reason = None
+        self.phase_switch_manager.state = "restore_queued"
+        self._sync_phase_switch_diagnostics()
+        self._phase_restore_task = self._create_background_task(
+            self._run_scheduled_phase_restore(wallbox)
+        )
+
+    async def _run_scheduled_phase_restore(self, wallbox: WallboxState | None = None) -> None:
+        try:
+            await self.async_restore_default_phase_mode(wallbox, request_refresh=False)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Default phase restore failed: %s", err)
+            self._phase_restore_pending = True
+        finally:
+            self._sync_phase_switch_diagnostics()
             await self.async_request_refresh()
 
     async def async_restore_default_phase_mode(
@@ -558,6 +650,11 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_policy_candidate_target = None
         self._phase_policy_candidate_since_monotonic = None
 
+    def _record_phase_policy_failed_attempt(self) -> None:
+        self._phase_policy_last_switch_monotonic = monotonic()
+        self._phase_policy_candidate_target = None
+        self._phase_policy_candidate_since_monotonic = None
+
     def _apply_phase_policy_dry_run(self, phase_policy: PhasePolicyDecision) -> PhasePolicyDecision:
         now = monotonic()
         cooldown_remaining_s = 0.0
@@ -620,11 +717,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             return False
         if self._phase_switch_in_progress():
             return False
-        try:
-            await self.async_request_phase_switch(int(phase_policy.target[0]), request_refresh=False)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("Automatic Solar phase switch to %s failed: %s", phase_policy.target, err)
-            return False
+        target_phases = int(phase_policy.target[0])
+        self._schedule_phase_switch_task(target_phases, source="automatic")
         return True
 
     def _sync_phase_switch_diagnostics(self) -> None:
@@ -677,6 +771,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if wallbox.phase_switch_mode_raw == default_raw:
             self._clear_phase_session_override()
             return
+        if (
+            self._phase_session_override_active
+            and self._phase_session_target == ("1P" if wallbox.phase_switch_mode_raw == 0 else "3P")
+        ):
+            self._phase_restore_pending = False
+            return
         self._phase_restore_pending = True
         self._phase_session_override_active = True
         self._phase_session_target = "1P" if wallbox.phase_switch_mode_raw == 0 else "3P"
@@ -684,11 +784,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             return
         if wallbox.charge_point_phase_count == 1 and default_raw == 1:
             return
-        try:
-            await self.async_restore_default_phase_mode(wallbox, request_refresh=False)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("Failed to restore default phase mode during phase state reconciliation: %s", err)
-            self._phase_restore_pending = True
+        if not self._phase_switch_in_progress():
+            self._schedule_phase_restore_task(wallbox)
 
     def set_fixed_current(self, current_a: float) -> None:
         self.control_config.fixed_current_a = self._validate_runtime_current(current_a, "Fixed Current")
@@ -782,13 +879,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
 
             if self._phase_session_override_active and self._last_vehicle_connected and not wallbox.vehicle_connected:
                 self._phase_restore_pending = True
-                try:
-                    await self.async_restore_default_phase_mode(wallbox, request_refresh=False)
-                    phase_restore_attempted = True
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.warning("Failed to restore default phase mode after unplug: %s", err)
-                    self._phase_restore_pending = True
-                    phase_restore_attempted = True
+                if not self._phase_switch_in_progress():
+                    self._schedule_phase_restore_task(wallbox)
+                phase_restore_attempted = True
 
             if not phase_restore_attempted:
                 await self._async_handle_phase_restore_state(wallbox)
@@ -827,6 +920,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 solar_input_state=sensors.solar_input_state,
                 filtered_surplus_w=self.controller.solar_state.filtered_surplus_w,
                 phase_restore_pending=self._phase_restore_pending,
+                solar_min_current_a=self.control_config.solar_min_current_a,
             )
             phase_policy = self._apply_phase_policy_dry_run(phase_policy)
             automatic_phase_switch_executed = await self._maybe_execute_automatic_phase_policy(phase_policy)
@@ -970,6 +1064,12 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         return "monitoring_only"
 
     def _phase_switch_in_progress(self) -> bool:
+        switch_task = getattr(self, "_phase_switch_task", None)
+        if switch_task is not None and not switch_task.done():
+            return True
+        restore_task = getattr(self, "_phase_restore_task", None)
+        if restore_task is not None and not restore_task.done():
+            return True
         manager = getattr(self, "phase_switch_manager", None)
         return bool(getattr(manager, "active", False))
 
