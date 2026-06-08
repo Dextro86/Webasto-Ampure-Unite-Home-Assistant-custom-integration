@@ -73,7 +73,7 @@ cards:
     show_header_toggle: false
     entities:
       - entity: sensor.webasto_unite_charger_configured_phases
-        name: Charger Configured Phases
+        name: Charger Phase Register 404
       - entity: sensor.webasto_unite_phase_switch_mode
         name: Phase Switch Mode
       - entity: sensor.webasto_unite_phase_switch_available

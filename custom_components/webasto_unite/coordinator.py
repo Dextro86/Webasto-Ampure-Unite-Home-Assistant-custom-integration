@@ -782,8 +782,6 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_session_target = "1P" if wallbox.phase_switch_mode_raw == 0 else "3P"
         if wallbox.vehicle_connected:
             return
-        if wallbox.charge_point_phase_count == 1 and default_raw == 1:
-            return
         if not self._phase_switch_in_progress():
             self._schedule_phase_restore_task(wallbox)
 
@@ -921,6 +919,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 filtered_surplus_w=self.controller.solar_state.filtered_surplus_w,
                 phase_restore_pending=self._phase_restore_pending,
                 solar_min_current_a=self.control_config.solar_min_current_a,
+                session_observed_3p=self.controller.session_observed_3p,
             )
             phase_policy = self._apply_phase_policy_dry_run(phase_policy)
             automatic_phase_switch_executed = await self._maybe_execute_automatic_phase_policy(phase_policy)

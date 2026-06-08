@@ -35,6 +35,7 @@ class WallboxController:
     write_state: WriteState = field(default_factory=WriteState)
     solar_state: PvRuntimeState = field(init=False)
     observed_session_phase_count: int | None = None
+    session_observed_3p: bool = False
     _pending_session_phase_count: int | None = None
     _pending_session_phase_polls: int = 0
 
@@ -173,6 +174,7 @@ class WallboxController:
 
     def reset_session_phase_observation(self) -> None:
         self.observed_session_phase_count = None
+        self.session_observed_3p = False
         self._pending_session_phase_count = None
         self._pending_session_phase_polls = 0
 
@@ -198,6 +200,8 @@ class WallboxController:
         self._pending_session_phase_polls += 1
         if self._pending_session_phase_polls >= 2:
             self.observed_session_phase_count = wallbox.phases_in_use
+            if wallbox.phases_in_use == 3:
+                self.session_observed_3p = True
             self._pending_session_phase_count = None
             self._pending_session_phase_polls = 0
 

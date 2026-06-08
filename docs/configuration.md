@@ -368,7 +368,7 @@ What this means:
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects `Effective Active Phases` from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:
-  - Register `404`: charger preconfigured phase count (`0 = 1P`, `1 = 3P`), shown as `Charger Configured Phases`. If this reports `1P`, phase switching is blocked.
+  - Register `404`: charger-reported phase register, shown as `Charger Phase Register 404`. This is diagnostic only. Field testing showed it can report `1P` while the charger is physically charging on 3 phases, so it is not used as a hard phase-switch capability block.
   - Register `405`: experimental phase-switch mode register, shown as `Phase Switch Mode Raw` and `Phase Switch Mode`.
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
 - `Observed Session Phase Usage` is observed from measured phase currents during active charging and can be `Observed 1P`, `Observed 3P` or `Unknown`. This is diagnostic only and is not a vehicle capability claim.
@@ -387,7 +387,6 @@ Manual switch requests are blocked when:
 - The charger is unavailable.
 - No vehicle is connected.
 - The phase-switch register `405` cannot be read.
-- Register `404` reports that the charger is preconfigured as `1P`.
 - The integration itself is configured as `1P`.
 
 `Restore Default Phase Mode` is the exception to the vehicle-connected requirement. It is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session.

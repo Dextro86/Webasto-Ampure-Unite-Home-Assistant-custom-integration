@@ -519,13 +519,14 @@ def test_manual_3p_phase_switch_allows_likely_1p_vehicle_because_observation_is_
     asyncio.run(_run())
 
 
-def test_manual_phase_switch_blocks_when_charger_is_preconfigured_1p():
+def test_manual_phase_switch_ignores_register_404_capability_value():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
         coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
         coordinator.write_queue = WriteQueueManager()
-        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock())
+        coordinator.client = SimpleNamespace(write=AsyncMock(), read=AsyncMock(return_value=0))
+        coordinator._phase_switch_sleep = AsyncMock()
         coordinator.data = SimpleNamespace(
             wallbox=WallboxState(
                 installed_phases=3,
@@ -536,11 +537,10 @@ def test_manual_phase_switch_blocks_when_charger_is_preconfigured_1p():
             )
         )
 
-        with pytest.raises(ValueError, match="charger_preconfigured_1p"):
-            await coordinator.async_request_phase_switch(1)
+        await coordinator.async_request_phase_switch(1)
 
-        coordinator.client.write.assert_not_called()
-        assert coordinator._phase_switch_last_result == "blocked"
+        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 0)
+        assert coordinator._phase_switch_last_result == "register_verified"
 
     asyncio.run(_run())
 
@@ -1302,7 +1302,7 @@ def test_existing_phase_session_override_does_not_become_restore_pending_while_c
     asyncio.run(_run())
 
 
-def test_restart_phase_mismatch_does_not_restore_3p_when_register_404_reports_1p():
+def test_restart_phase_mismatch_restores_default_even_when_register_404_reports_1p():
     async def _run():
         wallbox = WallboxState(
             installed_phases=3,
@@ -1341,9 +1341,13 @@ def test_restart_phase_mismatch_does_not_restore_3p_when_register_404_reports_1p
 
         snapshot = await coordinator._async_update_data()
 
-        coordinator.client.write.assert_not_called()
-        assert snapshot.phase_session_override_active is True
+        assert coordinator._phase_restore_task is not None
         assert snapshot.phase_restore_pending is True
+        await coordinator._phase_restore_task
+
+        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
+        assert coordinator._phase_session_override_active is False
+        assert coordinator._phase_restore_pending is False
 
     asyncio.run(_run())
 
@@ -3998,6 +4002,13 @@ def test_coordinator_caches_observed_session_phase_for_later_solar_restarts():
                 phases_in_use=None,
                 current_limit_a=0.0,
             ),
+            WallboxState(
+                installed_phases=3,
+                vehicle_connected=False,
+                charging_active=False,
+                phases_in_use=None,
+                current_limit_a=0.0,
+            ),
         ]
         wallbox_reader = SimpleNamespace(read_wallbox_state=AsyncMock(side_effect=wallboxes))
         hass = SimpleNamespace(
@@ -4052,12 +4063,18 @@ def test_coordinator_caches_observed_session_phase_for_later_solar_restarts():
         third_snapshot = await coordinator._async_update_data()
 
         assert coordinator.controller.observed_session_phase_count == 3
+        assert coordinator.controller.session_observed_3p is True
         assert first_snapshot.wallbox.phases_in_use == 3
         assert second_snapshot.wallbox.phases_in_use == 3
         assert third_snapshot.wallbox.phases_in_use is None
         assert third_snapshot.mode_target_a is None
         assert third_snapshot.final_target_a is None
         assert third_snapshot.operating_state == "waiting_for_solar"
+
+        await coordinator._async_update_data()
+
+        assert coordinator.controller.observed_session_phase_count is None
+        assert coordinator.controller.session_observed_3p is False
 
     asyncio.run(_run())
 

@@ -41,6 +41,7 @@ def evaluate_phase_policy(
     filtered_surplus_w: float | None,
     phase_restore_pending: bool,
     solar_min_current_a: float,
+    session_observed_3p: bool,
 ) -> PhasePolicyDecision:
     """Dry-run Solar phase switching policy.
 
@@ -70,9 +71,16 @@ def evaluate_phase_policy(
         )
 
     assert filtered_surplus_w is not None
-    current_mode = "1P" if wallbox.phase_switch_mode_raw == 0 else "3P"
+    current_mode = _current_phase_mode(wallbox)
 
     if filtered_surplus_w >= required_3p and current_mode != "3P":
+        if not session_observed_3p:
+            return PhasePolicyDecision(
+                decision="blocked",
+                block_reason="3p_not_observed_in_session",
+                required_surplus_1p_w=required_1p,
+                required_surplus_3p_w=required_3p,
+            )
         return PhasePolicyDecision(
             decision="would_request_3p",
             target="3P",
@@ -119,8 +127,6 @@ def _block_reason(
         return "phase_switching_off"
     if configured_installed_phases != "3p":
         return "integration_configured_1p"
-    if wallbox.charge_point_phase_count != 3:
-        return "charger_not_preconfigured_3p"
     if wallbox.phase_switch_mode_raw not in (0, 1):
         return "phase_switch_register_unavailable"
     if phase_restore_pending:
@@ -144,3 +150,9 @@ def _required_surplus_w(phase_count: int, wallbox: WallboxState, current_a: floa
         wallbox.voltage_l3_v,
     )
     return float(current_a * voltage_sum)
+
+
+def _current_phase_mode(wallbox: WallboxState) -> str:
+    if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
+        return "1P" if wallbox.phases_in_use == 1 else "3P"
+    return "1P" if wallbox.phase_switch_mode_raw == 0 else "3P"

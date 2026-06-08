@@ -124,7 +124,7 @@ The auto-policy diagnostics also expose:
 
 Useful diagnostic entities:
 
-- `Charger Configured Phases`
+- `Charger Phase Register 404`
 - `Effective Active Phases`
 - `Phase Switch Mode`
 - `Phase Switch Mode Raw`
