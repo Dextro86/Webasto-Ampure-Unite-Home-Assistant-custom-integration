@@ -347,6 +347,14 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             return ChargeMode.NORMAL
         return mode
 
+    def _reset_runtime_mode_to_default(self) -> None:
+        merged = {**getattr(self.entry, "data", {}), **getattr(self.entry, "options", {})}
+        self._mode = self._resolve_startup_mode(merged)
+        self._active_solar_strategy = self.control_config.solar_control_strategy
+        self._solar_until_unplug_active = False
+        self._fixed_current_until_unplug_active = False
+        self.controller.reset_solar_state()
+
     async def async_setup(self) -> None:
         await self._async_restore_charging_enabled_state()
         self._setup_sensor_listeners()
@@ -863,20 +871,24 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self.runtime_guards.record_startup_refresh()
             phase_restore_attempted = False
 
-            # Runtime-only session overrides end when the vehicle is unplugged.
-            if (
-                (self._solar_until_unplug_active or self._fixed_current_until_unplug_active)
-                and self._last_vehicle_connected
-                and not wallbox.vehicle_connected
-            ):
-                self._solar_until_unplug_active = False
-                self._fixed_current_until_unplug_active = False
-                self.controller.reset_solar_state()
+            vehicle_disconnected = self._last_vehicle_connected and not wallbox.vehicle_connected
+            vehicle_connected = not self._last_vehicle_connected and wallbox.vehicle_connected
+
+            # A new plug-in session should start from the configured default mode,
+            # not from a runtime mode selected during the previous session.
+            if vehicle_disconnected:
+                self._reset_runtime_mode_to_default()
                 self.controller.reset_session_phase_observation()
                 self._reset_phase_policy_dry_run_state()
 
-            if self._phase_session_override_active and self._last_vehicle_connected and not wallbox.vehicle_connected:
+            if (
+                vehicle_disconnected
+                and wallbox.phase_switch_mode_raw in (0, 1)
+                and wallbox.phase_switch_mode_raw != self._default_phase_switch_raw_value()
+            ):
                 self._phase_restore_pending = True
+                self._phase_session_override_active = True
+                self._phase_session_target = "1P" if wallbox.phase_switch_mode_raw == 0 else "3P"
                 if not self._phase_switch_in_progress():
                     self._schedule_phase_restore_task(wallbox)
                 phase_restore_attempted = True
@@ -884,7 +896,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             if not phase_restore_attempted:
                 await self._async_handle_phase_restore_state(wallbox)
 
-            if not self._last_vehicle_connected and wallbox.vehicle_connected:
+            if vehicle_connected:
                 self.controller.reset_current_write_state()
                 self._reset_phase_policy_dry_run_state()
 

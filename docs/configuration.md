@@ -67,6 +67,8 @@ Restart behavior is intentionally split in two parts:
 
 This means a Home Assistant restart does not automatically resume charging if charging was previously turned off. It also means temporary runtime session settings are not restored after restart.
 
+At the end of a vehicle session, when the vehicle is unplugged, the runtime charge mode is reset to the configured `Default Mode`. This prevents a previous session's manually selected `Smart Solar`, `Eco Solar`, `Solar Boost` or `Fixed Current` runtime mode from silently carrying over into the next plug-in session.
+
 `Charging On/Off` is available when `Integration Charging Control` is `Enabled` or `External Controller`. In `Monitoring Only` mode the integration keeps the charger alive and monitors it, but it does not write charging-current commands.
 
 When `Integration Charging Control` is `Monitoring Only`, `Charging Behavior` shows `Monitoring Only - Not Writing`. `Final Target` may still show the current the integration would choose, but that value is diagnostic only and is not written to the charger.
@@ -364,7 +366,7 @@ What this means:
 - The `Phase Switch` select exposes EVCC-compatible options `1` and `3` and uses the same safe phase-switch sequence.
 - The button/service uses the same internal pause/resume semantics as `Pause Charging` and `Resume Charging`, waits until the charger actually appears paused, writes register `405`, verifies that register `405` holds the requested value, resumes charging if the charger was already charging, and then observes the measured active phases for a longer window.
 - `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405`. This can run without a connected vehicle.
-- A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration tries to restore `405` back to `Charger Configuration`.
+- A manual or automatic switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration tries to restore `405` back to `Charger Configuration`.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects `Effective Active Phases` from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:

@@ -139,7 +139,7 @@ Phase switching is experimental and off by default. `Manual Only` exposes explic
 
 The known register mapping used by the integration is:
 
-- input register `404`: charger preconfigured phase count (`0 = 1P`, `1 = 3P`). If this reports 1P, phase switching is blocked.
+- input register `404`: charger-reported phase register, shown as `Charger Phase Register 404`. This is diagnostic only; field testing showed it can report `1P` while the charger is physically charging on 3 phases.
 - holding register `405`: phase-switch mode (`0 = 1P`, `1 = 3P`). Manual switching writes and verifies this register.
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch.
@@ -148,7 +148,7 @@ Manual switching separates pause confirmation, register verification and physica
 
 `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` and can run without a connected vehicle.
 
-Manual switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode.
+Manual and automatic switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode and resets the runtime charge mode to the configured `Default Mode` for the next session.
 
 Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires a stable Solar phase target before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. `Eco Solar` remains surplus-only; `Smart Solar` and `Solar Boost` may request 1P even below the 1P surplus minimum because these modes intentionally allow baseline charging. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
 
