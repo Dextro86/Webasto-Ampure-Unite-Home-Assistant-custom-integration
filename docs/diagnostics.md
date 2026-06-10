@@ -65,6 +65,8 @@ Use these entities when `Final Target` and `Reported Current Limit` do not match
 - `Last Control Write Age`: how long ago the last current write happened.
 - `Last Control Write Blocked Reason`: why a calculated write was not sent, for example `Monitoring Only` or `External Controller Mode`.
 
+`Last Control Write` also exposes verification attributes. The integration compares the last written current with the next normally polled `Reported Current Limit`; it does not perform an extra Modbus read just for verification. The status can be `pending`, `accepted`, `mismatch` or `unavailable`.
+
 In `Monitoring Only`, the integration may still calculate `Final Target`, but `Control Writes Enabled` is false and writes are not sent to the charger.
 
 In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off`, `External Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`. During a phase switch, the latest external current request is deferred until the phase-switch sequence is finished.
@@ -87,7 +89,7 @@ Useful entities:
 
 - `IEC 61851 State`
 - `EVCC Status`
-- `Effective Active Phases`
+- `Observed Phase`
 - `Actual Phase Current`
 - `Active Power`
 
@@ -97,7 +99,15 @@ Useful entities:
 
 Phase switching is experimental and off by default. `Manual Only` exposes explicit controls and the EVCC-compatible phase select. `Automatic Solar` allows this integration to switch phases only while it owns Solar control.
 
-Phase switching uses register `404` only as charger configuration/capability context and register `405` as the writable phase-switch mode. Measured active phases are diagnostic only.
+Phase switching uses register `404` only as charger configuration/capability context and register `405` as the writable phase-switch mode. Measured active phases are observed session behavior, not a definitive vehicle capability.
+
+Phase switching uses three main diagnostic entities:
+
+- `Requested Phase`: the requested phase mode from register `405`.
+- `Observed Phase`: physical phase usage derived from measured L1/L2/L3 current.
+- `Phase Recovery State`: the active switch/recovery state, or `idle` when no recovery is active.
+
+Everything else is intentionally exposed as attributes on these sensors or in diagnostics snapshots. This keeps the entity list smaller while still preserving the information needed for support.
 
 Phase switching reports separate checks:
 
@@ -107,35 +117,11 @@ Phase switching reports separate checks:
 
 This distinction matters because some chargers can accept the register write before the current charging session physically changes phases.
 
-`Default Phase Mode` is derived from `Charger Configuration` and used by the restore button/service.
+Useful phase attributes:
 
-`Phase Session Override`, `Phase Session Target` and `Phase Restore Pending` show whether a manual switch has temporarily moved register `405` away from `Charger Configuration` and whether restore still needs attention.
-
-`Phase Policy Decision` shows what the Solar phase-switching policy would request. It writes register `405` only when `Phase Switching Mode = Automatic Solar` and this integration is in `Enabled` control mode.
-
-The auto-policy diagnostics also expose:
-
-- `Phase Policy Auto Ready`: true only when the same 1P/3P target has been stable long enough and no guard blocks it.
-- `Phase Policy Auto Block Reason`: for example `Waiting For Stable Phase Target`, `Cooldown Active` or `Session Switch Limit Reached`.
-- `Phase Policy Stable Target Time`: how long the current 1P/3P target has remained stable.
-- `Phase Policy Required Target Time`: the required stability window before automatic switching is allowed.
-- `Phase Policy Cooldown Remaining`: remaining cooldown after a phase switch.
-- `Phase Policy Session Switch Count` and `Phase Policy Session Switch Limit`: protection against excessive automatic switching in one plug-in session.
-
-Useful diagnostic entities:
-
-- `Charger Phase Capability (Register 404)`
-- `Effective Active Phases`
-- `Phase Switch Mode (Register 405)`
-- `Phase Switch Mode Raw (Register 405)`
-- `Phase Switch Available`
-- `Phase Switch Block Reason`
-- `Observed Session Phase Usage`
-- `Phase Consistency`
-- `Last Phase Switch Result`
-- `Last Phase Switch Block Reason`
-- `Last Phase Switch Target`
-- `Phase Switch State`
+- On `Requested Phase`: default phase, raw register `405`, phase switching mode, session override/target, restore pending and policy target/decision.
+- On `Observed Phase`: measured active phases, observed session phase usage, offer state, phase consistency, register `404` and register `405`.
+- On `Phase Recovery State`: current reason, recovery warning, switch state, last result/target/block reason, switch availability, policy block reason, cooldown, stable-target timing and session switch count.
 
 ## Debug Logging
 

@@ -17,7 +17,8 @@ class PhaseObservability:
     phase_switch_register_available: bool
     phase_switch_available: bool
     phase_switch_block_reason: str | None
-    vehicle_phase_capability: str
+    observed_session_phase_usage: str
+    phase_offer_state: str
     write_register_address: int
     write_value_1p: int
     write_value_3p: int
@@ -32,7 +33,8 @@ def build_phase_observability(wallbox: WallboxState) -> PhaseObservability:
         phase_switch_register_available=register_available,
         phase_switch_available=block_reason is None,
         phase_switch_block_reason=block_reason,
-        vehicle_phase_capability=detect_observed_session_phase_usage(wallbox),
+        observed_session_phase_usage=detect_observed_session_phase_usage(wallbox),
+        phase_offer_state=build_phase_offer_state(wallbox),
         write_register_address=PHASE_SWITCH_MODE.address,
         write_value_1p=PHASE_SWITCH_VALUE_1P,
         write_value_3p=PHASE_SWITCH_VALUE_3P,
@@ -76,9 +78,23 @@ def build_phase_consistency(wallbox: WallboxState) -> str:
     return "unknown"
 
 
-def detect_vehicle_phase_capability(wallbox: WallboxState) -> str:
-    """Backward-compatible alias for observed session phase usage."""
-    return detect_observed_session_phase_usage(wallbox)
+def build_phase_offer_state(wallbox: WallboxState) -> str:
+    if wallbox.phase_switch_mode_raw not in (PHASE_SWITCH_VALUE_1P, PHASE_SWITCH_VALUE_3P):
+        return "unknown"
+    if not wallbox.charging_active:
+        return "not_charging"
+    if wallbox.phases_in_use not in (1, 3):
+        return "unknown"
+    requested_phases = 1 if wallbox.phase_switch_mode_raw == PHASE_SWITCH_VALUE_1P else 3
+    if requested_phases == 1 and wallbox.phases_in_use == 1:
+        return "offering_1p"
+    if requested_phases == 3 and wallbox.phases_in_use == 3:
+        return "offering_3p"
+    if requested_phases == 3 and wallbox.phases_in_use == 1:
+        return "requested_3p_observed_1p"
+    if requested_phases == 1 and wallbox.phases_in_use == 3:
+        return "requested_1p_observed_3p"
+    return "unknown"
 
 
 def _phase_switch_block_reason(wallbox: WallboxState, register_available: bool) -> str | None:

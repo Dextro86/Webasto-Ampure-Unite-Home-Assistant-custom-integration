@@ -305,6 +305,9 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         solar_defaults = _compact_section_defaults(solar_defaults)
         advanced_defaults = {
             CONF_PHASE_SWITCHING_MODE: current.get(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE),
+            CONF_RESTORE_3P_ON_NEW_SESSION: current.get(CONF_RESTORE_3P_ON_NEW_SESSION, DEFAULT_RESTORE_3P_ON_NEW_SESSION),
+            CONF_3P_RESTORE_EDGE_TRIGGER: current.get(CONF_3P_RESTORE_EDGE_TRIGGER, DEFAULT_3P_RESTORE_EDGE_TRIGGER),
+            CONF_3P_RESTORE_MAX_ATTEMPTS: current.get(CONF_3P_RESTORE_MAX_ATTEMPTS, DEFAULT_3P_RESTORE_MAX_ATTEMPTS),
             CONF_KEEPALIVE_INTERVAL: current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S),
             CONF_CONTROL_SENSOR_TIMEOUT: current.get(
                 CONF_CONTROL_SENSOR_TIMEOUT,
@@ -319,6 +322,18 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                     CONF_PHASE_SWITCHING_MODE,
                     default=current.get(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE),
                 ): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SWITCHING_MODE_OPTIONS)),
+                vol.Optional(
+                    CONF_RESTORE_3P_ON_NEW_SESSION,
+                    default=current.get(CONF_RESTORE_3P_ON_NEW_SESSION, DEFAULT_RESTORE_3P_ON_NEW_SESSION),
+                ): bool,
+                vol.Optional(
+                    CONF_3P_RESTORE_EDGE_TRIGGER,
+                    default=current.get(CONF_3P_RESTORE_EDGE_TRIGGER, DEFAULT_3P_RESTORE_EDGE_TRIGGER),
+                ): bool,
+                vol.Optional(
+                    CONF_3P_RESTORE_MAX_ATTEMPTS,
+                    default=current.get(CONF_3P_RESTORE_MAX_ATTEMPTS, DEFAULT_3P_RESTORE_MAX_ATTEMPTS),
+                ): _int_selector(0, 3),
                 vol.Optional(CONF_KEEPALIVE_INTERVAL, default=current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S)): _float_selector(1.0, MAX_SECONDS, 0.1),
                 vol.Optional(
                     CONF_CONTROL_SENSOR_TIMEOUT,
@@ -369,6 +384,9 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)
         validated.setdefault(CONF_SOLAR_MIN_CURRENT, 6.0)
         validated.setdefault(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE)
+        validated.setdefault(CONF_RESTORE_3P_ON_NEW_SESSION, DEFAULT_RESTORE_3P_ON_NEW_SESSION)
+        validated.setdefault(CONF_3P_RESTORE_EDGE_TRIGGER, DEFAULT_3P_RESTORE_EDGE_TRIGGER)
+        validated.setdefault(CONF_3P_RESTORE_MAX_ATTEMPTS, DEFAULT_3P_RESTORE_MAX_ATTEMPTS)
         connection_input = {
             CONF_HOST: validated.pop(CONF_HOST),
             CONF_PORT: validated.pop(CONF_PORT),
@@ -399,6 +417,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated[CONF_SOLAR_MIN_PAUSE] = _bounded_float(0.0, 3600.0, CONF_SOLAR_MIN_PAUSE)(validated[CONF_SOLAR_MIN_PAUSE])
         validated[CONF_SOLAR_MIN_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_SOLAR_MIN_CURRENT)(validated[CONF_SOLAR_MIN_CURRENT])
         validated[CONF_FIXED_CURRENT] = _bounded_int(int(MIN_CURRENT_A), int(MAX_CURRENT_A), CONF_FIXED_CURRENT)(validated[CONF_FIXED_CURRENT])
+        validated[CONF_3P_RESTORE_MAX_ATTEMPTS] = _bounded_int(0, 3, CONF_3P_RESTORE_MAX_ATTEMPTS)(validated[CONF_3P_RESTORE_MAX_ATTEMPTS])
         validated[CONF_DLB_INPUT_MODEL] = (
             DlbInputModel.PHASE_CURRENTS.value
             if bool(validated.get(CONF_DLB_ENABLED))

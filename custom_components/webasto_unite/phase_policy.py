@@ -74,18 +74,12 @@ def evaluate_phase_policy(
     current_mode = _current_phase_mode(wallbox)
 
     if filtered_surplus_w >= required_3p and current_mode != "3P":
-        if not session_observed_3p:
-            return PhasePolicyDecision(
-                decision="blocked",
-                block_reason="3p_not_observed_in_session",
-                required_surplus_1p_w=required_1p,
-                required_surplus_3p_w=required_3p,
-            )
         return PhasePolicyDecision(
             decision="would_request_3p",
             target="3P",
             required_surplus_1p_w=required_1p,
             required_surplus_3p_w=required_3p,
+            auto_block_reason=None if session_observed_3p else "3p_not_yet_observed",
         )
 
     allows_minimum_grid_support = solar_strategy in {

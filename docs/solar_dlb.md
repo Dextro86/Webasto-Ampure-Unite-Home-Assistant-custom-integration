@@ -105,9 +105,11 @@ It uses `0 A` as pause command. It does not use a separate charger session comma
 
 The `Pause Charging` and `Resume Charging` buttons are convenience controls for this same behavior. They do not end the charger session; they only disable or re-enable charging through the integration's current-control flow.
 
+To avoid current bouncing, normal current writes require a meaningful change, a short write throttle and stable target cycles. If the target does not become perfectly stable, the integration eventually writes the latest target after an internal maximum wait instead of waiting indefinitely.
+
 ## Phase Awareness
 
-The integration observes actual charger phase currents and derives `Effective Active Phases`.
+The integration observes actual charger phase currents and exposes them through `Observed Phase`.
 
 This is used by DLB and Solar to avoid treating a 1-phase vehicle on a 3-phase charger the same as a 3-phase charging session.
 

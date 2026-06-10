@@ -129,6 +129,9 @@
             "name": "Advanced",
             "data": {
               "phase_switching_mode": "Phase Switching Mode",
+              "restore_3p_on_new_session": "Restore 3P On New Session",
+              "3p_restore_edge_trigger": "Use 3P Edge Trigger",
+              "3p_restore_max_attempts": "3P Restore Attempts Per Session",
               "keepalive_interval": "Keepalive Interval (s)",
               "control_sensor_timeout": "Control Sensor Timeout (s)",
               "timeout": "Request Timeout (s)",
@@ -136,6 +139,9 @@
             },
             "data_description": {
               "phase_switching_mode": "Experimental 1P/3P switching. Manual Only exposes buttons/services/select for Home Assistant or EVCC. Automatic Solar lets this integration switch phases only while it owns Solar control.",
+              "restore_3p_on_new_session": "When a new vehicle is plugged in on a 3P-configured charger, try to normalize the phase offer back to 3P before normal charging control continues.",
+              "3p_restore_edge_trigger": "For 3P session-start restore, briefly write 1P first and then 3P. This can help when register 405 already says 3P but the next session physically starts on 1P.",
+              "3p_restore_max_attempts": "Maximum number of 3P session-start restore attempts per connected session. 1 is recommended.",
               "keepalive_interval": "Interval in seconds between keepalive writes.",
               "control_sensor_timeout": "Maximum sensor age in seconds before DLB or Solar input is treated as unsafe.",
               "timeout": "How many seconds the integration waits for a charger response.",

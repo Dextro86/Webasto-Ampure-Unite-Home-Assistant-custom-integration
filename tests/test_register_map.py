@@ -29,8 +29,9 @@ from custom_components.webasto_unite.phase_observer import (
     PHASE_SWITCH_VALUE_1P,
     PHASE_SWITCH_VALUE_3P,
     build_phase_consistency,
+    build_phase_offer_state,
     build_phase_observability,
-    detect_vehicle_phase_capability,
+    detect_observed_session_phase_usage,
     interpret_phase_switch_mode,
 )
 from custom_components.webasto_unite.phase_policy import evaluate_phase_policy
@@ -126,7 +127,7 @@ def test_phase_observer_reports_manual_switch_availability():
     assert state.phase_switch_register_available is True
     assert state.phase_switch_available is True
     assert state.phase_switch_block_reason is None
-    assert state.vehicle_phase_capability == "observed_3p"
+    assert state.observed_session_phase_usage == "observed_3p"
     assert state.write_register_address == 405
 
 
@@ -149,11 +150,11 @@ def test_phase_observer_treats_register_404_as_diagnostic_only():
 
 
 def test_observed_session_phase_usage_is_observed_only():
-    assert detect_vehicle_phase_capability(WallboxState(vehicle_connected=False)) == "unknown"
-    assert detect_vehicle_phase_capability(
+    assert detect_observed_session_phase_usage(WallboxState(vehicle_connected=False)) == "unknown"
+    assert detect_observed_session_phase_usage(
         WallboxState(vehicle_connected=True, charging_active=True, phases_in_use=1)
     ) == "observed_1p"
-    assert detect_vehicle_phase_capability(
+    assert detect_observed_session_phase_usage(
         WallboxState(vehicle_connected=True, charging_active=True, phases_in_use=3)
     ) == "observed_3p"
 
@@ -175,35 +176,36 @@ def test_phase_consistency_reports_register_physical_mismatches_without_correcti
     )
 
 
+def test_phase_offer_state_reports_requested_vs_observed_without_vehicle_claim():
+    assert build_phase_offer_state(WallboxState(phase_switch_mode_raw=None)) == "unknown"
+    assert build_phase_offer_state(WallboxState(phase_switch_mode_raw=1, charging_active=False)) == "not_charging"
+    assert (
+        build_phase_offer_state(WallboxState(phase_switch_mode_raw=1, charging_active=True, phases_in_use=3))
+        == "offering_3p"
+    )
+    assert (
+        build_phase_offer_state(WallboxState(phase_switch_mode_raw=0, charging_active=True, phases_in_use=1))
+        == "offering_1p"
+    )
+    assert (
+        build_phase_offer_state(WallboxState(phase_switch_mode_raw=1, charging_active=True, phases_in_use=1))
+        == "requested_3p_observed_1p"
+    )
+
+
 def test_phase_switch_diagnostic_sensors_are_exposed():
     sensors = {description.key: description for description in SENSORS}
 
-    assert sensors["charger_reported_phases"].entity_category == "diagnostic"
-    assert sensors["phase_switch_mode"].entity_category == "diagnostic"
-    assert sensors["phase_switch_available"].entity_category == "diagnostic"
-    assert sensors["phase_switch_block_reason"].entity_category == "diagnostic"
-    assert sensors["vehicle_phase_capability"].name == "Observed Session Phase Usage"
-    assert sensors["vehicle_phase_capability"].entity_category == "diagnostic"
-    assert sensors["phase_switching_mode"].entity_category == "diagnostic"
-    assert sensors["phase_switch_default_mode"].entity_category == "diagnostic"
-    assert sensors["phase_session_override_active"].entity_category == "diagnostic"
-    assert sensors["phase_session_target"].entity_category == "diagnostic"
-    assert sensors["phase_restore_pending"].entity_category == "diagnostic"
-    assert sensors["phase_policy_decision"].entity_category == "diagnostic"
-    assert sensors["phase_policy_block_reason"].entity_category == "diagnostic"
-    assert sensors["phase_policy_target"].entity_category == "diagnostic"
-    assert sensors["phase_policy_required_surplus_1p"].entity_category == "diagnostic"
-    assert sensors["phase_policy_required_surplus_3p"].entity_category == "diagnostic"
-    assert sensors["phase_policy_auto_ready"].entity_category == "diagnostic"
-    assert sensors["phase_policy_auto_block_reason"].entity_category == "diagnostic"
-    assert sensors["phase_policy_stable_elapsed"].entity_category == "diagnostic"
-    assert sensors["phase_policy_stable_required"].entity_category == "diagnostic"
-    assert sensors["phase_policy_cooldown_remaining"].entity_category == "diagnostic"
-    assert sensors["phase_policy_session_switch_count"].entity_category == "diagnostic"
-    assert sensors["phase_policy_session_switch_limit"].entity_category == "diagnostic"
-    assert sensors["phase_switch_last_result"].entity_category == "diagnostic"
-    assert sensors["phase_switch_state"].entity_category == "diagnostic"
-    assert sensors["phase_consistency"].entity_category == "diagnostic"
+    assert sensors["phase_requested"].name == "Requested Phase"
+    assert sensors["phase_requested"].entity_category == "diagnostic"
+    assert sensors["phase_observed"].name == "Observed Phase"
+    assert sensors["phase_observed"].entity_category == "diagnostic"
+    assert sensors["phase_recovery_state"].name == "Phase Recovery State"
+    assert sensors["phase_recovery_state"].entity_category == "diagnostic"
+    assert "phase_switch_mode" not in sensors
+    assert "phase_policy_target" not in sensors
+    assert "phase_session_target" not in sensors
+    assert "phase_offer_state" not in sensors
     assert sensors["control_writes_enabled"].entity_category == "diagnostic"
     assert sensors["last_control_write_reason"].entity_category == "diagnostic"
     assert sensors["last_control_write_blocked_reason"].entity_category == "diagnostic"
@@ -373,7 +375,7 @@ def test_phase_policy_would_request_3p_when_surplus_supports_3p():
     assert decision.target == "3P"
 
 
-def test_phase_policy_blocks_3p_request_until_3p_was_observed_in_session():
+def test_phase_policy_allows_3p_request_before_3p_was_observed_in_session():
     decision = evaluate_phase_policy(
         effective_mode=ChargeMode.SOLAR,
         solar_strategy=SolarControlStrategy.ECO_SOLAR,
@@ -401,8 +403,8 @@ def test_phase_policy_blocks_3p_request_until_3p_was_observed_in_session():
         session_observed_3p=False,
     )
 
-    assert decision.decision == "blocked"
-    assert decision.block_reason == "3p_not_observed_in_session"
+    assert decision.decision == "would_request_3p"
+    assert decision.target == "3P"
 
 
 def test_phase_policy_thresholds_use_solar_min_current_not_current_target():

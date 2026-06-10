@@ -9,6 +9,9 @@ from .models import ChargeMode, ControlConfig, ControlReason
 from .registers import COMM_TIMEOUT_S, LIFE_BIT, SAFE_CURRENT_A, SET_CHARGE_CURRENT_A
 from .write_queue import QueuedWrite, WritePriority, WriteQueueManager
 
+CURRENT_WRITE_ACCEPTANCE_TOLERANCE_A = 0.5
+CURRENT_WRITE_VERIFICATION_TIMEOUT_S = 20.0
+
 
 @dataclass(slots=True)
 class WriteRuntimeState:
@@ -21,6 +24,9 @@ class WriteRuntimeState:
     last_control_write_reason: str | None = None
     last_control_write_register: str | None = None
     last_control_write_blocked_reason: str | None = None
+    last_control_write_verification_status: str | None = None
+    last_control_write_verification_reported_a: float | None = None
+    last_control_write_verification_delta_a: float | None = None
 
 
 class WriteRuntime:
@@ -67,6 +73,18 @@ class WriteRuntime:
     @property
     def last_control_write_blocked_reason(self) -> str | None:
         return self.state.last_control_write_blocked_reason
+
+    @property
+    def last_control_write_verification_status(self) -> str | None:
+        return self.state.last_control_write_verification_status
+
+    @property
+    def last_control_write_verification_reported_a(self) -> float | None:
+        return self.state.last_control_write_verification_reported_a
+
+    @property
+    def last_control_write_verification_delta_a(self) -> float | None:
+        return self.state.last_control_write_verification_delta_a
 
     async def enqueue_keepalive_if_needed(self) -> None:
         now = self._monotonic()
@@ -200,8 +218,36 @@ class WriteRuntime:
         self.state.last_control_write_reason = reason
         self.state.last_control_write_register = SET_CHARGE_CURRENT_A.name
         self.state.last_control_write_blocked_reason = None
+        self.state.last_control_write_verification_status = "pending"
+        self.state.last_control_write_verification_reported_a = None
+        self.state.last_control_write_verification_delta_a = None
         if self.controller is not None:
             self.controller.mark_current_written(current_a)
+
+    def update_current_write_verification(self, reported_current_limit_a: float | None) -> None:
+        if self.state.last_control_write_value_a is None or not self.state.last_control_write_monotonic:
+            self.state.last_control_write_verification_status = None
+            self.state.last_control_write_verification_reported_a = None
+            self.state.last_control_write_verification_delta_a = None
+            return
+
+        self.state.last_control_write_verification_reported_a = reported_current_limit_a
+        age_s = max(0.0, self._monotonic() - self.state.last_control_write_monotonic)
+        if reported_current_limit_a is None:
+            self.state.last_control_write_verification_delta_a = None
+            self.state.last_control_write_verification_status = (
+                "unavailable" if age_s >= CURRENT_WRITE_VERIFICATION_TIMEOUT_S else "pending"
+            )
+            return
+
+        delta_a = abs(float(reported_current_limit_a) - self.state.last_control_write_value_a)
+        self.state.last_control_write_verification_delta_a = round(delta_a, 2)
+        if delta_a <= CURRENT_WRITE_ACCEPTANCE_TOLERANCE_A:
+            self.state.last_control_write_verification_status = "accepted"
+        elif age_s < CURRENT_WRITE_VERIFICATION_TIMEOUT_S:
+            self.state.last_control_write_verification_status = "pending"
+        else:
+            self.state.last_control_write_verification_status = "mismatch"
 
     def keepalive_age_seconds(self) -> float | None:
         reference = self.state.last_keepalive_sent_monotonic or self.state.keepalive_started_monotonic

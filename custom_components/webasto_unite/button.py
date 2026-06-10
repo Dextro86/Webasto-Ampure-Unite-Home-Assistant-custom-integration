@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, PHASE_SWITCHING_MODE_OFF
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, ControlMode
+from .models import ControlMode
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -140,19 +140,11 @@ class WebastoRequestPhase3PButton(_WebastoPhaseSwitchButton):
 
 def _manual_phase_request_available(coordinator, target_phases: int) -> bool:
     data = getattr(coordinator, "data", None)
-    if (
-        getattr(coordinator, "_phase_switching_mode", None) == PHASE_SWITCHING_MODE_OFF
-        or data is None
-        or data.phase_switch_available is not True
-    ):
-        return False
-    if (
-        getattr(getattr(coordinator, "control_config", None), "control_mode", None) == ControlMode.MANAGED_CONTROL
-        and getattr(data, "effective_mode", None) == ChargeMode.NORMAL
-    ):
-        default_target = 1 if coordinator._configured_installed_phases() == "1p" else 3
-        return target_phases == default_target
-    return True
+    return (
+        getattr(coordinator, "_phase_switching_mode", None) != PHASE_SWITCHING_MODE_OFF
+        and data is not None
+        and data.phase_switch_available is True
+    )
 
 
 class WebastoRestoreDefaultPhaseButton(_WebastoPhaseSwitchButton):

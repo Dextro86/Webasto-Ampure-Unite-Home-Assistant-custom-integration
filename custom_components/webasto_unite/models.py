@@ -275,6 +275,7 @@ class ControlConfig:
     min_seconds_between_writes: float = 5.0
     min_current_change_a: float = 1.0
     stable_cycles_before_write: int = 2
+    pending_stable_max_age_s: float = 30.0
 
     def __post_init__(self) -> None:
         self.control_mode = ControlMode(self.control_mode)
@@ -402,6 +403,9 @@ class RuntimeSnapshot:
     last_control_write_register: Optional[str] = None
     last_control_write_age_s: Optional[float] = None
     last_control_write_blocked_reason: Optional[str] = None
+    last_control_write_verification_status: Optional[str] = None
+    last_control_write_verification_reported_a: Optional[float] = None
+    last_control_write_verification_delta_a: Optional[float] = None
     sensor_snapshot_valid: bool = True
     sensor_invalid_reason: Optional[str] = None
     dlb_limit_a: Optional[float] = None
@@ -420,7 +424,9 @@ class RuntimeSnapshot:
     phase_switch_register_available: Optional[bool] = None
     phase_switch_available: Optional[bool] = None
     phase_switch_block_reason: Optional[str] = None
-    vehicle_phase_capability: Optional[str] = None
+    observed_session_phase_usage: Optional[str] = None
+    phase_offer_state: Optional[str] = None
+    phase_recovery_warning: Optional[str] = None
     phase_switching_mode: Optional[str] = None
     phase_switch_default_mode: Optional[str] = None
     phase_session_override_active: bool = False
@@ -462,10 +468,6 @@ class RuntimeSnapshot:
     def pv_input_state(self) -> Optional[str]:
         return self.solar_input_state
 
-    @property
-    def observed_session_phase_usage(self) -> Optional[str]:
-        return self.vehicle_phase_capability
-
     def as_dict(self) -> dict[str, Any]:
         return {
             "wallbox": asdict(self.wallbox),
@@ -493,6 +495,9 @@ class RuntimeSnapshot:
             "last_control_write_register": self.last_control_write_register,
             "last_control_write_age_s": self.last_control_write_age_s,
             "last_control_write_blocked_reason": self.last_control_write_blocked_reason,
+            "last_control_write_verification_status": self.last_control_write_verification_status,
+            "last_control_write_verification_reported_a": self.last_control_write_verification_reported_a,
+            "last_control_write_verification_delta_a": self.last_control_write_verification_delta_a,
             "dlb_limit_a": self.dlb_limit_a,
             "final_target_a": self.final_target_a,
             "mode_target_a": self.mode_target_a,
@@ -509,8 +514,9 @@ class RuntimeSnapshot:
             "phase_switch_register_available": self.phase_switch_register_available,
             "phase_switch_available": self.phase_switch_available,
             "phase_switch_block_reason": self.phase_switch_block_reason,
-            "vehicle_phase_capability": self.vehicle_phase_capability,
             "observed_session_phase_usage": self.observed_session_phase_usage,
+            "phase_offer_state": self.phase_offer_state,
+            "phase_recovery_warning": self.phase_recovery_warning,
             "phase_switching_mode": self.phase_switching_mode,
             "phase_switch_default_mode": self.phase_switch_default_mode,
             "phase_session_override_active": self.phase_session_override_active,

@@ -139,18 +139,24 @@ Phase switching is experimental and off by default. `Manual Only` exposes explic
 
 The known register mapping used by the integration is:
 
-- input register `404`: charger-reported phase capability, shown as `Charger Phase Capability (Register 404)`. This is diagnostic only; field testing showed it can report `1P` while the charger is physically charging on 3 phases.
-- holding register `405`: phase-switch mode (`0 = 1P`, `1 = 3P`), shown as `Phase Switch Mode (Register 405)` and `Phase Switch Mode Raw (Register 405)`. Manual switching writes and verifies this register.
+- input register `404`: charger-reported phase capability/configuration context. This is diagnostic only; field testing showed it can report `1P` while the charger is physically charging on 3 phases.
+- holding register `405`: requested phase-switch mode (`0 = 1P`, `1 = 3P`). Manual and automatic switching write and verify this register.
 
-Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch. `Phase Consistency` reports whether register `405` and the measured active phases match, but it does not trigger automatic correction by itself.
+Phase diagnostics are intentionally consolidated:
+
+- `Requested Phase`: requested phase mode from register `405`.
+- `Observed Phase`: physical phase usage derived from measured L1/L2/L3 current.
+- `Phase Recovery State`: current phase-switch/recovery state plus reason attributes.
+
+Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a vehicle capability claim. Lower-level details such as register `404`, raw register `405`, policy target, session override, offer state, consistency and block reasons are exposed as attributes on these three phase sensors or through diagnostics, not as separate normal entities.
 
 Manual switching separates pause confirmation, register verification and physical verification. The integration uses the same internal pause/resume semantics as the `Pause Charging` and `Resume Charging` controls, waits until the pause is actually observed, writes register `405`, checks that register `405` stays on the requested value, resumes charging and then observes the measured active phases. `Register Verified` means register `405` accepted and held the request. `Physical Verified` means the measured charging phases also match the request. If charging does not pause, the switch is aborted with `Pause Not Confirmed`.
 
 `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` and can run without a connected vehicle.
 
-Manual and automatic switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode and resets the runtime charge mode to the configured `Default Mode` for the next session.
+Manual and automatic switching away from `Charger Configuration` is treated as temporary for the connected session. After unplug, the integration tries to restore the configured phase mode and resets the runtime charge mode to the configured `Default Mode` for the next session. When a new vehicle is plugged in on a 3P-configured installation and phase switching is enabled, the integration can perform one bounded 3P start normalization by briefly writing register `405` to `1P`, verifying it, then writing `3P` and verifying it before normal charging control continues.
 
-Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires a stable Solar phase target before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. `Eco Solar` remains surplus-only; `Smart Solar` and `Solar Boost` may request 1P even below the 1P surplus minimum because these modes intentionally allow baseline charging. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
+Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires a stable Solar phase target before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. If register `405` says `3P` but charging remains physically 1P, the integration may try one bounded 3P recovery only when it has a reason to believe 3P is intended for the current session; otherwise it reports the warning and keeps charging. `Eco Solar` remains surplus-only; `Smart Solar` and `Solar Boost` may request 1P even below the 1P surplus minimum because these modes intentionally allow baseline charging. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
 
 ## Stability-First Design
 

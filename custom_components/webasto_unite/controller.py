@@ -25,6 +25,7 @@ class WriteState:
     last_write_monotonic: float = 0.0
     pending_stable_cycles: int = 0
     pending_target_a: float | None = None
+    pending_started_monotonic: float | None = None
 
 
 @dataclass(slots=True)
@@ -163,6 +164,7 @@ class WallboxController:
     def reset_pending_write_state(self) -> None:
         self.write_state.pending_stable_cycles = 0
         self.write_state.pending_target_a = None
+        self.write_state.pending_started_monotonic = None
 
     def reset_current_write_state(self) -> None:
         self.write_state.last_written_current_a = None
@@ -391,10 +393,10 @@ class WallboxController:
             reported_mismatch = True
 
         if last is None:
-            self.write_state.pending_target_a = target_current_a
-            self.write_state.pending_stable_cycles += 1
+            self._track_pending_write_target(target_current_a, now)
         else:
             if immediate_if_lower and target_current_a < last:
+                self._start_pending_write_window_if_needed(now)
                 self.write_state.pending_target_a = target_current_a
                 self.write_state.pending_stable_cycles = self.config.stable_cycles_before_write
                 return True
@@ -405,13 +407,31 @@ class WallboxController:
                 self.write_state.pending_target_a = None
                 return False
 
-            if self.write_state.pending_target_a == target_current_a:
-                self.write_state.pending_stable_cycles += 1
-            else:
-                self.write_state.pending_target_a = target_current_a
-                self.write_state.pending_stable_cycles = 1
+            self._track_pending_write_target(target_current_a, now)
 
         if (now - self.write_state.last_write_monotonic) < self.config.min_seconds_between_writes:
             return False
 
-        return self.write_state.pending_stable_cycles >= self.config.stable_cycles_before_write
+        if self.write_state.pending_stable_cycles >= self.config.stable_cycles_before_write:
+            return True
+
+        if (
+            self.write_state.pending_started_monotonic is not None
+            and (now - self.write_state.pending_started_monotonic) >= self.config.pending_stable_max_age_s
+        ):
+            self.write_state.pending_stable_cycles = self.config.stable_cycles_before_write
+            return True
+
+        return False
+
+    def _start_pending_write_window_if_needed(self, now: float) -> None:
+        if self.write_state.pending_started_monotonic is None:
+            self.write_state.pending_started_monotonic = now
+
+    def _track_pending_write_target(self, target_current_a: float, now: float) -> None:
+        self._start_pending_write_window_if_needed(now)
+        if self.write_state.pending_target_a == target_current_a:
+            self.write_state.pending_stable_cycles += 1
+            return
+        self.write_state.pending_target_a = target_current_a
+        self.write_state.pending_stable_cycles = 1

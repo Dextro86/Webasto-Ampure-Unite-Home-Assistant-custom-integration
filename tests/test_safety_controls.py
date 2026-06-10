@@ -144,6 +144,10 @@ def install_mock_write_runtime(coordinator):
         last_control_write_register=None,
         last_control_write_age_seconds=lambda: None,
         last_control_write_blocked_reason=None,
+        last_control_write_verification_status=None,
+        last_control_write_verification_reported_a=None,
+        last_control_write_verification_delta_a=None,
+        update_current_write_verification=Mock(),
     )
 
 
@@ -1050,6 +1054,55 @@ def test_failed_automatic_phase_switch_sets_cooldown_without_counting_session_sw
     asyncio.run(_run())
 
 
+def test_3p_mismatch_recovery_schedules_one_edge_trigger_after_stable_mismatch():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+    coordinator.controller = WallboxController(coordinator.control_config)
+    coordinator.controller.observed_session_phase_count = 3
+    coordinator.controller.session_observed_3p = True
+    coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+    coordinator._phase_switch_task = None
+    coordinator._phase_restore_task = None
+    coordinator.phase_switch_manager = SimpleNamespace(active=False)
+    coordinator._phase_3p_recovery_attempted = False
+    coordinator._phase_3p_mismatch_since_monotonic = monotonic() - 121.0
+    coordinator._phase_recovery_warning = None
+    coordinator._schedule_phase_restore_task = Mock()
+    wallbox = WallboxState(
+        installed_phases=3,
+        available=True,
+        vehicle_connected=True,
+        charging_active=True,
+        phases_in_use=1,
+        phase_switch_mode_raw=1,
+    )
+
+    executed = coordinator._maybe_schedule_3p_mismatch_recovery(
+        wallbox=wallbox,
+        phase_offer_state="requested_3p_observed_1p",
+        phase_policy=PhasePolicyDecision(decision="no_action"),
+    )
+
+    assert executed is True
+    assert coordinator._phase_3p_recovery_attempted is True
+    assert coordinator._phase_recovery_warning == "possible_1p_vehicle_or_charger_stuck"
+    coordinator._schedule_phase_restore_task.assert_called_once_with(
+        wallbox,
+        force_edge_trigger=True,
+        source="recovery",
+    )
+
+    executed_again = coordinator._maybe_schedule_3p_mismatch_recovery(
+        wallbox=wallbox,
+        phase_offer_state="requested_3p_observed_1p",
+        phase_policy=PhasePolicyDecision(decision="would_request_3p", target="3P"),
+    )
+
+    assert executed_again is False
+    coordinator._schedule_phase_restore_task.assert_called_once()
+
+
 def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -1267,6 +1320,64 @@ def test_phase_session_override_restores_default_after_unplug():
         assert coordinator._phase_session_target is None
         assert coordinator._phase_restore_pending is False
         assert coordinator._last_vehicle_connected is False
+
+    asyncio.run(_run())
+
+
+def test_new_session_3p_restore_uses_edge_trigger_even_when_register_already_3p():
+    async def _run():
+        wallbox = WallboxState(
+            installed_phases=3,
+            charge_point_phase_count=3,
+            available=True,
+            vehicle_connected=True,
+            charging_active=False,
+            phase_switch_mode_raw=1,
+        )
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.hass = SimpleNamespace(
+            states=SimpleNamespace(get=lambda entity_id: None),
+            async_create_task=lambda coro: asyncio.create_task(coro),
+        )
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.controller = WallboxController(coordinator.control_config)
+        coordinator.sensor_adapter = HaSensorAdapter(coordinator.hass)
+        coordinator.wallbox_reader = SimpleNamespace(read_wallbox_state=AsyncMock(return_value=wallbox))
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.client = SimpleNamespace(
+            write=AsyncMock(),
+            read=AsyncMock(side_effect=[0, 0, 1, 1]),
+            stats=SimpleNamespace(last_error=None),
+        )
+        coordinator._mode = ChargeMode.NORMAL
+        coordinator._charging_paused = False
+        coordinator._solar_until_unplug_active = False
+        coordinator._fixed_current_until_unplug_active = False
+        coordinator._last_vehicle_connected = False
+        coordinator._vehicle_connection_initialized = True
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator._phase_session_override_active = False
+        coordinator._phase_session_target = None
+        coordinator._phase_restore_pending = False
+        coordinator._phase_switch_sleep = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator._sensor_refresh_task = None
+        install_runtime_guards(coordinator, startup_ready=True)
+        install_mock_write_runtime(coordinator)
+
+        snapshot = await coordinator._async_update_data()
+
+        assert snapshot.phase_recovery_warning == "restore_3p_on_session_start"
+        assert coordinator._phase_restore_task is not None
+        await coordinator._phase_restore_task
+
+        assert [call.args for call in coordinator.client.write.await_args_list] == [
+            (PHASE_SWITCH_MODE, 0),
+            (PHASE_SWITCH_MODE, 1),
+        ]
+        assert coordinator._phase_switch_last_result == "register_verified"
+        assert coordinator._new_session_3p_restore_attempt_count == 1
 
     asyncio.run(_run())
 
@@ -1754,7 +1865,7 @@ def test_phase_switch_select_exposes_evcc_compatible_options():
     asyncio.run(_run())
 
 
-def test_managed_normal_mode_hides_non_default_phase_request_controls():
+def test_managed_normal_mode_allows_manual_phase_request_controls():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
     coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
@@ -1771,9 +1882,9 @@ def test_managed_normal_mode_hides_non_default_phase_request_controls():
     phase_select = WebastoPhaseSwitchSelect(coordinator)
     restore = WebastoRestoreDefaultPhaseButton(coordinator)
 
-    assert request_1p.available is False
+    assert request_1p.available is True
     assert request_3p.available is True
-    assert phase_select.available is False
+    assert phase_select.available is True
     assert restore.available is True
 
 
@@ -3152,6 +3263,62 @@ def test_external_controller_current_limit_is_deferred_during_phase_switch():
         assert coordinator.write_runtime.last_control_write_reason == "external_controller"
 
     asyncio.run(_run())
+
+
+def test_write_runtime_marks_current_write_accepted_from_next_reported_limit():
+    now = 1000.0
+    runtime = WriteRuntime(
+        ControlConfig(),
+        write_queue=WriteQueueManager(),
+        client=SimpleNamespace(write=AsyncMock()),
+        controller=None,
+        monotonic_fn=lambda: now,
+    )
+
+    runtime._record_current_write(16.0, "normal_mode")
+    runtime.update_current_write_verification(16.0)
+
+    assert runtime.last_control_write_verification_status == "accepted"
+    assert runtime.last_control_write_verification_reported_a == 16.0
+    assert runtime.last_control_write_verification_delta_a == 0.0
+
+
+def test_write_runtime_keeps_recent_current_mismatch_pending_until_timeout():
+    now = 1000.0
+    runtime = WriteRuntime(
+        ControlConfig(),
+        write_queue=WriteQueueManager(),
+        client=SimpleNamespace(write=AsyncMock()),
+        controller=None,
+        monotonic_fn=lambda: now,
+    )
+
+    runtime._record_current_write(16.0, "normal_mode")
+    now = 1005.0
+    runtime.update_current_write_verification(6.0)
+
+    assert runtime.last_control_write_verification_status == "pending"
+    assert runtime.last_control_write_verification_reported_a == 6.0
+    assert runtime.last_control_write_verification_delta_a == 10.0
+
+
+def test_write_runtime_marks_current_mismatch_after_timeout():
+    now = 1000.0
+    runtime = WriteRuntime(
+        ControlConfig(),
+        write_queue=WriteQueueManager(),
+        client=SimpleNamespace(write=AsyncMock()),
+        controller=None,
+        monotonic_fn=lambda: now,
+    )
+
+    runtime._record_current_write(32.0, "fixed_current_mode")
+    now = 1021.0
+    runtime.update_current_write_verification(16.0)
+
+    assert runtime.last_control_write_verification_status == "mismatch"
+    assert runtime.last_control_write_verification_reported_a == 16.0
+    assert runtime.last_control_write_verification_delta_a == 16.0
 
 
 def test_requested_current_number_writes_directly_in_external_controller_mode():

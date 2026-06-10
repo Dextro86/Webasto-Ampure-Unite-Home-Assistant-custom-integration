@@ -16,6 +16,8 @@ from .const import (
     CONF_COMM_TIMEOUT,
     CONF_CONTROL_MODE,
     CONF_CONTROL_SENSOR_TIMEOUT,
+    CONF_3P_RESTORE_EDGE_TRIGGER,
+    CONF_3P_RESTORE_MAX_ATTEMPTS,
     CONF_DLB_ENABLED,
     CONF_DLB_GRID_POWER_SENSOR,
     CONF_DLB_INPUT_MODEL,
@@ -50,6 +52,7 @@ from .const import (
     CONF_SOLAR_SURPLUS_SENSOR,
     CONF_SOLAR_UNTIL_UNPLUG_STRATEGY,
     CONF_RETRIES,
+    CONF_RESTORE_3P_ON_NEW_SESSION,
     CONF_SAFE_CURRENT,
     CONF_SAFETY_MARGIN,
     CONF_STARTUP_CHARGE_MODE,
@@ -58,6 +61,8 @@ from .const import (
     CONF_USER_LIMIT,
     DEFAULT_CONTROL_MODE,
     DEFAULT_CONTROL_SENSOR_TIMEOUT_S,
+    DEFAULT_3P_RESTORE_EDGE_TRIGGER,
+    DEFAULT_3P_RESTORE_MAX_ATTEMPTS,
     DEFAULT_FIXED_CURRENT_A,
     DEFAULT_KEEPALIVE_INTERVAL_S,
     DEFAULT_MAIN_FUSE_A,
@@ -72,6 +77,7 @@ from .const import (
     DEFAULT_PV_START_DELAY_S,
     DEFAULT_PV_STOP_DELAY_S,
     DEFAULT_RETRIES,
+    DEFAULT_RESTORE_3P_ON_NEW_SESSION,
     DEFAULT_SAFE_CURRENT_A,
     DEFAULT_SAFETY_MARGIN_A,
     DEFAULT_SOLAR_GRID_POWER_DIRECTION,
@@ -81,6 +87,7 @@ from .const import (
     DEFAULT_UNIT_ID,
     DOMAIN,
     PHASE_MODE_1P,
+    PHASE_MODE_3P,
     PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR,
     PHASE_SWITCHING_MODE_OFF,
     STORAGE_KEY_CHARGING_STATE,
@@ -117,6 +124,7 @@ from .phase_policy import (
     PhasePolicyDecision,
     evaluate_phase_policy,
 )
+from .phase_runtime import PhaseRuntimeState
 from .registers import SET_CHARGE_CURRENT_A
 from .runtime_guards import RuntimeGuards
 from .sensor_adapter import HaSensorAdapter
@@ -127,6 +135,28 @@ from .write_runtime import WriteRuntime
 _LOGGER = logging.getLogger(__name__)
 
 SENSOR_REFRESH_DEBOUNCE_S = 0.4
+PHASE_3P_MISMATCH_RECOVERY_DELAY_S = 120.0
+PHASE_RUNTIME_ATTRIBUTE_MAP = {
+    "_phase_switching_mode": "switching_mode",
+    "_phase_switch_last_result": "switch_last_result",
+    "_phase_switch_last_block_reason": "switch_last_block_reason",
+    "_phase_switch_last_target": "switch_last_target",
+    "_phase_switch_state": "switch_state",
+    "_phase_session_override_active": "session_override_active",
+    "_phase_session_target": "session_target",
+    "_phase_restore_pending": "restore_pending",
+    "_phase_policy_candidate_target": "policy_candidate_target",
+    "_phase_policy_candidate_since_monotonic": "policy_candidate_since_monotonic",
+    "_phase_policy_last_switch_monotonic": "policy_last_switch_monotonic",
+    "_phase_policy_session_switch_count": "policy_session_switch_count",
+    "_restore_3p_on_new_session": "restore_3p_on_new_session",
+    "_restore_3p_edge_trigger": "restore_3p_edge_trigger",
+    "_restore_3p_max_attempts": "restore_3p_max_attempts",
+    "_new_session_3p_restore_attempt_count": "new_session_3p_restore_attempt_count",
+    "_phase_3p_recovery_attempted": "recovery_3p_attempted",
+    "_phase_3p_mismatch_since_monotonic": "mismatch_3p_since_monotonic",
+    "_phase_recovery_warning": "recovery_warning",
+}
 
 
 def _normalize_dlb_input_model(raw_value: str) -> DlbInputModel:
@@ -142,6 +172,19 @@ def _resolve_dlb_input_model_from_options(merged: dict) -> DlbInputModel:
 
 
 class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
+    def __getattr__(self, name):
+        runtime_attr = PHASE_RUNTIME_ATTRIBUTE_MAP.get(name)
+        if runtime_attr is not None:
+            return getattr(self._phase_runtime(), runtime_attr)
+        raise AttributeError(name)
+
+    def __setattr__(self, name, value) -> None:
+        runtime_attr = PHASE_RUNTIME_ATTRIBUTE_MAP.get(name)
+        if runtime_attr is not None:
+            setattr(self._phase_runtime(), runtime_attr, value)
+            return
+        super().__setattr__(name, value)
+
     def __init__(self, hass, entry) -> None:
         self.hass = hass
         self.entry = entry
@@ -151,18 +194,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._solar_until_unplug_active = False
         self._fixed_current_until_unplug_active = False
         self._last_vehicle_connected = False
-        self._phase_switching_mode = PHASE_SWITCHING_MODE_OFF
-        self._phase_switch_last_result: str | None = None
-        self._phase_switch_last_block_reason: str | None = None
-        self._phase_switch_last_target: str | None = None
-        self._phase_switch_state: str | None = "idle"
-        self._phase_session_override_active = False
-        self._phase_session_target: str | None = None
-        self._phase_restore_pending = False
-        self._phase_policy_candidate_target: str | None = None
-        self._phase_policy_candidate_since_monotonic: float | None = None
-        self._phase_policy_last_switch_monotonic: float | None = None
-        self._phase_policy_session_switch_count = 0
+        self._vehicle_connection_initialized = False
+        self.phase_runtime = PhaseRuntimeState()
         self.phase_switch_manager = PhaseSwitchManager()
         self._external_current_a: float | None = None
         self._pending_external_current_a: float | None = None
@@ -225,6 +258,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_switching_mode = str(
             merged.get(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE)
         )
+        self._restore_3p_on_new_session = bool(
+            merged.get(CONF_RESTORE_3P_ON_NEW_SESSION, DEFAULT_RESTORE_3P_ON_NEW_SESSION)
+        )
+        self._restore_3p_edge_trigger = bool(
+            merged.get(CONF_3P_RESTORE_EDGE_TRIGGER, DEFAULT_3P_RESTORE_EDGE_TRIGGER)
+        )
+        self._restore_3p_max_attempts = int(
+            merged.get(CONF_3P_RESTORE_MAX_ATTEMPTS, DEFAULT_3P_RESTORE_MAX_ATTEMPTS)
+        )
         self.controller = WallboxController(self.control_config)
         self.runtime_guards = RuntimeGuards(self.control_config, monotonic_fn=lambda: monotonic())
         self.client = WebastoModbusClient(
@@ -263,6 +305,11 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         except (TypeError, ValueError):
             return max_current
 
+    def _phase_runtime(self) -> PhaseRuntimeState:
+        if not hasattr(self, "phase_runtime"):
+            self.phase_runtime = PhaseRuntimeState()
+        return self.phase_runtime
+
     def _ensure_runtime_defaults(self) -> None:
         # Defensive fallback for partially constructed coordinator instances used
         # in tests or edge-case reload paths. Normal runtime should already have
@@ -277,6 +324,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._fixed_current_until_unplug_active = False
         if not hasattr(self, "_last_vehicle_connected"):
             self._last_vehicle_connected = False
+        if not hasattr(self, "_vehicle_connection_initialized"):
+            self._vehicle_connection_initialized = bool(self._last_vehicle_connected)
         if not hasattr(self, "_phase_switching_mode"):
             self._phase_switching_mode = PHASE_SWITCHING_MODE_OFF
         if not hasattr(self, "_phase_switch_last_result"):
@@ -301,6 +350,20 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._phase_policy_last_switch_monotonic = None
         if not hasattr(self, "_phase_policy_session_switch_count"):
             self._phase_policy_session_switch_count = 0
+        if not hasattr(self, "_restore_3p_on_new_session"):
+            self._restore_3p_on_new_session = DEFAULT_RESTORE_3P_ON_NEW_SESSION
+        if not hasattr(self, "_restore_3p_edge_trigger"):
+            self._restore_3p_edge_trigger = DEFAULT_3P_RESTORE_EDGE_TRIGGER
+        if not hasattr(self, "_restore_3p_max_attempts"):
+            self._restore_3p_max_attempts = DEFAULT_3P_RESTORE_MAX_ATTEMPTS
+        if not hasattr(self, "_new_session_3p_restore_attempt_count"):
+            self._new_session_3p_restore_attempt_count = 0
+        if not hasattr(self, "_phase_3p_recovery_attempted"):
+            self._phase_3p_recovery_attempted = False
+        if not hasattr(self, "_phase_3p_mismatch_since_monotonic"):
+            self._phase_3p_mismatch_since_monotonic = None
+        if not hasattr(self, "_phase_recovery_warning"):
+            self._phase_recovery_warning = None
         if not hasattr(self, "phase_switch_manager"):
             self.phase_switch_manager = PhaseSwitchManager()
             self.phase_switch_manager.last_result = self._phase_switch_last_result
@@ -536,7 +599,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._sync_phase_switch_diagnostics()
             await self.async_request_refresh()
 
-    async def async_request_phase_switch(self, target_phases: int, *, request_refresh: bool = True) -> None:
+    async def async_request_phase_switch(
+        self,
+        target_phases: int,
+        *,
+        request_refresh: bool = True,
+        force_edge_trigger: bool = False,
+    ) -> None:
         self._ensure_runtime_defaults()
         current_snapshot = getattr(self, "data", None)
         wallbox = getattr(current_snapshot, "wallbox", None)
@@ -553,6 +622,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 read_wallbox=self._read_wallbox_for_phase_switch,
                 pause_charging=self._phase_switch_pause_charging,
                 resume_charging=self._phase_switch_resume_charging,
+                force_edge_trigger=force_edge_trigger,
             )
         finally:
             self._sync_phase_switch_diagnostics()
@@ -568,34 +638,62 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         wallbox: WallboxState | None = None,
         *,
         request_refresh: bool = True,
+        force_edge_trigger: bool = False,
+        source: str = "restore",
     ) -> None:
         self._ensure_runtime_defaults()
         if self._phase_switch_in_progress():
             raise ValueError("Phase restore blocked: phase_switch_in_progress")
-        self._schedule_phase_restore_task(wallbox)
+        self._schedule_phase_restore_task(wallbox, force_edge_trigger=force_edge_trigger, source=source)
         if request_refresh:
             await self.async_request_refresh()
 
-    def _schedule_phase_restore_task(self, wallbox: WallboxState | None = None) -> None:
+    def _schedule_phase_restore_task(
+        self,
+        wallbox: WallboxState | None = None,
+        *,
+        force_edge_trigger: bool = False,
+        source: str = "restore",
+    ) -> None:
         target_phases = 1 if self._configured_installed_phases() == PHASE_MODE_1P else 3
         self._phase_restore_pending = True
+        if source == "session_start":
+            self.phase_switch_manager.last_result = None
+            self.phase_switch_manager.last_block_reason = None
+        elif source == "recovery":
+            self._phase_recovery_warning = "recovery_attempted"
         self.phase_switch_manager.last_target = f"{target_phases}P"
         self.phase_switch_manager.last_block_reason = None
-        self.phase_switch_manager.state = "restore_queued"
+        self.phase_switch_manager.state = "restore_queued" if source != "recovery" else "recovery_queued"
         self._sync_phase_switch_diagnostics()
         self._phase_restore_task = self._create_background_task(
-            self._run_scheduled_phase_restore(wallbox)
+            self._run_scheduled_phase_restore(wallbox, force_edge_trigger=force_edge_trigger, source=source)
         )
 
-    async def _run_scheduled_phase_restore(self, wallbox: WallboxState | None = None) -> None:
+    async def _run_scheduled_phase_restore(
+        self,
+        wallbox: WallboxState | None = None,
+        *,
+        force_edge_trigger: bool = False,
+        source: str = "restore",
+    ) -> None:
         try:
-            await self.async_restore_default_phase_mode(wallbox, request_refresh=False)
+            await self.async_restore_default_phase_mode(
+                wallbox,
+                request_refresh=False,
+                force_edge_trigger=force_edge_trigger,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Default phase restore failed: %s", err)
             self._phase_restore_pending = True
         finally:
+            if source in {"session_start", "recovery"} and self._phase_switch_last_result in {
+                "physical_timeout",
+                "vehicle_did_not_resume",
+            }:
+                self._phase_recovery_warning = "recovery_failed_still_1p"
             await self._flush_pending_external_current_limit()
             self._sync_phase_switch_diagnostics()
             await self.async_request_refresh()
@@ -605,6 +703,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         wallbox: WallboxState | None = None,
         *,
         request_refresh: bool = True,
+        force_edge_trigger: bool = False,
     ) -> None:
         self._ensure_runtime_defaults()
         target_phases = 1 if self._configured_installed_phases() == PHASE_MODE_1P else 3
@@ -612,6 +711,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         wallbox = wallbox or getattr(current_snapshot, "wallbox", None)
         if (
             wallbox is not None
+            and not force_edge_trigger
             and wallbox.phase_switch_mode_raw == (0 if target_phases == 1 else 1)
             and self._observed_phases_match_target(wallbox, target_phases)
         ):
@@ -638,6 +738,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 pause_charging=self._phase_switch_pause_charging,
                 resume_charging=self._phase_switch_resume_charging,
                 require_vehicle=False,
+                force_edge_trigger=force_edge_trigger,
             )
         finally:
             self._sync_phase_switch_diagnostics()
@@ -654,21 +755,13 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._sync_phase_switch_diagnostics()
 
     def _reset_phase_policy_dry_run_state(self) -> None:
-        self._phase_policy_candidate_target = None
-        self._phase_policy_candidate_since_monotonic = None
-        self._phase_policy_last_switch_monotonic = None
-        self._phase_policy_session_switch_count = 0
+        self._phase_runtime().reset_policy_state()
 
     def _record_phase_policy_switch_attempt(self) -> None:
-        self._phase_policy_last_switch_monotonic = monotonic()
-        self._phase_policy_session_switch_count += 1
-        self._phase_policy_candidate_target = None
-        self._phase_policy_candidate_since_monotonic = None
+        self._phase_runtime().record_policy_switch_attempt()
 
     def _record_phase_policy_failed_attempt(self) -> None:
-        self._phase_policy_last_switch_monotonic = monotonic()
-        self._phase_policy_candidate_target = None
-        self._phase_policy_candidate_since_monotonic = None
+        self._phase_runtime().record_policy_failed_attempt()
 
     def _apply_phase_policy_dry_run(self, phase_policy: PhasePolicyDecision) -> PhasePolicyDecision:
         now = monotonic()
@@ -736,6 +829,66 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._schedule_phase_switch_task(target_phases, source="automatic")
         return True
 
+    def _maybe_schedule_new_session_3p_restore(self, wallbox: WallboxState) -> bool:
+        if not self._restore_3p_on_new_session:
+            return False
+        if self._configured_installed_phases() != PHASE_MODE_3P:
+            self._phase_recovery_warning = "restore_3p_skipped_not_3p_installed"
+            return False
+        if self._phase_switching_mode == PHASE_SWITCHING_MODE_OFF:
+            self._phase_recovery_warning = "restore_3p_skipped_phase_switching_disabled"
+            return False
+        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            return False
+        if wallbox.phase_switch_mode_raw not in (0, 1):
+            return False
+        if self._new_session_3p_restore_attempt_count >= max(0, self._restore_3p_max_attempts):
+            return False
+        if self._phase_switch_in_progress():
+            return False
+        self._phase_runtime().mark_new_session_3p_restore_attempt()
+        self._schedule_phase_restore_task(
+            wallbox,
+            force_edge_trigger=self._restore_3p_edge_trigger,
+            source="session_start",
+        )
+        return True
+
+    def _maybe_schedule_3p_mismatch_recovery(
+        self,
+        *,
+        wallbox: WallboxState,
+        phase_offer_state: str,
+        phase_policy: PhasePolicyDecision,
+    ) -> bool:
+        if phase_offer_state != "requested_3p_observed_1p":
+            self._phase_3p_mismatch_since_monotonic = None
+            return False
+        recovery_ready = self._phase_runtime().mark_3p_mismatch_or_ready_for_recovery(
+            delay_s=PHASE_3P_MISMATCH_RECOVERY_DELAY_S
+        )
+        if self._configured_installed_phases() != PHASE_MODE_3P:
+            return False
+        if self._phase_switching_mode == PHASE_SWITCHING_MODE_OFF:
+            return False
+        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            return False
+        if not wallbox.vehicle_connected or not wallbox.charging_active:
+            return False
+        if self._phase_switch_in_progress() or self._phase_3p_recovery_attempted:
+            return False
+        if phase_policy.block_reason in {"dlb_limited", "phase_restore_pending"}:
+            return False
+        integration_wants_3p = phase_policy.decision == "would_request_3p" and phase_policy.target == "3P"
+        session_already_used_3p = bool(getattr(self.controller, "session_observed_3p", False))
+        if not (integration_wants_3p or session_already_used_3p):
+            return False
+        if not recovery_ready:
+            return False
+        self._phase_runtime().mark_3p_recovery_attempted()
+        self._schedule_phase_restore_task(wallbox, force_edge_trigger=True, source="recovery")
+        return True
+
     def _sync_phase_switch_diagnostics(self) -> None:
         self._phase_switch_last_result = self.phase_switch_manager.last_result
         self._phase_switch_last_block_reason = self.phase_switch_manager.last_block_reason
@@ -767,14 +920,10 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if target_phases == default_target:
             self._clear_phase_session_override()
             return
-        self._phase_session_override_active = True
-        self._phase_session_target = f"{target_phases}P"
-        self._phase_restore_pending = False
+        self._phase_runtime().set_session_override(f"{target_phases}P")
 
     def _clear_phase_session_override(self) -> None:
-        self._phase_session_override_active = False
-        self._phase_session_target = None
-        self._phase_restore_pending = False
+        self._phase_runtime().clear_session_override()
 
     def _default_phase_switch_raw_value(self) -> int:
         return 0 if self._configured_installed_phases() == PHASE_MODE_1P else 1
@@ -917,15 +1066,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self.runtime_guards.record_startup_refresh()
             phase_restore_attempted = False
 
-            vehicle_disconnected = self._last_vehicle_connected and not wallbox.vehicle_connected
-            vehicle_connected = not self._last_vehicle_connected and wallbox.vehicle_connected
+            vehicle_disconnected = self._vehicle_connection_initialized and self._last_vehicle_connected and not wallbox.vehicle_connected
+            vehicle_connected = self._vehicle_connection_initialized and not self._last_vehicle_connected and wallbox.vehicle_connected
 
             # A new plug-in session should start from the configured default mode,
             # not from a runtime mode selected during the previous session.
             if vehicle_disconnected:
                 self._reset_runtime_mode_to_default()
                 self.controller.reset_session_phase_observation()
-                self._reset_phase_policy_dry_run_state()
+                self._phase_runtime().reset_session_transient_state()
 
             if (
                 vehicle_disconnected
@@ -939,14 +1088,18 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                     self._schedule_phase_restore_task(wallbox)
                 phase_restore_attempted = True
 
+            if vehicle_connected:
+                self.controller.reset_current_write_state()
+                self.controller.reset_session_phase_observation()
+                self._phase_runtime().reset_session_transient_state()
+                phase_restore_attempted = self._maybe_schedule_new_session_3p_restore(wallbox)
+
             if not phase_restore_attempted:
                 await self._async_handle_phase_restore_state(wallbox)
 
-            if vehicle_connected:
-                self.controller.reset_current_write_state()
-                self._reset_phase_policy_dry_run_state()
-
             self._last_vehicle_connected = wallbox.vehicle_connected
+            self._vehicle_connection_initialized = True
+            self.write_runtime.update_current_write_verification(wallbox.current_limit_a)
 
             # Read Home Assistant sensor inputs only after wallbox/session state
             # has been updated for this poll, so the controller sees one
@@ -981,10 +1134,15 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             )
             phase_policy = self._apply_phase_policy_dry_run(phase_policy)
             automatic_phase_switch_executed = await self._maybe_execute_automatic_phase_policy(phase_policy)
+            phase_recovery_executed = self._maybe_schedule_3p_mismatch_recovery(
+                wallbox=wallbox,
+                phase_offer_state=phase_observability.phase_offer_state,
+                phase_policy=phase_policy,
+            )
 
             # Apply transient/startup guards after the controller decision is
             # built, but before anything is enqueued for writing.
-            if automatic_phase_switch_executed:
+            if automatic_phase_switch_executed or phase_recovery_executed:
                 decision.should_write = False
             if self.runtime_guards.should_defer_startup_safe_current_fallback_write(
                 wallbox=wallbox,
@@ -1043,6 +1201,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 last_control_write_register=self.write_runtime.last_control_write_register,
                 last_control_write_age_s=self.write_runtime.last_control_write_age_seconds(),
                 last_control_write_blocked_reason=self.write_runtime.last_control_write_blocked_reason,
+                last_control_write_verification_status=self.write_runtime.last_control_write_verification_status,
+                last_control_write_verification_reported_a=self.write_runtime.last_control_write_verification_reported_a,
+                last_control_write_verification_delta_a=self.write_runtime.last_control_write_verification_delta_a,
                 dlb_limit_a=decision.dlb_limit_a,
                 final_target_a=decision.final_target_a,
                 mode_target_a=decision.mode_target_a,
@@ -1059,7 +1220,9 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 phase_switch_register_available=phase_observability.phase_switch_register_available,
                 phase_switch_available=phase_observability.phase_switch_available,
                 phase_switch_block_reason=phase_observability.phase_switch_block_reason,
-                vehicle_phase_capability=phase_observability.vehicle_phase_capability,
+                observed_session_phase_usage=phase_observability.observed_session_phase_usage,
+                phase_offer_state=phase_observability.phase_offer_state,
+                phase_recovery_warning=self._phase_recovery_warning,
                 phase_switching_mode=self._phase_switching_mode,
                 phase_switch_default_mode=self._configured_installed_phases(),
                 phase_session_override_active=self._phase_session_override_active,

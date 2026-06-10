@@ -17,6 +17,7 @@ from .registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 PHASE_SWITCH_MIN_PAUSE_CONFIRM_S = 30.0
 PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S = 90.0
 PHASE_SWITCH_WAIT_BEFORE_REGISTER_VERIFY_S = 30.0
+PHASE_SWITCH_EDGE_TRIGGER_SETTLE_S = 10.0
 PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S = 5.0
 PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S = 60.0
 PHASE_SWITCH_WAIT_BEFORE_RESUME_S = 30.0
@@ -56,6 +57,7 @@ class PhaseSwitchPlan:
     write_value: int
     was_charging: bool
     resume_current_a: float | None
+    force_edge_trigger: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +101,7 @@ class PhaseSwitchManager:
         pause_charging=None,
         resume_charging=None,
         require_vehicle: bool = True,
+        force_edge_trigger: bool = False,
     ) -> None:
         if self._lock.locked():
             self.last_target = f"{target_phases}P"
@@ -116,6 +119,7 @@ class PhaseSwitchManager:
                 target_phases=target_phases,
                 config=config,
                 require_vehicle=require_vehicle,
+                force_edge_trigger=force_edge_trigger,
             )
             if not decision.allowed or decision.plan is None:
                 reason = decision.block_reason or "phase_switch_blocked"
@@ -240,6 +244,26 @@ class PhaseSwitchManager:
                 raise ValueError("Phase switch blocked: pause_not_confirmed")
 
         self.state = "retry_writing_register" if retry else "writing_register"
+        if plan.force_edge_trigger and plan.target_phases == 3:
+            try:
+                await self._write_3p_edge_trigger(
+                    plan,
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                    sleep=sleep,
+                )
+            except Exception:
+                if paused_by_phase_switch:
+                    await self._recover_after_failed_pause(
+                        plan,
+                        resume_charging=resume_charging,
+                        client=client,
+                        write_queue=write_queue,
+                        flush_lock=flush_lock,
+                    )
+                raise
+
         await self._write_direct(
             client=client,
             write_queue=write_queue,
@@ -284,6 +308,39 @@ class PhaseSwitchManager:
                     register=SET_CHARGE_CURRENT_A,
                     value=int(round(plan.resume_current_a)),
                 )
+
+    async def _write_3p_edge_trigger(
+        self,
+        plan: PhaseSwitchPlan,
+        *,
+        client,
+        write_queue,
+        flush_lock: asyncio.Lock,
+        sleep,
+    ) -> None:
+        self.state = "writing_3p_edge_trigger_1p"
+        await self._write_direct(
+            client=client,
+            write_queue=write_queue,
+            flush_lock=flush_lock,
+            register=PHASE_SWITCH_MODE,
+            value=PHASE_SWITCH_VALUE_1P,
+        )
+        self.state = "waiting_after_3p_edge_trigger_1p"
+        await sleep(PHASE_SWITCH_EDGE_TRIGGER_SETTLE_S)
+        edge_plan = PhaseSwitchPlan(
+            target_phases=1,
+            write_value=PHASE_SWITCH_VALUE_1P,
+            was_charging=plan.was_charging,
+            resume_current_a=plan.resume_current_a,
+        )
+        edge_result = await self._wait_for_register_target(client=client, plan=edge_plan, sleep=sleep)
+        if edge_result != "register_verified":
+            self.last_result = edge_result
+            self.last_block_reason = edge_result
+            self.state = edge_result
+            raise ValueError(f"3P edge trigger could not be verified: {edge_result}")
+        self.state = "writing_3p_edge_trigger_3p"
 
     async def _recover_after_failed_pause(
         self,
@@ -406,6 +463,7 @@ def build_manual_phase_switch_decision(
     target_phases: int,
     config: ControlConfig,
     require_vehicle: bool = True,
+    force_edge_trigger: bool = False,
 ) -> PhaseSwitchDecision:
     """Validate an explicit manual phase-switch request.
 
@@ -428,7 +486,11 @@ def build_manual_phase_switch_decision(
         require_vehicle or observability.phase_switch_block_reason != "vehicle_not_connected"
     ):
         return _blocked(observability.phase_switch_block_reason)
-    if observability.phase_switch_mode == f"{target_phases}P" and _physical_phase_matches(wallbox, target_phases):
+    if (
+        not force_edge_trigger
+        and observability.phase_switch_mode == f"{target_phases}P"
+        and _physical_phase_matches(wallbox, target_phases)
+    ):
         return _blocked("already_in_target_phase")
 
     resume_current_a = None
@@ -447,6 +509,7 @@ def build_manual_phase_switch_decision(
             write_value=PHASE_SWITCH_VALUE_1P if target_phases == 1 else PHASE_SWITCH_VALUE_3P,
             was_charging=was_charging,
             resume_current_a=resume_current_a,
+            force_edge_trigger=force_edge_trigger,
         ),
     )
 

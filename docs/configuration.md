@@ -352,7 +352,7 @@ These values are mainly useful for charger-specific troubleshooting or communica
 
 Useful diagnostics:
 
-- `Effective Active Phases`: phases currently drawing measurable current.
+- `Observed Phase`: phases currently drawing measurable current, with lower-level details as attributes.
 - `Solar Surplus Input`: surplus value used by the Solar logic.
 
 ## Phase Switching
@@ -368,17 +368,16 @@ What this means:
 - `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405`. This can run without a connected vehicle.
 - A manual or automatic switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration tries to restore `405` back to `Charger Configuration`.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
-- The integration still detects `Effective Active Phases` from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
+- The integration still detects active phases from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:
-  - Register `404`: charger-reported phase capability, shown as `Charger Phase Capability (Register 404)`. This is diagnostic only. Field testing showed it can report `1P` while the charger is physically charging on 3 phases, so it is not used as a hard phase-switch capability block.
-  - Register `405`: experimental phase-switch mode register, shown as `Phase Switch Mode Raw (Register 405)` and `Phase Switch Mode (Register 405)`.
+  - Register `404`: charger-reported phase capability/configuration context. This is diagnostic only. Field testing showed it can report `1P` while the charger is physically charging on 3 phases, so it is not used as a hard phase-switch capability block.
+  - Register `405`: experimental phase-switch mode register. `Requested Phase` uses this register as its state.
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
-- `Observed Session Phase Usage` is observed from measured phase currents during active charging and can be `Observed 1P`, `Observed 3P` or `Unknown`. This is diagnostic only and is not a vehicle capability claim.
-- `Phase Consistency` compares register `405` with measured active phases and can show `Register and Physical Match`, `Register 3P, Physical 1P`, `Register 1P, Physical 3P`, `Not Charging` or `Unknown`. This is diagnostic only and does not trigger correction by itself.
-- `Phase Switch Available` and `Phase Switch Block Reason` indicate whether the basic preconditions appear suitable for manual switching.
-- `Phase Switch State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Retrying Phase Switch`, `Retry Pausing`, `Retry Writing Phase Register`, `Retry Waiting Before Resume`, `Retry Resuming`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
+- `Requested Phase`, `Observed Phase` and `Phase Recovery State` are the three primary phase diagnostics. Lower-level fields such as observed session phase usage, offer state, phase consistency, register `404`, raw register `405`, switch availability, block reason and policy timing are exposed as attributes.
+- `Phase Recovery State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Retrying Phase Switch`, `Retry Pausing`, `Retry Writing Phase Register`, `Retry Waiting Before Resume`, `Retry Resuming`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
 - `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after the pause request, so the integration did not write the phase register. `Vehicle Did Not Resume` means charging did not restart after two full bounded phase-switch sequences. `Physical Timeout` means charging did resume, but the active session did not move to the requested phase count after two full bounded phase-switch sequences. `Register Reverted` means register `405` fell back away from the requested value.
-- `Phase Policy Decision` and the `Phase Policy Auto ...` sensors show whether Solar automatic phase switching is ready after stable phase-target timing, cooldown and session-count guards. They write register `405` only when `Phase Switching Mode = Automatic Solar` and `Integration Charging Control = Enabled`.
+- Policy attributes on `Phase Recovery State` show whether Solar automatic phase switching is ready after stable phase-target timing, cooldown and session-count guards. They write register `405` only when `Phase Switching Mode = Automatic Solar` and `Integration Charging Control = Enabled`.
+- On a 3P-configured installation, a new plug-in session can perform one 3P start normalization when phase switching is enabled: write `405 = 0`, verify 1P, then write `405 = 1` and verify 3P before normal control continues. This avoids relying only on a stale-looking register `405 = 3P` when the previous session ended in 1P.
 - Automatic Solar requires the same phase target to remain stable before switching: 120 seconds for 3P -> 1P and 600 seconds for 1P -> 3P.
 - Automatic Solar uses a 10 minute cooldown after a switch, limits automatic switching to 5 switches per connected session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P.
 - In `Eco Solar`, 3P -> 1P is requested only when surplus can support at least the 1P minimum. In `Smart Solar` and `Solar Boost`, 3P -> 1P can also be requested below the 1P minimum because these modes intentionally allow baseline charging.
@@ -394,9 +393,9 @@ Manual switch requests are blocked when:
 
 `Restore Default Phase Mode` is the exception to the vehicle-connected requirement. It is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session.
 
-If automatic restore fails, `Phase Restore Pending` remains active in diagnostics.
+If automatic restore fails, `restore_pending` remains visible as an attribute on `Requested Phase` and `Phase Recovery State` reports `Phase Restore Pending`.
 
-After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration`. If no vehicle is connected and register `404` confirms the charger is 3P-capable when needed, it restores `405` to `Charger Configuration`. If a vehicle is connected, it does not switch blindly and only marks `Phase Restore Pending`.
+After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration`. If no vehicle is connected, it may restore `405` to `Charger Configuration`. If a vehicle is already connected at startup, it avoids treating that first read as a fresh plug-in event. A real plug-in event while Home Assistant is running can trigger the bounded 3P start normalization described above.
 
 The charger may still have its own physical or firmware-level phase configuration. Treat manual phase switching as experimental and verify behavior on your own charger before using it in automations.
 
@@ -480,7 +479,7 @@ Useful diagnostics:
 - `Control Reason`
 - `Dominant Limit`
 - `Sensor Invalid Reason`
-- `Effective Active Phases`
+- `Observed Phase`
 - `Solar Surplus Input`
 - `EVCC Status`
 

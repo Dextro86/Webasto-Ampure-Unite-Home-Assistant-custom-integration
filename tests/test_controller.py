@@ -742,6 +742,29 @@ def test_safety_reduction_bypasses_write_debounce():
     assert decision.should_write is True
 
 
+def test_pending_write_max_age_forces_write_when_target_never_reaches_stable_cycles(monkeypatch):
+    now = 1000.0
+    monkeypatch.setattr(controller_module, "monotonic", lambda: now)
+    controller = make_controller(
+        stable_cycles_before_write=99,
+        pending_stable_max_age_s=30.0,
+        min_seconds_between_writes=0.0,
+    )
+    wallbox = WallboxState(installed_phases=3, vehicle_connected=True, current_limit_a=6.0)
+    sensors = HaSensorSnapshot(valid=True)
+
+    first = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+    assert first.should_write is False
+
+    now = 1029.0
+    second = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+    assert second.should_write is False
+
+    now = 1031.0
+    third = controller.evaluate(ChargeMode.NORMAL, wallbox, sensors)
+    assert third.should_write is True
+
+
 def test_unvalidated_hardware_limit_does_not_cap_target_current():
     controller = make_controller()
     wallbox = WallboxState(installed_phases=3, vehicle_connected=True, session_max_current_a=10.0)
