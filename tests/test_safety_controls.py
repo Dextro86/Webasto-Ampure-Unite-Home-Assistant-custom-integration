@@ -43,6 +43,7 @@ from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, 
 from custom_components.webasto_unite.number import async_setup_entry as number_async_setup_entry
 from custom_components.webasto_unite.operating_status import build_operating_state
 from custom_components.webasto_unite.phase_policy import AUTO_PHASE_STABLE_TO_1P_S, PhasePolicyDecision
+from custom_components.webasto_unite.phase_runtime import PhaseRuntimeState
 from custom_components.webasto_unite.registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 from custom_components.webasto_unite.runtime_guards import RuntimeGuards, RuntimeGuardState
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
@@ -376,6 +377,37 @@ def test_manual_phase_switch_is_blocked_by_default():
 
         coordinator.client.write.assert_not_called()
         assert coordinator._phase_switch_last_result == "blocked"
+
+    asyncio.run(_run())
+
+
+def test_manual_3p_phase_switch_uses_edge_trigger():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.phase_switch_manager = SimpleNamespace(
+            active=False,
+            last_target=None,
+            last_block_reason=None,
+            state="idle",
+        )
+        coordinator._phase_switch_task = None
+        coordinator._phase_restore_task = None
+        coordinator.hass = SimpleNamespace(async_create_task=lambda coro: asyncio.create_task(coro))
+        coordinator.async_request_phase_switch = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator._flush_pending_external_current_limit = AsyncMock()
+        coordinator._sync_phase_switch_diagnostics = Mock()
+        coordinator._clear_control_write_blocked = Mock()
+
+        await coordinator.async_schedule_phase_switch(3)
+        await coordinator._phase_switch_task
+
+        coordinator.async_request_phase_switch.assert_awaited_once_with(
+            3,
+            request_refresh=False,
+            force_edge_trigger=True,
+        )
 
     asyncio.run(_run())
 
@@ -1002,7 +1034,11 @@ def test_automatic_solar_phase_policy_executes_ready_target_only_when_integratio
         assert coordinator._phase_switch_task is not None
         assert coordinator._phase_switch_in_progress() is True
         await coordinator._phase_switch_task
-        coordinator.async_request_phase_switch.assert_awaited_once_with(3, request_refresh=False)
+        coordinator.async_request_phase_switch.assert_awaited_once_with(
+            3,
+            request_refresh=False,
+            force_edge_trigger=False,
+        )
         coordinator.async_request_refresh.assert_awaited_once()
 
         coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
@@ -1101,6 +1137,42 @@ def test_3p_mismatch_recovery_schedules_one_edge_trigger_after_stable_mismatch()
 
     assert executed_again is False
     coordinator._schedule_phase_restore_task.assert_called_once()
+
+
+def test_3p_mismatch_recovery_waits_for_new_session_phase_settle():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+    coordinator.controller = WallboxController(coordinator.control_config)
+    coordinator.controller.session_observed_3p = True
+    coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+    coordinator._phase_switch_task = None
+    coordinator._phase_restore_task = None
+    coordinator.phase_switch_manager = SimpleNamespace(active=False)
+    coordinator._phase_3p_recovery_attempted = False
+    coordinator._phase_3p_mismatch_since_monotonic = monotonic() - 121.0
+    coordinator._phase_session_started_monotonic = monotonic()
+    coordinator._phase_recovery_warning = None
+    coordinator._schedule_phase_restore_task = Mock()
+    wallbox = WallboxState(
+        installed_phases=3,
+        available=True,
+        vehicle_connected=True,
+        charging_active=True,
+        phases_in_use=1,
+        phase_switch_mode_raw=1,
+    )
+
+    executed = coordinator._maybe_schedule_3p_mismatch_recovery(
+        wallbox=wallbox,
+        phase_offer_state="requested_3p_observed_1p",
+        phase_policy=PhasePolicyDecision(decision="no_action"),
+    )
+
+    assert executed is False
+    assert coordinator._phase_3p_mismatch_since_monotonic is None
+    assert coordinator._phase_recovery_warning == "waiting_for_phase_startup_settle"
+    coordinator._schedule_phase_restore_task.assert_not_called()
 
 
 def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():
@@ -1272,7 +1344,7 @@ def test_restore_default_phase_rewrites_when_register_matches_but_physical_phase
     asyncio.run(_run())
 
 
-def test_phase_session_override_restores_default_after_unplug():
+def test_phase_session_override_clears_without_register_write_after_unplug():
     async def _run():
         wallbox = WallboxState(
             installed_phases=3,
@@ -1311,11 +1383,9 @@ def test_phase_session_override_restores_default_after_unplug():
 
         snapshot = await coordinator._async_update_data()
 
-        assert coordinator._phase_restore_task is not None
-        assert snapshot.phase_restore_pending is True
-        await coordinator._phase_restore_task
-
-        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
+        assert coordinator._phase_restore_task is None
+        coordinator.client.write.assert_not_called()
+        assert snapshot.phase_restore_pending is False
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_session_target is None
         assert coordinator._phase_restore_pending is False
@@ -1324,7 +1394,7 @@ def test_phase_session_override_restores_default_after_unplug():
     asyncio.run(_run())
 
 
-def test_new_session_3p_restore_uses_edge_trigger_even_when_register_already_3p():
+def test_new_session_3p_restore_waits_for_settle_then_uses_edge_trigger_even_when_register_already_3p():
     async def _run():
         wallbox = WallboxState(
             installed_phases=3,
@@ -1368,7 +1438,16 @@ def test_new_session_3p_restore_uses_edge_trigger_even_when_register_already_3p(
 
         snapshot = await coordinator._async_update_data()
 
+        assert snapshot.phase_recovery_warning == "waiting_for_phase_startup_settle"
+        assert coordinator._phase_restore_task is None
+
+        coordinator.phase_runtime.session_started_monotonic = monotonic() - 100.0
+        coordinator.write_runtime.enqueue_decision.reset_mock()
+
+        snapshot = await coordinator._async_update_data()
+
         assert snapshot.phase_recovery_warning == "restore_3p_on_session_start"
+        assert coordinator.write_runtime.enqueue_decision.await_args.args[0].should_write is False
         assert coordinator._phase_restore_task is not None
         await coordinator._phase_restore_task
 
@@ -1438,7 +1517,7 @@ def test_session_end_resets_runtime_charge_mode_to_default():
     asyncio.run(_run())
 
 
-def test_session_end_restores_default_phase_even_when_override_flag_was_lost():
+def test_session_end_clears_override_without_register_write_even_when_override_flag_was_lost():
     async def _run():
         wallbox = WallboxState(
             installed_phases=3,
@@ -1477,11 +1556,9 @@ def test_session_end_restores_default_phase_even_when_override_flag_was_lost():
 
         snapshot = await coordinator._async_update_data()
 
-        assert coordinator._phase_restore_task is not None
-        assert snapshot.phase_restore_pending is True
-        await coordinator._phase_restore_task
-
-        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
+        assert coordinator._phase_restore_task is None
+        coordinator.client.write.assert_not_called()
+        assert snapshot.phase_restore_pending is False
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_session_target is None
         assert coordinator._phase_restore_pending is False
@@ -3261,6 +3338,38 @@ def test_external_controller_current_limit_is_deferred_during_phase_switch():
         client.write.assert_awaited_once_with(SET_CHARGE_CURRENT_A, 18)
         assert coordinator._pending_external_current_a is None
         assert coordinator.write_runtime.last_control_write_reason == "external_controller"
+
+    asyncio.run(_run())
+
+
+def test_phase_switch_completion_clears_stale_phase_switch_blocked_reason():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.write_queue = WriteQueueManager()
+        coordinator.write_runtime = WriteRuntime(
+            coordinator.control_config,
+            write_queue=coordinator.write_queue,
+            client=SimpleNamespace(write=AsyncMock()),
+            controller=None,
+        )
+        coordinator.phase_switch_manager = SimpleNamespace(
+            last_result="physical_verified",
+            last_block_reason=None,
+            last_target="3P",
+            state="physical_verified",
+        )
+        coordinator.phase_runtime = PhaseRuntimeState()
+        coordinator.async_request_phase_switch = AsyncMock()
+        coordinator._flush_pending_external_current_limit = AsyncMock()
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.write_runtime.state.last_control_write_blocked_reason = "phase_switch_in_progress"
+
+        await coordinator._run_scheduled_phase_switch(3, source="manual")
+
+        assert coordinator.write_runtime.last_control_write_blocked_reason is None
+        coordinator.async_request_refresh.assert_awaited_once()
 
     asyncio.run(_run())
 

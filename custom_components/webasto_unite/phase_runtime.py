@@ -38,6 +38,7 @@ class PhaseRuntimeState:
     new_session_3p_restore_attempt_count: int = 0
     recovery_3p_attempted: bool = False
     mismatch_3p_since_monotonic: float | None = None
+    session_started_monotonic: float | None = None
     recovery_warning: str | None = None
 
     def reset_policy_state(self) -> None:
@@ -62,7 +63,11 @@ class PhaseRuntimeState:
         self.new_session_3p_restore_attempt_count = 0
         self.recovery_3p_attempted = False
         self.mismatch_3p_since_monotonic = None
+        self.session_started_monotonic = None
         self.recovery_warning = None
+
+    def mark_session_started(self) -> None:
+        self.session_started_monotonic = monotonic()
 
     def clear_session_override(self) -> None:
         self.session_override_active = False
