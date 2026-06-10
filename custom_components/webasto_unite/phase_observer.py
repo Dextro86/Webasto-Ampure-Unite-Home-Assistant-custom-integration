@@ -59,6 +59,23 @@ def detect_observed_session_phase_usage(wallbox: WallboxState) -> str:
     return "unknown"
 
 
+def build_phase_consistency(wallbox: WallboxState) -> str:
+    if wallbox.phase_switch_mode_raw not in (PHASE_SWITCH_VALUE_1P, PHASE_SWITCH_VALUE_3P):
+        return "unknown"
+    if not wallbox.charging_active:
+        return "not_charging"
+    if wallbox.phases_in_use not in (1, 3):
+        return "unknown"
+    register_phases = 1 if wallbox.phase_switch_mode_raw == PHASE_SWITCH_VALUE_1P else 3
+    if register_phases == wallbox.phases_in_use:
+        return "register_and_physical_match"
+    if register_phases == 3 and wallbox.phases_in_use == 1:
+        return "register_3p_physical_1p"
+    if register_phases == 1 and wallbox.phases_in_use == 3:
+        return "register_1p_physical_3p"
+    return "unknown"
+
+
 def detect_vehicle_phase_capability(wallbox: WallboxState) -> str:
     """Backward-compatible alias for observed session phase usage."""
     return detect_observed_session_phase_usage(wallbox)

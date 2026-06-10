@@ -67,7 +67,7 @@ Use these entities when `Final Target` and `Reported Current Limit` do not match
 
 In `Monitoring Only`, the integration may still calculate `Final Target`, but `Control Writes Enabled` is false and writes are not sent to the charger.
 
-In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off`, `External Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`.
+In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off`, `External Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`. During a phase switch, the latest external current request is deferred until the phase-switch sequence is finished.
 
 ## DLB Diagnostics
 
@@ -124,13 +124,14 @@ The auto-policy diagnostics also expose:
 
 Useful diagnostic entities:
 
-- `Charger Phase Register 404`
+- `Charger Phase Capability (Register 404)`
 - `Effective Active Phases`
-- `Phase Switch Mode`
-- `Phase Switch Mode Raw`
+- `Phase Switch Mode (Register 405)`
+- `Phase Switch Mode Raw (Register 405)`
 - `Phase Switch Available`
 - `Phase Switch Block Reason`
 - `Observed Session Phase Usage`
+- `Phase Consistency`
 - `Last Phase Switch Result`
 - `Last Phase Switch Block Reason`
 - `Last Phase Switch Target`

@@ -102,7 +102,7 @@ disable_fixed_current_until_unplug:
       example: "abc123"
 request_phase_1p:
   name: Request 1P Mode
-  description: Experimental manual phase switch request to 1P. Requires Phase Switching Mode to be Manual Only. Writes and verifies register 405.
+  description: Experimental phase switch request to 1P. Available when Phase Switching Mode is not Off. In Managed Normal mode, the integration uses the default phase mode instead.
   fields:
     entry_id:
       name: Entry ID
@@ -111,7 +111,7 @@ request_phase_1p:
       example: "abc123"
 request_phase_3p:
   name: Request 3P Mode
-  description: Experimental manual phase switch request to 3P. Requires Phase Switching Mode to be Manual Only. Writes and verifies register 405.
+  description: Experimental phase switch request to 3P. Available when Phase Switching Mode is not Off. In Managed Normal mode, the integration uses the default phase mode instead.
   fields:
     entry_id:
       name: Entry ID
@@ -120,7 +120,7 @@ request_phase_3p:
       example: "abc123"
 restore_default_phase:
   name: Restore Default Phase Mode
-  description: Restore the phase mode derived from Charger Configuration. Requires Phase Switching Mode to be Manual Only. Can run without a connected vehicle.
+  description: Restore the phase mode derived from Charger Configuration. Can run when Phase Switching Mode is not Off, also without a connected vehicle.
   fields:
     entry_id:
       name: Entry ID
@@ -129,7 +129,7 @@ restore_default_phase:
       example: "abc123"
 reset_phase_switch_state:
   name: Reset Phase Switch State
-  description: Clear the diagnostic state of the experimental manual phase switching helper.
+  description: Clear the diagnostic state of the experimental phase switching helper.
   fields:
     entry_id:
       name: Entry ID

@@ -6,7 +6,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, PHASE_SWITCHING_MODE_OFF
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, SolarControlStrategy
+from .models import ChargeMode, ControlMode, SolarControlStrategy
 
 
 def _solar_mode_label(strategy: SolarControlStrategy) -> str:
@@ -95,10 +95,15 @@ class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
     @property
     def available(self) -> bool:
         data = getattr(self.coordinator, "data", None)
-        return (
-            getattr(self.coordinator, "_phase_switching_mode", None) != PHASE_SWITCHING_MODE_OFF
-            and data is not None
-            and data.phase_switch_register_available is True
+        if (
+            getattr(self.coordinator, "_phase_switching_mode", None) == PHASE_SWITCHING_MODE_OFF
+            or data is None
+            or data.phase_switch_register_available is not True
+        ):
+            return False
+        return not (
+            getattr(getattr(self.coordinator, "control_config", None), "control_mode", None) == ControlMode.MANAGED_CONTROL
+            and getattr(data, "effective_mode", None) == ChargeMode.NORMAL
         )
 
     @property

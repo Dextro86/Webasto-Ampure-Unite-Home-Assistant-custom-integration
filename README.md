@@ -139,10 +139,10 @@ Phase switching is experimental and off by default. `Manual Only` exposes explic
 
 The known register mapping used by the integration is:
 
-- input register `404`: charger-reported phase register, shown as `Charger Phase Register 404`. This is diagnostic only; field testing showed it can report `1P` while the charger is physically charging on 3 phases.
-- holding register `405`: phase-switch mode (`0 = 1P`, `1 = 3P`). Manual switching writes and verifies this register.
+- input register `404`: charger-reported phase capability, shown as `Charger Phase Capability (Register 404)`. This is diagnostic only; field testing showed it can report `1P` while the charger is physically charging on 3 phases.
+- holding register `405`: phase-switch mode (`0 = 1P`, `1 = 3P`), shown as `Phase Switch Mode (Register 405)` and `Phase Switch Mode Raw (Register 405)`. Manual switching writes and verifies this register.
 
-Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch.
+Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a mismatch. `Phase Consistency` reports whether register `405` and the measured active phases match, but it does not trigger automatic correction by itself.
 
 Manual switching separates pause confirmation, register verification and physical verification. The integration uses the same internal pause/resume semantics as the `Pause Charging` and `Resume Charging` controls, waits until the pause is actually observed, writes register `405`, checks that register `405` stays on the requested value, resumes charging and then observes the measured active phases. `Register Verified` means register `405` accepted and held the request. `Physical Verified` means the measured charging phases also match the request. If charging does not pause, the switch is aborted with `Pause Not Confirmed`.
 

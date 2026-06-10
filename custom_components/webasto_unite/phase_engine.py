@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass
 
 from .const import PHASE_SWITCHING_MODE_OFF
@@ -15,6 +16,7 @@ from .registers import PHASE_SWITCH_MODE, SET_CHARGE_CURRENT_A
 
 PHASE_SWITCH_MIN_PAUSE_CONFIRM_S = 30.0
 PHASE_SWITCH_PAUSE_CONFIRM_TIMEOUT_S = 90.0
+PHASE_SWITCH_WAIT_BEFORE_REGISTER_VERIFY_S = 30.0
 PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S = 5.0
 PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S = 60.0
 PHASE_SWITCH_WAIT_BEFORE_RESUME_S = 30.0
@@ -161,6 +163,13 @@ class PhaseSwitchManager:
                     retry=attempt > 0,
                 )
             except Exception as err:  # noqa: BLE001
+                if (
+                    self.last_result in {"register_unverified", "register_reverted"}
+                    and plan.was_charging
+                    and attempt < attempts - 1
+                ):
+                    self.state = "retrying_sequence"
+                    continue
                 if self.last_result in {"pause_not_confirmed", "register_unverified", "register_reverted"}:
                     raise
                 self.last_result = "failed"
@@ -202,6 +211,7 @@ class PhaseSwitchManager:
     ) -> None:
         if retry:
             self.state = "retrying_sequence"
+        paused_by_phase_switch = False
         if plan.was_charging:
             self.state = "retry_pausing" if retry else "pausing"
             if pause_charging is not None:
@@ -214,9 +224,18 @@ class PhaseSwitchManager:
                     register=SET_CHARGE_CURRENT_A,
                     value=0,
                 )
+            paused_by_phase_switch = True
             if not await self._wait_for_pause_confirmed(read_wallbox=read_wallbox, sleep=sleep):
                 self.last_result = "pause_not_confirmed"
                 self.last_block_reason = "pause_not_confirmed"
+                self.state = "pause_not_confirmed"
+                await self._recover_after_failed_pause(
+                    plan,
+                    resume_charging=resume_charging,
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                )
                 self.state = "pause_not_confirmed"
                 raise ValueError("Phase switch blocked: pause_not_confirmed")
 
@@ -229,6 +248,8 @@ class PhaseSwitchManager:
             value=plan.write_value,
         )
 
+        self.state = "waiting_before_register_verify"
+        await sleep(PHASE_SWITCH_WAIT_BEFORE_REGISTER_VERIFY_S)
         register_result = await self._wait_for_register_target(
             client=client,
             plan=plan,
@@ -238,6 +259,15 @@ class PhaseSwitchManager:
             self.last_result = register_result
             self.last_block_reason = register_result
             self.state = register_result
+            if paused_by_phase_switch:
+                await self._recover_after_failed_pause(
+                    plan,
+                    resume_charging=resume_charging,
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                )
+                self.state = register_result
             raise ValueError(f"Phase switch could not be verified: {register_result}")
 
         if plan.was_charging and plan.resume_current_a is not None:
@@ -247,6 +277,31 @@ class PhaseSwitchManager:
             if resume_charging is not None:
                 await resume_charging(plan.resume_current_a)
             else:
+                await self._write_direct(
+                    client=client,
+                    write_queue=write_queue,
+                    flush_lock=flush_lock,
+                    register=SET_CHARGE_CURRENT_A,
+                    value=int(round(plan.resume_current_a)),
+                )
+
+    async def _recover_after_failed_pause(
+        self,
+        plan: PhaseSwitchPlan,
+        *,
+        resume_charging=None,
+        client=None,
+        write_queue=None,
+        flush_lock: asyncio.Lock | None = None,
+    ) -> None:
+        if not plan.was_charging or plan.resume_current_a is None:
+            return
+        self.state = "recovering_after_failed_phase_switch"
+        with suppress(Exception):
+            if resume_charging is not None:
+                await resume_charging(plan.resume_current_a)
+                return
+            if client is not None and write_queue is not None and flush_lock is not None:
                 await self._write_direct(
                     client=client,
                     write_queue=write_queue,
@@ -286,13 +341,14 @@ class PhaseSwitchManager:
         saw_target = False
         saw_read_error = False
         polls = int(PHASE_SWITCH_REGISTER_VERIFY_TIMEOUT_S / PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
-        for _ in range(max(1, polls)):
-            await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
+        for index in range(max(1, polls)):
             try:
                 readback = int(await client.read(PHASE_SWITCH_MODE))
             except Exception:  # noqa: BLE001
                 saw_read_error = True
                 stable_target_reads = 0
+                if index < polls - 1:
+                    await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
                 continue
 
             if readback == plan.write_value:
@@ -300,11 +356,15 @@ class PhaseSwitchManager:
                 stable_target_reads += 1
                 if stable_target_reads >= PHASE_SWITCH_REQUIRED_STABLE_POLLS:
                     return "register_verified"
+                if index < polls - 1:
+                    await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
                 continue
 
             stable_target_reads = 0
             if saw_target:
                 return "register_reverted"
+            if index < polls - 1:
+                await sleep(PHASE_SWITCH_REGISTER_VERIFY_INTERVAL_S)
 
         if saw_read_error and not saw_target:
             return "register_unverified"

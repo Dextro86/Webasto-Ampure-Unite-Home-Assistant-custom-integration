@@ -73,7 +73,7 @@ At the end of a vehicle session, when the vehicle is unplugged, the runtime char
 
 When `Integration Charging Control` is `Monitoring Only`, `Charging Behavior` shows `Monitoring Only - Not Writing`. `Final Target` may still show the current the integration would choose, but that value is diagnostic only and is not written to the charger.
 
-When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `External Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. `Maximum Current` remains the configured upper limit.
+When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `External Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. During a phase switch, the latest external current request is deferred and written after the safe phase-switch sequence finishes. `Maximum Current` remains the configured upper limit.
 
 `Pause Charging` and `Resume Charging` buttons are also available when `Integration Charging Control` is `Enabled` or `External Controller`. They are convenience controls for the same charging-enabled state:
 
@@ -370,10 +370,11 @@ What this means:
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects `Effective Active Phases` from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:
-  - Register `404`: charger-reported phase register, shown as `Charger Phase Register 404`. This is diagnostic only. Field testing showed it can report `1P` while the charger is physically charging on 3 phases, so it is not used as a hard phase-switch capability block.
-  - Register `405`: experimental phase-switch mode register, shown as `Phase Switch Mode Raw` and `Phase Switch Mode`.
+  - Register `404`: charger-reported phase capability, shown as `Charger Phase Capability (Register 404)`. This is diagnostic only. Field testing showed it can report `1P` while the charger is physically charging on 3 phases, so it is not used as a hard phase-switch capability block.
+  - Register `405`: experimental phase-switch mode register, shown as `Phase Switch Mode Raw (Register 405)` and `Phase Switch Mode (Register 405)`.
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
 - `Observed Session Phase Usage` is observed from measured phase currents during active charging and can be `Observed 1P`, `Observed 3P` or `Unknown`. This is diagnostic only and is not a vehicle capability claim.
+- `Phase Consistency` compares register `405` with measured active phases and can show `Register and Physical Match`, `Register 3P, Physical 1P`, `Register 1P, Physical 3P`, `Not Charging` or `Unknown`. This is diagnostic only and does not trigger correction by itself.
 - `Phase Switch Available` and `Phase Switch Block Reason` indicate whether the basic preconditions appear suitable for manual switching.
 - `Phase Switch State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Retrying Phase Switch`, `Retry Pausing`, `Retry Writing Phase Register`, `Retry Waiting Before Resume`, `Retry Resuming`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
 - `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after the pause request, so the integration did not write the phase register. `Vehicle Did Not Resume` means charging did not restart after two full bounded phase-switch sequences. `Physical Timeout` means charging did resume, but the active session did not move to the requested phase count after two full bounded phase-switch sequences. `Register Reverted` means register `405` fell back away from the requested value.
@@ -411,7 +412,7 @@ Recommended setup when EVCC is the active charging manager:
 - Do not run EVCC Solar control and this integration's Solar control at the same time.
 - Do not run EVCC Solar control and this integration's Automatic Solar phase switching at the same time. In `External Controller` mode, EVCC may request phase switches through the `Phase Switch` select, but this integration's own Automatic Solar policy does not run.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `External Requested Current`.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `External Requested Current`. Current requests received during a phase switch are deferred until the switch sequence is complete.
 
 Relevant entities:
 

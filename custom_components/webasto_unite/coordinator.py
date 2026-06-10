@@ -108,7 +108,7 @@ from .models import (
 )
 from .operating_status import build_operating_state
 from .phase_engine import REGISTER_ACCEPTED_RESULTS, PhaseSwitchManager
-from .phase_observer import build_phase_observability
+from .phase_observer import build_phase_consistency, build_phase_observability
 from .phase_policy import (
     AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
     AUTO_PHASE_STABLE_TO_1P_S,
@@ -165,6 +165,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         self._phase_policy_session_switch_count = 0
         self.phase_switch_manager = PhaseSwitchManager()
         self._external_current_a: float | None = None
+        self._pending_external_current_a: float | None = None
         self._sensor_unsubscribers = []
         self._keepalive_task: asyncio.Task | None = None
         self._sensor_refresh_task: asyncio.Task | None = None
@@ -308,6 +309,8 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self.phase_switch_manager.state = self._phase_switch_state or "idle"
         if not hasattr(self, "_external_current_a"):
             self._external_current_a = None
+        if not hasattr(self, "_pending_external_current_a"):
+            self._pending_external_current_a = None
         if not hasattr(self, "_phase_switch_sleep"):
             self._phase_switch_sleep = asyncio.sleep
         if not hasattr(self, "write_queue"):
@@ -466,7 +469,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         await self._charging_state_store.async_save({"charging_enabled": enabled})
         if self.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
             current_a = self._external_current_a or self.control_config.min_current_a
-            await self._enqueue_external_current_limit(current_a if enabled else 0.0)
+            await self.async_set_external_current_limit(current_a if enabled else 0.0)
 
     async def _async_restore_charging_enabled_state(self) -> None:
         stored = await self._charging_state_store.async_load()
@@ -529,6 +532,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         finally:
             if source == "automatic" and failed_before_accept:
                 self._record_phase_policy_failed_attempt()
+            await self._flush_pending_external_current_limit()
             self._sync_phase_switch_diagnostics()
             await self.async_request_refresh()
 
@@ -555,6 +559,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if self._phase_switch_last_result in REGISTER_ACCEPTED_RESULTS:
             self._record_phase_policy_switch_attempt()
             self._update_phase_session_override(target_phases)
+        await self._flush_pending_external_current_limit()
         if request_refresh:
             await self.async_request_refresh()
 
@@ -591,6 +596,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             _LOGGER.warning("Default phase restore failed: %s", err)
             self._phase_restore_pending = True
         finally:
+            await self._flush_pending_external_current_limit()
             self._sync_phase_switch_diagnostics()
             await self.async_request_refresh()
 
@@ -638,6 +644,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         if wallbox is not None and wallbox.vehicle_connected and self._phase_switch_last_result in REGISTER_ACCEPTED_RESULTS:
             self._record_phase_policy_switch_attempt()
         self._clear_phase_session_override()
+        await self._flush_pending_external_current_limit()
         if request_refresh:
             await self.async_request_refresh()
 
@@ -783,12 +790,29 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
             self._phase_session_override_active
             and self._phase_session_target == ("1P" if wallbox.phase_switch_mode_raw == 0 else "3P")
         ):
+            if (
+                wallbox.vehicle_connected
+                and self.effective_mode == ChargeMode.NORMAL
+                and self._phase_switching_mode != PHASE_SWITCHING_MODE_OFF
+                and self.control_config.control_mode == ControlMode.MANAGED_CONTROL
+                and not self._phase_switch_in_progress()
+            ):
+                self._phase_restore_pending = True
+                self._schedule_phase_restore_task(wallbox)
+                return
             self._phase_restore_pending = False
             return
         self._phase_restore_pending = True
         self._phase_session_override_active = True
         self._phase_session_target = "1P" if wallbox.phase_switch_mode_raw == 0 else "3P"
         if wallbox.vehicle_connected:
+            if (
+                self.effective_mode == ChargeMode.NORMAL
+                and self._phase_switching_mode != PHASE_SWITCHING_MODE_OFF
+                and self.control_config.control_mode == ControlMode.MANAGED_CONTROL
+                and not self._phase_switch_in_progress()
+            ):
+                self._schedule_phase_restore_task(wallbox)
             return
         if not self._phase_switch_in_progress():
             self._schedule_phase_restore_task(wallbox)
@@ -801,7 +825,29 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
         current = self._validate_external_current(current_a)
         if current > 0:
             self._external_current_a = current
+        if self._phase_switch_in_progress():
+            self._pending_external_current_a = current
+            self._mark_control_write_blocked("phase_switch_in_progress")
+            return
         await self._enqueue_external_current_limit(current)
+
+    async def _flush_pending_external_current_limit(self) -> None:
+        pending_current = getattr(self, "_pending_external_current_a", None)
+        if pending_current is None:
+            return
+        if self.control_config.control_mode != ControlMode.EXTERNAL_CONTROLLER:
+            self._pending_external_current_a = None
+            return
+        self._pending_external_current_a = None
+        await self._enqueue_external_current_limit(pending_current)
+
+    def _mark_control_write_blocked(self, reason: str) -> None:
+        write_runtime_state = getattr(getattr(self, "write_runtime", None), "state", None)
+        if write_runtime_state is not None:
+            write_runtime_state.last_control_write_blocked_reason = reason
+            return
+        if hasattr(getattr(self, "write_runtime", None), "last_control_write_blocked_reason"):
+            self.write_runtime.last_control_write_blocked_reason = reason
 
     async def _enqueue_external_current_limit(self, current_a: float) -> None:
         await self.write_queue.enqueue(
@@ -1035,6 +1081,7 @@ class WebastoUniteCoordinator(DataUpdateCoordinator[RuntimeSnapshot]):
                 phase_switch_last_block_reason=self._phase_switch_last_block_reason,
                 phase_switch_last_target=self._phase_switch_last_target,
                 phase_switch_state=self._phase_switch_state,
+                phase_consistency=build_phase_consistency(wallbox),
                 dominant_limit_reason=decision.dominant_limit_reason.value if decision.dominant_limit_reason is not None else None,
                 fallback_active=decision.fallback_active,
                 last_client_error=self.client.stats.last_error,

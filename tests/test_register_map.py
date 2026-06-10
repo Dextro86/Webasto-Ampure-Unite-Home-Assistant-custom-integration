@@ -28,6 +28,7 @@ from custom_components.webasto_unite.models import ChargeMode, ChargingState, Co
 from custom_components.webasto_unite.phase_observer import (
     PHASE_SWITCH_VALUE_1P,
     PHASE_SWITCH_VALUE_3P,
+    build_phase_consistency,
     build_phase_observability,
     detect_vehicle_phase_capability,
     interpret_phase_switch_mode,
@@ -157,6 +158,23 @@ def test_observed_session_phase_usage_is_observed_only():
     ) == "observed_3p"
 
 
+def test_phase_consistency_reports_register_physical_mismatches_without_correcting():
+    assert build_phase_consistency(WallboxState(phase_switch_mode_raw=None)) == "unknown"
+    assert build_phase_consistency(WallboxState(phase_switch_mode_raw=1, charging_active=False)) == "not_charging"
+    assert (
+        build_phase_consistency(WallboxState(phase_switch_mode_raw=1, charging_active=True, phases_in_use=3))
+        == "register_and_physical_match"
+    )
+    assert (
+        build_phase_consistency(WallboxState(phase_switch_mode_raw=1, charging_active=True, phases_in_use=1))
+        == "register_3p_physical_1p"
+    )
+    assert (
+        build_phase_consistency(WallboxState(phase_switch_mode_raw=0, charging_active=True, phases_in_use=3))
+        == "register_1p_physical_3p"
+    )
+
+
 def test_phase_switch_diagnostic_sensors_are_exposed():
     sensors = {description.key: description for description in SENSORS}
 
@@ -185,6 +203,7 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["phase_policy_session_switch_limit"].entity_category == "diagnostic"
     assert sensors["phase_switch_last_result"].entity_category == "diagnostic"
     assert sensors["phase_switch_state"].entity_category == "diagnostic"
+    assert sensors["phase_consistency"].entity_category == "diagnostic"
     assert sensors["control_writes_enabled"].entity_category == "diagnostic"
     assert sensors["last_control_write_reason"].entity_category == "diagnostic"
     assert sensors["last_control_write_blocked_reason"].entity_category == "diagnostic"

@@ -14,7 +14,7 @@ When EVCC controls charging:
 - Keep this integration's DLB disabled unless you intentionally want an additional local safety cap.
 - If EVCC should control 1P/3P switching, configure EVCC `phaseswitch` to the `Phase Switch` select entity.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `External Requested Current` as the external control path.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `External Requested Current` as the external control path. If EVCC sends a current update while a safe phase-switch sequence is running, the integration defers the latest requested current and writes it after the phase switch has finished.
 
 Important current-control distinction:
 
