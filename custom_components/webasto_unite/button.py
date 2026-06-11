@@ -143,7 +143,7 @@ def _manual_phase_request_available(coordinator, target_phases: int) -> bool:
     return (
         getattr(coordinator, "_phase_switching_mode", None) != PHASE_SWITCHING_MODE_OFF
         and data is not None
-        and data.phase_switch_available is True
+        and getattr(data, "phase_switch_register_available", False) is True
     )
 
 

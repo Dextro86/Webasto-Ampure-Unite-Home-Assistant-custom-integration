@@ -120,7 +120,7 @@ request_phase_3p:
       example: "abc123"
 restore_default_phase:
   name: Restore Default Phase Mode
-  description: Restore the phase mode derived from Charger Configuration. Can run when Phase Switching Mode is not Off, also without a connected vehicle.
+  description: Restore the phase mode derived from Charger Configuration. Requires a connected vehicle; without a connected vehicle only the runtime phase override state is cleared.
   fields:
     entry_id:
       name: Entry ID

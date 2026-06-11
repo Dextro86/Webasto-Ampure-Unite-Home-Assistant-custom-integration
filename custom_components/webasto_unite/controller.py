@@ -74,7 +74,7 @@ class WallboxController:
             self.reset_solar_state()
 
         installed_phases = self._resolve_installed_phases(wallbox)
-        pv_phase_count, pv_phase_source = self._resolve_solar_phase_context(mode, wallbox)
+        pv_phase_count, pv_phase_source = self._resolve_solar_phase_context(mode, wallbox, effective_pv_strategy)
         dlb_result = self.dlb.calculate_available_current(
             sensors,
             installed_phases,
@@ -212,7 +212,12 @@ class WallboxController:
             return wallbox.installed_phases
         return 3
 
-    def _resolve_solar_phase_context(self, mode: ChargeMode, wallbox: WallboxState) -> tuple[int, str]:
+    def _resolve_solar_phase_context(
+        self,
+        mode: ChargeMode,
+        wallbox: WallboxState,
+        pv_strategy: SolarControlStrategy,
+    ) -> tuple[int, str]:
         if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
             return wallbox.phases_in_use, "wallbox_active_phases"
         installed_phases = self._resolve_installed_phases(wallbox)
@@ -229,8 +234,15 @@ class WallboxController:
             and installed_phases == 3
             and wallbox.phases_in_use not in (1, 3)
         ):
-            # Pre-start phase count is unknown; use a conservative 1P assumption
-            # so 1P vehicles on 3P installations can still start on PV.
+            if normalize_solar_control_strategy(pv_strategy) == SolarControlStrategy.ECO_SOLAR:
+                if wallbox.phase_switch_mode_raw == 0:
+                    return 1, "phase_switch_mode_1p"
+                if wallbox.phase_switch_mode_raw == 1:
+                    return 3, "phase_switch_mode_3p"
+                return 3, "pre_start_3p_safety"
+            # Smart Solar and Solar Boost may use grid support. Keep the
+            # conservative 1P assumption so they can start before physical phase
+            # observation is available.
             return 1, "pre_start_1p_assumption"
         return installed_phases, "installed_phases"
 

@@ -430,13 +430,14 @@ def test_pv_mode_uses_effective_active_phases_while_charging():
     assert decision.final_target_a == 16.0
 
 
-def test_pv_mode_on_3p_configuration_uses_adaptive_1p_assumption_before_charging_starts():
+def test_eco_solar_on_3p_configuration_uses_requested_1p_before_charging_starts():
     controller = make_controller(solar_control_strategy="surplus", solar_min_current_a=6.0)
     wallbox = WallboxState(
         installed_phases=3,
         charging_active=False,
         phases_in_use=None,
         vehicle_connected=True,
+        phase_switch_mode_raw=0,
     )
     sensors = HaSensorSnapshot(surplus_power_w=2300.0, valid=True)
 
@@ -447,7 +448,28 @@ def test_pv_mode_on_3p_configuration_uses_adaptive_1p_assumption_before_charging
     assert decision.mode_target_a == 10.0
     assert decision.final_target_a == 10.0
     assert controller.solar_state.phase_count == 1
-    assert controller.solar_state.phase_source == "pre_start_1p_assumption"
+    assert controller.solar_state.phase_source == "phase_switch_mode_1p"
+
+
+def test_eco_solar_on_3p_configuration_waits_when_pre_start_phase_is_3p():
+    controller = make_controller(solar_control_strategy="surplus", solar_min_current_a=6.0)
+    wallbox = WallboxState(
+        installed_phases=3,
+        charging_active=False,
+        phases_in_use=None,
+        vehicle_connected=True,
+        phase_switch_mode_raw=1,
+    )
+    sensors = HaSensorSnapshot(surplus_power_w=2300.0, valid=True)
+
+    decision = controller.evaluate(ChargeMode.SOLAR, wallbox, sensors)
+
+    assert decision.charging_enabled is False
+    assert decision.reason == ControlReason.BELOW_MIN_CURRENT
+    assert decision.mode_target_a is None
+    assert decision.final_target_a is None
+    assert controller.solar_state.phase_count == 3
+    assert controller.solar_state.phase_source == "phase_switch_mode_3p"
 
 
 def test_pv_mode_on_3p_configuration_uses_observed_3p_while_charging():

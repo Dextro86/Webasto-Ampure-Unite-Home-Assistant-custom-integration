@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import monotonic
 
 from .const import (
@@ -40,6 +40,7 @@ class PhaseRuntimeState:
     mismatch_3p_since_monotonic: float | None = None
     session_started_monotonic: float | None = None
     recovery_warning: str | None = None
+    policy_failed_targets: set[str] = field(default_factory=set)
 
     def reset_policy_state(self) -> None:
         self.policy_candidate_target = None
@@ -58,6 +59,11 @@ class PhaseRuntimeState:
         self.policy_candidate_target = None
         self.policy_candidate_since_monotonic = None
 
+    def record_policy_failed_target(self, target: str) -> None:
+        self.policy_failed_targets.add(target)
+        self.policy_candidate_target = None
+        self.policy_candidate_since_monotonic = None
+
     def reset_session_transient_state(self) -> None:
         self.reset_policy_state()
         self.new_session_3p_restore_attempt_count = 0
@@ -65,6 +71,7 @@ class PhaseRuntimeState:
         self.mismatch_3p_since_monotonic = None
         self.session_started_monotonic = None
         self.recovery_warning = None
+        self.policy_failed_targets.clear()
 
     def mark_session_started(self) -> None:
         self.session_started_monotonic = monotonic()

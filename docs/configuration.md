@@ -366,7 +366,7 @@ What this means:
 - The `Phase Switch` select exposes EVCC-compatible options `1` and `3` and uses the same safe phase-switch sequence.
 - The button/service uses the same internal pause/resume semantics as `Pause Charging` and `Resume Charging`, waits until the charger actually appears paused, writes register `405`, verifies that register `405` holds the requested value, resumes charging if the charger was already charging, and then observes the measured active phases for a longer window.
 - `Request 3P Mode` deliberately uses a `1P -> 3P` edge trigger. This is stronger than a plain `3P` write and helps when register `405` already reports `3P` while the active session is still physically charging on 1P.
-- `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405`. This can run without a connected vehicle.
+- `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
 - A manual or automatic switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration clears its runtime/session state but does not write register `405`; the next real plug-in event is used to re-evaluate and, if needed, normalize the charger back to the configured phase mode.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects active phases from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
@@ -392,7 +392,7 @@ Manual switch requests are blocked when:
 - The phase-switch register `405` cannot be read.
 - The integration itself is configured as `1P`.
 
-`Restore Default Phase Mode` is the exception to the vehicle-connected requirement. It is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session.
+`Restore Default Phase Mode` is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session. It only writes to the charger when a vehicle is connected; without a connected vehicle it clears the integration's runtime phase override state and waits for the next session.
 
 If automatic restore fails, `restore_pending` remains visible as an attribute on `Requested Phase` and `Phase Recovery State` reports `Phase Restore Pending`.
 

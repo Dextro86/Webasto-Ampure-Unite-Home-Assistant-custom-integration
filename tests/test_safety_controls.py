@@ -1008,6 +1008,68 @@ def test_phase_policy_dry_run_cooldown_blocks_auto_ready_after_switch():
     assert decision.session_switch_count == 1
 
 
+def test_phase_policy_blocks_failed_automatic_target_for_current_session():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator._phase_policy_candidate_target = "1P"
+    coordinator._phase_policy_candidate_since_monotonic = monotonic() - AUTO_PHASE_STABLE_TO_1P_S - 1
+    coordinator._phase_policy_last_switch_monotonic = None
+    coordinator._phase_policy_session_switch_count = 0
+    coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+    coordinator._phase_runtime().record_policy_failed_target("1P")
+
+    decision = coordinator._apply_phase_policy_dry_run(PhasePolicyDecision(decision="would_request_1p", target="1P"))
+
+    assert decision.auto_ready is False
+    assert decision.auto_block_reason == "automatic_phase_switch_failed_this_session"
+    assert decision.cooldown_remaining_s == 0.0
+
+
+def test_restore_default_phase_does_not_start_automatic_solar_cooldown():
+    class _AcceptedPhaseSwitchManager:
+        active = False
+
+        def __init__(self):
+            self.last_result = None
+            self.last_block_reason = None
+            self.last_target = None
+            self.state = "idle"
+
+        async def request(self, **kwargs):
+            self.last_result = "physical_verified"
+            self.last_block_reason = None
+            self.last_target = f"{kwargs['target_phases']}P"
+            self.state = "physical_verified"
+
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator.phase_switch_manager = _AcceptedPhaseSwitchManager()
+        coordinator.client = SimpleNamespace()
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+        coordinator._phase_policy_last_switch_monotonic = None
+        coordinator._phase_policy_session_switch_count = 0
+
+        await coordinator.async_restore_default_phase_mode(
+            WallboxState(
+                installed_phases=3,
+                available=True,
+                vehicle_connected=True,
+                charging_active=True,
+                phases_in_use=1,
+                phase_switch_mode_raw=0,
+            ),
+            request_refresh=False,
+            force_edge_trigger=True,
+        )
+
+        assert coordinator._phase_policy_last_switch_monotonic is None
+        assert coordinator._phase_policy_session_switch_count == 0
+
+    asyncio.run(_run())
+
+
 def test_automatic_solar_phase_policy_executes_ready_target_only_when_integration_controls():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -1024,7 +1086,11 @@ def test_automatic_solar_phase_policy_executes_ready_target_only_when_integratio
         coordinator._phase_switch_task = None
         coordinator._phase_restore_task = None
         coordinator.async_request_refresh = AsyncMock()
-        coordinator.async_request_phase_switch = AsyncMock()
+
+        async def _request_phase_switch_success(*args, **kwargs):
+            coordinator._phase_switch_last_result = "physical_verified"
+
+        coordinator.async_request_phase_switch = AsyncMock(side_effect=_request_phase_switch_success)
 
         executed = await coordinator._maybe_execute_automatic_phase_policy(
             PhasePolicyDecision(decision="would_request_3p", target="3P", auto_ready=True)
@@ -1088,6 +1154,81 @@ def test_failed_automatic_phase_switch_sets_cooldown_without_counting_session_sw
         assert coordinator._phase_policy_candidate_target is None
 
     asyncio.run(_run())
+
+
+def test_central_phase_action_does_not_restore_3p_when_solar_wants_1p():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+        coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+        coordinator._mode = ChargeMode.SOLAR
+        coordinator._charging_paused = False
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+        coordinator.phase_switch_manager = SimpleNamespace(active=False)
+        coordinator._phase_switch_task = None
+        coordinator._phase_restore_task = None
+        coordinator._maybe_schedule_new_session_3p_restore = Mock(return_value=True)
+        wallbox = WallboxState(
+            installed_phases=3,
+            available=True,
+            vehicle_connected=True,
+            charging_active=True,
+            phases_in_use=3,
+            phase_switch_mode_raw=1,
+        )
+
+        executed = await coordinator._maybe_schedule_phase_action(
+            wallbox=wallbox,
+            phase_observability=SimpleNamespace(phase_offer_state="offering_3p"),
+            phase_policy=PhasePolicyDecision(
+                decision="would_request_1p",
+                target="1P",
+                auto_ready=False,
+                auto_block_reason="cooldown_active",
+            ),
+            vehicle_disconnected=False,
+            phase_session_settling=False,
+        )
+
+        assert executed is False
+        coordinator._maybe_schedule_new_session_3p_restore.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_3p_mismatch_recovery_does_not_override_solar_accepted_1p():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
+    coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
+    coordinator.controller = WallboxController(coordinator.control_config)
+    coordinator.controller.observed_session_phase_count = 3
+    coordinator.controller.session_observed_3p = True
+    coordinator._mode = ChargeMode.SOLAR
+    coordinator._charging_paused = False
+    coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR
+    coordinator._phase_switch_task = None
+    coordinator._phase_restore_task = None
+    coordinator.phase_switch_manager = SimpleNamespace(active=False)
+    coordinator._phase_3p_recovery_attempted = False
+    coordinator._phase_3p_mismatch_since_monotonic = monotonic() - 121.0
+    coordinator._schedule_phase_restore_task = Mock()
+    wallbox = WallboxState(
+        installed_phases=3,
+        available=True,
+        vehicle_connected=True,
+        charging_active=True,
+        phases_in_use=1,
+        phase_switch_mode_raw=1,
+    )
+
+    executed = coordinator._maybe_schedule_3p_mismatch_recovery(
+        wallbox=wallbox,
+        phase_offer_state="requested_3p_observed_1p",
+        phase_policy=PhasePolicyDecision(decision="no_action"),
+    )
+
+    assert executed is False
+    coordinator._schedule_phase_restore_task.assert_not_called()
 
 
 def test_3p_mismatch_recovery_schedules_one_edge_trigger_after_stable_mismatch():
@@ -1223,7 +1364,7 @@ def test_manual_phase_switch_aborts_when_pause_is_not_confirmed():
     asyncio.run(_run())
 
 
-def test_restore_default_phase_can_run_without_connected_vehicle():
+def test_restore_default_phase_does_not_write_without_connected_vehicle():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
         coordinator.entry = make_config_entry(data={"host": "192.168.1.10", "installed_phases": "3p"})
@@ -1245,9 +1386,10 @@ def test_restore_default_phase_can_run_without_connected_vehicle():
 
         await coordinator.async_restore_default_phase_mode()
 
-        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
-        assert coordinator.client.read.await_count == 2
-        assert coordinator._phase_switch_last_result == "register_verified"
+        coordinator.client.write.assert_not_called()
+        coordinator.client.read.assert_not_called()
+        assert coordinator._phase_switch_last_result == "vehicle_not_connected"
+        assert coordinator._phase_switch_last_block_reason == "vehicle_not_connected"
         assert coordinator._phase_switch_last_target == "3P"
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_restore_pending is False
@@ -1277,7 +1419,7 @@ def test_restore_default_phase_noops_when_already_in_default_mode():
         await coordinator.async_restore_default_phase_mode()
 
         coordinator.client.write.assert_not_called()
-        assert coordinator._phase_switch_last_result == "already_in_target_phase"
+        assert coordinator._phase_switch_last_result == "vehicle_not_connected"
         assert coordinator._phase_switch_last_target == "3P"
 
     asyncio.run(_run())
@@ -1294,6 +1436,7 @@ def test_restore_default_phase_rewrites_when_register_matches_but_physical_phase
         coordinator.wallbox_reader = SimpleNamespace(
             read_wallbox_state=AsyncMock(
                 side_effect=[
+                    WallboxState(available=True, charging_active=False, active_power_w=0.0),
                     WallboxState(available=True, charging_active=False, active_power_w=0.0),
                     WallboxState(available=True, charging_active=False, active_power_w=0.0),
                     *[
@@ -1566,7 +1709,7 @@ def test_session_end_clears_override_without_register_write_even_when_override_f
     asyncio.run(_run())
 
 
-def test_restart_phase_mismatch_without_vehicle_restores_default_phase():
+def test_restart_phase_mismatch_without_vehicle_does_not_write_default_phase():
     async def _run():
         wallbox = WallboxState(
             installed_phases=3,
@@ -1605,11 +1748,9 @@ def test_restart_phase_mismatch_without_vehicle_restores_default_phase():
 
         snapshot = await coordinator._async_update_data()
 
-        assert coordinator._phase_restore_task is not None
-        assert snapshot.phase_restore_pending is True
-        await coordinator._phase_restore_task
-
-        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
+        assert coordinator._phase_restore_task is None
+        assert snapshot.phase_restore_pending is False
+        coordinator.client.write.assert_not_called()
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_restore_pending is False
 
@@ -1770,7 +1911,7 @@ def test_existing_phase_session_override_stays_active_while_connected_in_solar_m
     asyncio.run(_run())
 
 
-def test_restart_phase_mismatch_restores_default_even_when_register_404_reports_1p():
+def test_restart_phase_mismatch_without_vehicle_does_not_write_even_when_register_404_reports_1p():
     async def _run():
         wallbox = WallboxState(
             installed_phases=3,
@@ -1809,11 +1950,9 @@ def test_restart_phase_mismatch_restores_default_even_when_register_404_reports_
 
         snapshot = await coordinator._async_update_data()
 
-        assert coordinator._phase_restore_task is not None
-        assert snapshot.phase_restore_pending is True
-        await coordinator._phase_restore_task
-
-        coordinator.client.write.assert_awaited_once_with(PHASE_SWITCH_MODE, 1)
+        assert coordinator._phase_restore_task is None
+        assert snapshot.phase_restore_pending is False
+        coordinator.client.write.assert_not_called()
         assert coordinator._phase_session_override_active is False
         assert coordinator._phase_restore_pending is False
 
@@ -1965,12 +2104,31 @@ def test_managed_normal_mode_allows_manual_phase_request_controls():
     assert restore.available is True
 
 
-def test_manual_phase_switch_buttons_are_unavailable_when_phase_switch_is_blocked():
+def test_manual_phase_switch_buttons_follow_register_availability_like_phase_select():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
         coordinator.entry = make_config_entry()
         coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
-        coordinator.data = SimpleNamespace(phase_switch_available=False)
+        coordinator.data = SimpleNamespace(phase_switch_available=False, phase_switch_register_available=True)
+        coordinator.async_schedule_phase_switch = AsyncMock()
+
+        request_1p = WebastoRequestPhase1PButton(coordinator)
+
+        assert request_1p.available is True
+
+        await request_1p.async_press()
+
+        coordinator.async_schedule_phase_switch.assert_awaited_once_with(1)
+
+    asyncio.run(_run())
+
+
+def test_manual_phase_switch_buttons_are_unavailable_without_phase_register():
+    async def _run():
+        coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+        coordinator.entry = make_config_entry()
+        coordinator._phase_switching_mode = PHASE_SWITCHING_MODE_MANUAL_ONLY
+        coordinator.data = SimpleNamespace(phase_switch_available=True, phase_switch_register_available=False)
         coordinator.async_schedule_phase_switch = AsyncMock()
 
         request_1p = WebastoRequestPhase1PButton(coordinator)
@@ -4582,8 +4740,8 @@ def test_coordinator_solar_runtime_uses_adaptive_start_then_observed_three_phase
         first_snapshot = await coordinator._async_update_data()
         second_snapshot = await coordinator._async_update_data()
 
-        assert first_snapshot.mode_target_a == 10.0
-        assert first_snapshot.final_target_a == 6.0
+        assert first_snapshot.mode_target_a is None
+        assert first_snapshot.final_target_a is None
         assert first_snapshot.wallbox.phases_in_use is None
         assert first_snapshot.solar_input_state == "ready"
 
