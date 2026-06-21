@@ -4,6 +4,8 @@ This guide explains the main settings for the Webasto/Ampure Unite Home Assistan
 
 Start conservatively. First confirm that monitoring works and that the charger values look correct. Only then enable active charging control.
 
+For the intended runtime behavior of modes, pause/resume, plug/unplug and phase switching, see [Behavior contract](behavior_contract.md). For supported entities and services, see [Public API](public_api.md).
+
 ## Requirements
 
 Before using the integration:
@@ -63,24 +65,26 @@ If you want the integration to return to Solar charging after a Home Assistant r
 Restart behavior is intentionally split in two parts:
 
 - `Default Mode` is restored from the integration settings.
-- `Charging On/Off` is restored from persistent storage.
+- `Charging Enabled` is restored from persistent storage.
 
 This means a Home Assistant restart does not automatically resume charging if charging was previously turned off. It also means temporary runtime session settings are not restored after restart.
 
 At the end of a vehicle session, when the vehicle is unplugged, the runtime charge mode is reset to the configured `Default Mode`. This prevents a previous session's manually selected `Smart Solar`, `Eco Solar`, `Solar Boost` or `Fixed Current` runtime mode from silently carrying over into the next plug-in session.
 
-`Charging On/Off` is available when `Integration Charging Control` is `Enabled` or `External Controller`. In `Monitoring Only` mode the integration keeps the charger alive and monitors it, but it does not write charging-current commands.
+`Charging Enabled` is available when `Integration Charging Control` is `Enabled` or `External Controller`. In `Monitoring Only` mode the integration keeps the charger alive and monitors it, but it does not write charging-current commands.
 
 When `Integration Charging Control` is `Monitoring Only`, `Charging Behavior` shows `Monitoring Only - Not Writing`. `Final Target` may still show the current the integration would choose, but that value is diagnostic only and is not written to the charger.
 
-When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging On/Off`, `Pause Charging`, `Resume Charging` and `External Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. During a phase switch, the latest external current request is deferred and written after the safe phase-switch sequence finishes. `Maximum Current` remains the configured upper limit.
+When `Integration Charging Control` is `External Controller`, this integration's own Solar/DLB/fixed-current controller does not write automatic targets. `Charging Enabled` and `External Requested Current` remain writable so EVCC or another controller can control the charger through Home Assistant. During the short phase-register write task, the latest external current request is deferred and written afterwards. `Maximum Current` remains the configured upper limit.
 
-`Pause Charging` and `Resume Charging` buttons are also available when `Integration Charging Control` is `Enabled` or `External Controller`. They are convenience controls for the same charging-enabled state:
+`Charging Enabled` is the single user-facing pause/resume control:
 
-- `Pause Charging`: disables charging and lets the integration write `0 A`.
-- `Resume Charging`: enables charging again and lets the active mode calculate the next current target.
+- `Off`: disables charging and lets the integration write `0 A`.
+- `On`: enables charging again and lets the active mode calculate the next current target.
 
 The Unite does not expose a known separate session-stop command in this integration. A charging session normally ends when the vehicle is unplugged or when the charger itself ends it.
+
+Because pause/resume are current-control helpers, they should not be interpreted as a guaranteed vehicle-side session stop/start. The charger and vehicle may still need their own negotiation time after a pause, resume or phase-switch sequence.
 
 ## Temporary Session Settings
 
@@ -357,17 +361,18 @@ Useful diagnostics:
 
 ## Phase Switching
 
-Phase switching is experimental and off by default. `Manual Only` exposes explicit buttons, services and the phase select. `Automatic Solar` lets this integration request 1P/3P switches only while it owns Solar control.
+Phase switching is experimental and off by default. When `Phase Switching Mode` is `Off`, or when `Integration Charging Control` is `Monitoring Only`, the phase select and phase buttons are not created. `Manual Only` creates explicit buttons/services and the phase select. `Automatic Solar` also lets the Solar phase policy write register `405` after the target has been stable long enough and cooldown/session-count guards allow it.
 
 What this means:
 
 - Phase switching is off by default.
-- Manual switching is exposed through explicit buttons/services: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
-- The `Phase Switch` select exposes EVCC-compatible options `1` and `3` and uses the same safe phase-switch sequence.
-- The button/service uses the same internal pause/resume semantics as `Pause Charging` and `Resume Charging`, waits until the charger actually appears paused, writes register `405`, verifies that register `405` holds the requested value, resumes charging if the charger was already charging, and then observes the measured active phases for a longer window.
-- `Request 3P Mode` deliberately uses a `1P -> 3P` edge trigger. This is stronger than a plain `3P` write and helps when register `405` already reports `3P` while the active session is still physically charging on 1P.
-- `Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
-- A manual or automatic switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration clears its runtime/session state but does not write register `405`; the next real plug-in event is used to re-evaluate and, if needed, normalize the charger back to the configured phase mode.
+- Manual switching is exposed through explicit buttons/services when phase switching is enabled: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
+- The `Phase Switch` select exposes EVCC-compatible options `1` and `3` and uses the same explicit register-write path as the phase buttons.
+- The button/service writes register `405` directly (`0 = 1P`, `1 = 3P`), marks the phase switch as settling and lets the normal control loop continue current control.
+- Manual phase switching does not pause charging, resume charging, retry, verify register `405` in a loop or treat measured active phases as hard success/failure.
+- An explicit request may write register `405` even if `Requested Phase` already shows the same target, because `Requested Phase` and `Observed Phase` can temporarily disagree.
+- `Restore Configured Phase` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
+- A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration clears its runtime/session state but does not write register `405`.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects active phases from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:
@@ -375,15 +380,14 @@ What this means:
   - Register `405`: experimental phase-switch mode register. `Requested Phase` uses this register as its state.
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
 - `Requested Phase`, `Observed Phase` and `Phase Recovery State` are the three primary phase diagnostics. Lower-level fields such as observed session phase usage, offer state, phase consistency, register `404`, raw register `405`, switch availability, block reason and policy timing are exposed as attributes.
-- `Phase Recovery State` shows the current step, for example `Pausing`, `Waiting For Pause`, `Writing Phase Register`, `Verifying Phase Register`, `Waiting Before Resume`, `Retrying Phase Switch`, `Retry Pausing`, `Retry Writing Phase Register`, `Retry Waiting Before Resume`, `Retry Resuming`, `Observing Physical Phases`, `Register Verified`, `Physical Verified`, `Physical Timeout`, `Register Reverted` or `Pause Not Confirmed`.
-- `Last Phase Switch Result = Register Verified` means only register `405` confirmed the requested value. `Physical Verified` means measured active phases also matched the request after charging resumed. `Pause Not Confirmed` means charging did not actually drop low enough after the pause request, so the integration did not write the phase register. `Vehicle Did Not Resume` means charging did not restart after two full bounded phase-switch sequences. `Physical Timeout` means charging did resume, but the active session did not move to the requested phase count after two full bounded phase-switch sequences. `Register Reverted` means register `405` fell back away from the requested value.
-- Policy attributes on `Phase Recovery State` show whether Solar automatic phase switching is ready after stable phase-target timing, cooldown and session-count guards. They write register `405` only when `Phase Switching Mode = Automatic Solar` and `Integration Charging Control = Enabled`.
-- On a 3P-configured installation, a new plug-in session waits about 45 seconds for charger/session data to settle. It can then perform one 3P start normalization when phase switching is enabled: write `405 = 0`, verify 1P, then write `405 = 1` and verify 3P before normal control continues. This avoids relying only on a stale-looking register `405 = 3P` when the previous session ended in 1P.
-- Automatic Solar requires the same phase target to remain stable before switching: 120 seconds for 3P -> 1P and 600 seconds for 1P -> 3P.
-- Automatic Solar uses a 10 minute cooldown after a switch, limits automatic switching to 5 switches per connected session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P.
+- `Phase Recovery State` shows the current phase-control state, for example `Phase Switch Settling`, `Phase Register Written`, `Already In Target Phase` or `Blocked`.
+- `Last Phase Switch Result = Phase Register Written` means the integration wrote register `405`. It does not prove that the physical charging session immediately moved to the requested phase count; use `Observed Phase` for that.
+- Policy attributes on `Phase Recovery State` show what Solar automatic phase switching is evaluating, including target, required surplus, stable timing, cooldown and session switch count.
+- New plug-in sessions no longer trigger automatic 3P start normalization. If a session starts physically on 1P while `Requested Phase` says `3P`, the integration reports the mismatch and keeps normal current control predictable.
+- Automatic Solar executes only when `auto_ready` is true. It then uses the same direct register-405 write path as manual phase switching.
 - In `Eco Solar`, 3P -> 1P is requested only when surplus can support at least the 1P minimum. In `Smart Solar` and `Solar Boost`, 3P -> 1P can also be requested below the 1P minimum because these modes intentionally allow baseline charging.
 
-Manual switch requests are blocked when:
+Manual switch service requests are blocked when:
 
 - `Phase Switching Mode` is `Off`.
 - `Integration Charging Control` is `Monitoring Only`.
@@ -392,11 +396,11 @@ Manual switch requests are blocked when:
 - The phase-switch register `405` cannot be read.
 - The integration itself is configured as `1P`.
 
-`Restore Default Phase Mode` is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session. It only writes to the charger when a vehicle is connected; without a connected vehicle it clears the integration's runtime phase override state and waits for the next session.
+`Restore Configured Phase` is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session. It only writes to the charger when a vehicle is connected; without a connected vehicle it clears the integration's runtime phase override state and waits for the next session.
 
-If automatic restore fails, `restore_pending` remains visible as an attribute on `Requested Phase` and `Phase Recovery State` reports `Phase Restore Pending`.
+During an explicit manual restore, `restore_pending` can remain visible as an attribute on `Requested Phase` and `Phase Recovery State` can report `Phase Restore Pending`.
 
-After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration`. If no vehicle is connected, it may restore `405` to `Charger Configuration`. If a vehicle is already connected at startup, it avoids treating that first read as a fresh plug-in event. A real plug-in event while Home Assistant is running can trigger the 45-second settle period and then the bounded 3P start normalization described above.
+After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration` for diagnostics. It does not automatically restore register `405`; use `Restore Configured Phase` explicitly if you want to write the configured phase mode.
 
 The charger may still have its own physical or firmware-level phase configuration. Treat manual phase switching as experimental and verify behavior on your own charger before using it in automations.
 
@@ -410,14 +414,14 @@ Recommended setup when EVCC is the active charging manager:
 - Set `Default Mode` to `Normal`.
 - Keep this integration's Solar and DLB control disabled unless you intentionally want an additional local safety cap.
 - Do not run EVCC Solar control and this integration's Solar control at the same time.
-- Do not run EVCC Solar control and this integration's Automatic Solar phase switching at the same time. In `External Controller` mode, EVCC may request phase switches through the `Phase Switch` select, but this integration's own Automatic Solar policy does not run.
+- In `External Controller` mode, EVCC may request phase switches through the `Phase Switch` select. This integration's own Automatic Solar phase switching does not run.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging On/Off` and `External Requested Current`. Current requests received during a phase switch are deferred until the switch sequence is complete.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes Home Assistant control entities. The integration's own Solar/DLB/fixed-current controller does not write automatic current targets. EVCC can write through `Charging Enabled` and `External Requested Current`. Current requests received during the phase-register write task are deferred until that write task is complete.
 
 Relevant entities:
 
 - `IEC 61851 State`: charger status for EVCC (`A`, `B`, `C`, `E`, `F`).
-- `Charging On/Off`: enable/disable switch.
+- `Charging Enabled`: enable/disable switch.
 - `External Requested Current`: number entity for EVCC `setMaxCurrent`.
 - `Maximum Current`: configured upper current limit. EVCC requests above this value are rejected.
 - `Active Power`: measured charger power.
@@ -450,20 +454,18 @@ chargers:
     phaseswitch: select.webasto_unite_phase_switch
 ```
 
-If EVCC cannot enable charging, verify that `Charging On/Off` is available in Home Assistant. It is unavailable when `Integration Charging Control` is `Monitoring Only`.
+If EVCC cannot enable charging, verify that `Charging Enabled` is available in Home Assistant. It is unavailable when `Integration Charging Control` is `Monitoring Only`.
 
 Existing Home Assistant installations can have different entity IDs because Home Assistant preserves entity registry names. Always check the actual entity IDs before copying the EVCC example.
 
-Configure EVCC `phaseswitch` only if you want EVCC to control 1P/3P switching. Use the `Phase Switch` select and verify the actual entity ID in Home Assistant.
+Configure EVCC `phaseswitch` only if you want EVCC to control 1P/3P switching. The `Phase Switch` select is only created when `Phase Switching Mode` is not `Off` and `Integration Charging Control` is not `Monitoring Only`. Use the `Phase Switch` select and verify the actual entity ID in Home Assistant.
 
 ## Important entities
 
 Daily-use entities:
 
 - `Charge Mode`: selected base charging mode.
-- `Charging On/Off`: user switch for whether charging is allowed. Unavailable when `Integration Charging Control` is `Monitoring Only`.
-- `Pause Charging`: one-shot button to disable charging through the existing current-control flow.
-- `Resume Charging`: one-shot button to enable charging through the existing current-control flow.
+- `Charging Enabled`: user switch for whether charging is allowed. Unavailable when `Integration Charging Control` is `Monitoring Only`.
 - `Solar Until Unplug`: temporary Solar session override.
 - `Fixed Current Until Unplug`: temporary fixed-current session override.
 - `Maximum Current (A)`: normal target current and configured upper limit.

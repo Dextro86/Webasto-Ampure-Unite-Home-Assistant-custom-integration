@@ -1,5 +1,7 @@
 # Troubleshooting
 
+When behavior is unclear, first compare it with the [Behavior contract](behavior_contract.md). The integration intentionally does not write phase changes during plug/unplug. Automatic Solar phase switching only writes after stable-target, cooldown and session-count guards pass.
+
 ## Charger Unavailable
 
 Check:
@@ -62,7 +64,7 @@ In Monitoring Only mode the integration still calculates `Final Target` for diag
 
 Set `Integration Charging Control` to `Enabled` if you want the integration to write the calculated current target to the charger.
 
-Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging On/Off`, `External Requested Current` or the `set_current` service. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
+Use `Integration Charging Control = External Controller` when EVCC or another controller should write current targets through `Charging Enabled`, `External Requested Current` or the `set_current` service. In that mode this integration's own Solar/DLB/fixed-current controller does not write automatic current targets.
 
 Useful diagnostics for this case:
 
@@ -122,20 +124,14 @@ Check:
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a vehicle capability claim.
 
-If `Phase Recovery State` has attribute `switch_block_reason = Charger Preconfigured 1P`, register `404` reports that the charger itself is configured as 1P. In that case the integration blocks 1P/3P switching.
+If `Phase Recovery State` has attribute `switch_block_reason = Charger Preconfigured 1P`, register `404` reports that the charger itself is configured as 1P. Treat this as diagnostic context; phase switching depends on the explicit register `405` path.
 
-Use `Restore Default Phase Mode` if register `405` was manually changed and you want to return to the configured `Charger Configuration`.
+Use `Restore Configured Phase` if register `405` was manually changed and you want to return to the configured `Charger Configuration`.
 
-If `Last Phase Switch Result` says `Pause Not Confirmed`, the integration wrote `0 A` but the charger kept drawing current. In that case the integration intentionally did not write register `405`.
+If `Last Phase Switch Result` says `Phase Register Written`, the integration wrote register `405`. This is intentionally not the same as physical verification. Check `Requested Phase` and `Observed Phase` together to see whether the active charging session actually followed the request.
 
-If `Last Phase Switch Result` says `Vehicle Did Not Resume`, register `405` accepted and held the requested value but the vehicle did not start charging again after two full bounded phase-switch sequences. In practice this usually means the car needs a physical reconnect or a longer CP/session reset than the integration can safely do automatically.
+If `Observed Phase` is `1P` while `Requested Phase` is `3P`, the integration does not know whether the connected vehicle is 1P-only or whether the charger/session is stuck on 1P. It reports the mismatch and keeps charging; it does not start automatic recovery.
 
-If `Last Phase Switch Result` says `Physical Timeout`, register `405` accepted and held the requested value and charging did resume, but the active charging session did not physically move to the requested phase count after two full bounded phase-switch sequences. This is useful test information; do not enable Automatic Solar phase switching for that charger/vehicle combination until manual switching is reliable.
+After unplug the integration only clears its own runtime/session state. It intentionally does not write register `405` while the charger is closing the session. If the next session starts with `Requested Phase = 3P` but `Observed Phase = 1P`, use manual phase controls if you want to test switching; the integration will not automatically normalize it.
 
-If `Last Phase Switch Result` says `Register Reverted`, the charger accepted register `405` briefly but later reported a different value again.
-
-If `Observed Phase` is `1P` while `Requested Phase` is `3P`, the integration does not know whether the connected vehicle is 1P-only or whether the charger/session is stuck on 1P. In Automatic Solar mode it may try one bounded 3P recovery only when 3P is clearly intended for this session. If recovery fails, it keeps charging and exposes the warning on `Phase Recovery State`.
-
-After unplug the integration only clears its own runtime/session state. It intentionally does not write register `405` while the charger is closing the session. If the next session starts with `Requested Phase = 3P` but `Observed Phase = 1P`, wait for the startup settle period first; the integration can then try one bounded 3P normalization when phase switching is enabled.
-
-After a restart, `restore_pending` can mean register `405` differs from `Charger Configuration` while no vehicle is connected, or while a manual restore is active. The integration avoids treating the first read after startup as a fresh plug-in event. A real plug-in event while Home Assistant is running can trigger a 45-second settle period and then one bounded 3P start normalization on 3P installations when phase switching is enabled.
+After a restart, phase diagnostics can show that register `405` differs from `Charger Configuration`. The integration avoids treating the first read after startup as a fresh plug-in event and does not automatically write register `405`.

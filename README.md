@@ -30,7 +30,7 @@ This is a community project developed with significant AI assistance. Active cha
 | Reconnect handling | Yes |
 | Advanced diagnostics | Yes |
 | Manual 1P/3P phase switching | Experimental, off by default |
-| Automatic Solar phase switching | Experimental, off by default |
+| Automatic Solar phase switching | Experimental, opt-in |
 
 ## Why this integration exists
 
@@ -79,6 +79,8 @@ Detailed instructions: [Installation](docs/installation.md)
 
 - [Installation](docs/installation.md)
 - [Full configuration reference](docs/configuration.md)
+- [Behavior contract](docs/behavior_contract.md)
+- [Public API](docs/public_api.md)
 - [EVCC compatibility](docs/evcc.md)
 - [Solar charging and Dynamic Load Balancing](docs/solar_dlb.md)
 - [Diagnostics](docs/diagnostics.md)
@@ -123,7 +125,6 @@ The integration exposes entities and diagnostics that can be used by EVCC throug
 - derived IEC 61851 state
 - charger enable/disable switch
 - current-control number entity
-- pause/resume buttons
 - measured power and phase currents
 - session energy
 - observed active phases
@@ -133,14 +134,24 @@ Use `Integration Charging Control = External Controller` when EVCC is the active
 
 See [EVCC compatibility](docs/evcc.md) and the [EVCC Home Assistant example](examples/evcc_home_assistant.yaml).
 
+## Behavior Contract
+
+The intended runtime behavior is documented in [Behavior contract](docs/behavior_contract.md). In short:
+
+- plug/unplug never writes the phase register
+- automatic Solar phase switching only writes after stable policy/cooldown guards
+- phase writes happen only through explicit manual/EVCC requests or guarded Automatic Solar execution
+- `Charging Enabled` is a current-control helper, not a real session stop/start command
+- `Requested Phase` and `Observed Phase` are separate on purpose
+
 ## Phase Switching
 
-Phase switching is experimental and off by default. `Manual Only` exposes explicit 1P/3P buttons, services and an EVCC-compatible phase select. `Automatic Solar` lets this integration request 1P/3P switches only while it owns Solar control.
+Phase switching is experimental and off by default. `Manual Only` exposes explicit 1P/3P buttons, services and an EVCC-compatible phase select. `Automatic Solar` lets the Solar policy request 1P/3P writes after the target has been stable long enough and cooldown/session-count guards allow it.
 
 The known register mapping used by the integration is:
 
 - input register `404`: charger-reported phase capability/configuration context. This is diagnostic only; field testing showed it can report `1P` while the charger is physically charging on 3 phases.
-- holding register `405`: requested phase-switch mode (`0 = 1P`, `1 = 3P`). Manual and automatic switching write and verify this register.
+- holding register `405`: requested phase-switch mode (`0 = 1P`, `1 = 3P`). Manual phase switching writes this register directly.
 
 Phase diagnostics are intentionally consolidated:
 
@@ -150,13 +161,13 @@ Phase diagnostics are intentionally consolidated:
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a vehicle capability claim. Lower-level details such as register `404`, raw register `405`, policy target, session override, offer state, consistency and block reasons are exposed as attributes on these three phase sensors or through diagnostics, not as separate normal entities.
 
-Manual switching separates pause confirmation, register verification and physical verification. The integration uses the same internal pause/resume semantics as the `Pause Charging` and `Resume Charging` controls, waits until the pause is actually observed, writes register `405`, checks that register `405` stays on the requested value, resumes charging and then observes the measured active phases. `Request 3P Mode` deliberately uses a `1P -> 3P` edge trigger, because field testing showed register `405` can already report `3P` while the active session is still physically charging on 1P. `Register Verified` means register `405` accepted and held the request. `Physical Verified` means the measured charging phases also match the request. If charging does not pause, the switch is aborted with `Pause Not Confirmed`.
+Manual switching now follows the same simple model as EVCC's native Vestel/Webasto driver: validate the request, write register `405`, mark the switch as settling and let the normal control loop continue current control. It does not pause charging, resume charging, retry, verify the register in a loop or use measured phases as a hard success/failure condition. An explicit request writes `405` even if `Requested Phase` already shows the same target. `Requested Phase` shows register `405`; `Observed Phase` remains diagnostic.
 
-`Restore Default Phase Mode` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
+`Restore Configured Phase` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
 
-Manual and automatic switching away from `Charger Configuration` is treated as temporary for the connected session. On unplug, the integration only clears its runtime/session state and resets the runtime charge mode to the configured `Default Mode`; it does not write register `405` during charger session shutdown. When a new vehicle is plugged in on a 3P-configured installation and phase switching is enabled, the integration waits about 45 seconds for the charger/session data to settle and can then perform one bounded 3P start normalization by briefly writing register `405` to `1P`, verifying it, then writing `3P` and verifying it before normal charging control continues.
+Manual switching away from `Charger Configuration` is treated as temporary for the connected session. On unplug, the integration only clears its runtime/session state and resets the runtime charge mode to the configured `Default Mode`; it does not write register `405` during charger session shutdown. A new plug-in session no longer triggers automatic 3P restore or recovery writes.
 
-Automatic Solar phase switching uses the same safe phase-switch manager as manual switching. It requires a stable Solar phase target before switching, uses a 10 minute cooldown after a switch, limits automatic switches to 5 per session and requires about 300 W above the calculated 3P minimum before switching from 1P to 3P. If register `405` says `3P` but charging remains physically 1P, the integration may try one bounded 3P recovery only when it has a reason to believe 3P is intended for the current session; otherwise it reports the warning and keeps charging. `Eco Solar` remains surplus-only; `Smart Solar` and `Solar Boost` may request 1P even below the 1P surplus minimum because these modes intentionally allow baseline charging. In `External Controller` mode, EVCC may request phase switches through the phase select, but this integration's own Automatic Solar policy does not run.
+Automatic Solar phase switching uses the same direct register-write path as manual switching. It can request `1P` or `3P` only after the target has remained stable, cooldown is clear and the session switch limit has not been reached. If register `405` says `3P` while charging physically remains 1P, the integration reports the mismatch and keeps charging instead of starting automatic recovery. In `External Controller` mode, EVCC may still request phase switches through the phase select; this integration's own Solar phase switching does not run there.
 
 ## Stability-First Design
 

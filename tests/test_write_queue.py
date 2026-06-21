@@ -1,6 +1,6 @@
 import asyncio
 
-from custom_components.webasto_unite.write_queue import QueuedWrite, WritePriority, WriteQueueManager
+from custom_components.webasto_unite.control.write_queue import QueuedWrite, WritePriority, WriteQueueManager
 from custom_components.webasto_unite.registers import LIFE_BIT, SAFE_CURRENT_A, SET_CHARGE_CURRENT_A
 
 

@@ -12,9 +12,11 @@ When EVCC controls charging:
 - Set `Default Mode` to `Normal`.
 - Keep this integration's Solar control disabled. EVCC should be the Solar/loadpoint brain.
 - Keep this integration's DLB disabled unless you intentionally want an additional local safety cap.
-- If EVCC should control 1P/3P switching, configure EVCC `phaseswitch` to the `Phase Switch` select entity.
+- If EVCC should control 1P/3P switching, set `Phase Switching Mode` to `Manual Only` and configure EVCC `phaseswitch` to the `Phase Switch` select entity.
 
-In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging On/Off` and `External Requested Current` as the external control path. If EVCC sends a current update while a safe phase-switch sequence is running, the integration defers the latest requested current and writes it after the phase switch has finished.
+In `External Controller` mode the integration still reads the charger, sends keepalive and exposes control entities. It does not let its own Solar/DLB/fixed-current controller write automatic current targets. EVCC can use `Charging Enabled` and `External Requested Current` as the external control path. If EVCC sends a current update while the phase-register write task is running, the integration defers the latest requested current and writes it after that task has finished.
+
+The general runtime rules are documented in [Behavior contract](behavior_contract.md). For EVCC this mainly means: EVCC owns current control, this integration only executes explicit Home Assistant current/enable/phase requests, and this integration's own Automatic Solar phase switching does not run in `External Controller` mode.
 
 Important current-control distinction:
 
@@ -30,8 +32,6 @@ Entity IDs depend on the Home Assistant entity registry. Always check the actual
 |---|---|
 | Charger status | `sensor.webasto_unite_iec_61851_state` |
 | Enable/disable charging | `switch.webasto_unite_charging_allowed` |
-| Pause charging | `button.webasto_unite_pause_charging` |
-| Resume charging | `button.webasto_unite_resume_charging` |
 | Set charging current | `number.webasto_unite_requested_current` (`External Requested Current`) |
 | Maximum allowed current | configured in integration settings |
 | Active power | `sensor.webasto_unite_active_power` |
@@ -39,7 +39,7 @@ Entity IDs depend on the Home Assistant entity registry. Always check the actual
 | Current L2 | `sensor.webasto_unite_current_l2` |
 | Current L3 | `sensor.webasto_unite_current_l3` |
 | Session energy | `sensor.webasto_unite_session_energy` |
-| Observed active phases | `sensor.webasto_unite_effective_active_phases` |
+| Observed active phases | `sensor.webasto_unite_observed_phase` |
 | Phase switching | `select.webasto_unite_phase_switch` |
 | Compatibility diagnostics | `sensor.webasto_unite_evcc_status` |
 
@@ -75,7 +75,7 @@ The same example is available as [examples/evcc_home_assistant.yaml](../examples
 
 `Maximum Current` also exists as a legacy/config number entity, but it is disabled by default and should not be used as the EVCC current command.
 
-Configure `phaseswitch` only if you want EVCC to control 1P/3P switching. The select exposes EVCC-compatible options `1` and `3`, but every request still runs through this integration's safe phase-switch sequence.
+Configure `phaseswitch` only if you want EVCC to control 1P/3P switching. The select exposes EVCC-compatible options `1` and `3`; each request writes register `405` through this integration's explicit phase-switch path.
 
 ## IEC 61851 State
 

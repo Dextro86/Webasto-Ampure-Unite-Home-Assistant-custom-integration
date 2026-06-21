@@ -41,20 +41,6 @@ set_current:
       description: Requested charging current in amperes. Fractional values are accepted and rounded to the nearest whole ampere before writing to the charger.
       required: true
       example: 6.82
-set_user_limit:
-  name: Set Maximum Current
-  description: Legacy service alias. Sets the configured Maximum Current limit.
-  fields:
-    entry_id:
-      name: Entry ID
-      description: Config entry ID of the Webasto Unite integration instance.
-      required: true
-      example: "abc123"
-    current_a:
-      name: Current
-      description: Maximum Current in amperes.
-      required: true
-      example: 10
 trigger_reconnect:
   name: Reconnect Charger
   description: Reconnect the Modbus/TCP client and refresh charger state.
@@ -101,8 +87,8 @@ disable_fixed_current_until_unplug:
       required: true
       example: "abc123"
 request_phase_1p:
-  name: Request 1P Mode
-  description: Experimental phase switch request to 1P. Available when Phase Switching Mode is not Off. In Managed Normal mode, the integration uses the default phase mode instead.
+  name: Switch to 1P
+  description: Experimental explicit phase switch request to 1P. Available when Phase Switching Mode is not Off and register 405 is available.
   fields:
     entry_id:
       name: Entry ID
@@ -110,8 +96,8 @@ request_phase_1p:
       required: true
       example: "abc123"
 request_phase_3p:
-  name: Request 3P Mode
-  description: Experimental phase switch request to 3P. Available when Phase Switching Mode is not Off. In Managed Normal mode, the integration uses the default phase mode instead.
+  name: Switch to 3P
+  description: Experimental explicit phase switch request to 3P. Available when Phase Switching Mode is not Off and register 405 is available.
   fields:
     entry_id:
       name: Entry ID
@@ -119,7 +105,7 @@ request_phase_3p:
       required: true
       example: "abc123"
 restore_default_phase:
-  name: Restore Default Phase Mode
+  name: Restore Configured Phase
   description: Restore the phase mode derived from Charger Configuration. Requires a connected vehicle; without a connected vehicle only the runtime phase override state is cleared.
   fields:
     entry_id:

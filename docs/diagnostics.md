@@ -2,6 +2,8 @@
 
 The integration exposes diagnostic entities to make charger behavior, Solar control, DLB and EVCC compatibility easier to debug.
 
+Diagnostic meanings follow the [Behavior contract](behavior_contract.md). Phase-policy diagnostics show both the decision state and whether Automatic Solar is ready to execute a guarded phase switch.
+
 ## Core Diagnostics
 
 Useful entities:
@@ -60,16 +62,16 @@ Use these entities when `Final Target` and `Reported Current Limit` do not match
 - `Control Owner`: high-level source currently responsible for charging-current control, for example `Integration`, `External Controller`, `Solar`, `DLB`, `Fallback`, `Manual Pause` or `Monitoring Only`.
 - `Control Writes Enabled`: whether charging-current writes through this integration are available. This is true in `Enabled` and `External Controller` mode.
 - `Last Control Write`: last current value written to register `5004`.
-- `Last Control Write Reason`: why that write was made, for example Fixed Current, Solar, DLB or fallback.
+- `Last Control Write Reason`: why that write was made, for example Fixed Current, Solar, DLB, fallback or `Vehicle Disconnected`.
 - `Last Control Write Register`: register used for the write.
 - `Last Control Write Age`: how long ago the last current write happened.
-- `Last Control Write Blocked Reason`: why a calculated write was not sent, for example `Monitoring Only` or `External Controller Mode`.
+- `Last Control Write Blocked Reason`: why a calculated write was not sent, for example `Monitoring Only`, `External Controller Mode` or `Vehicle Not Connected`.
 
 `Last Control Write` also exposes verification attributes. The integration compares the last written current with the next normally polled `Reported Current Limit`; it does not perform an extra Modbus read just for verification. The status can be `pending`, `accepted`, `mismatch` or `unavailable`.
 
 In `Monitoring Only`, the integration may still calculate `Final Target`, but `Control Writes Enabled` is false and writes are not sent to the charger.
 
-In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging On/Off`, `External Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`. During a phase switch, the latest external current request is deferred until the phase-switch sequence is finished.
+In `External Controller` mode, the integration's own automatic controller also does not write calculated targets. External writes through `Charging Enabled`, `External Requested Current` or the `set_current` service are still allowed and are recorded as `External Controller`. During a phase switch, the latest external current request is deferred until the phase-switch sequence is finished.
 
 ## DLB Diagnostics
 
@@ -97,7 +99,7 @@ Useful entities:
 
 ## Phase Diagnostics
 
-Phase switching is experimental and off by default. `Manual Only` exposes explicit controls and the EVCC-compatible phase select. `Automatic Solar` allows this integration to switch phases only while it owns Solar control.
+Phase switching is experimental and off by default. `Manual Only` exposes explicit controls and the EVCC-compatible phase select. `Automatic Solar` can write register `405` when the Solar phase target is stable and cooldown/session-count guards allow it.
 
 Phase switching uses register `404` only as charger configuration/capability context and register `405` as the writable phase-switch mode. Measured active phases are observed session behavior, not a definitive vehicle capability.
 
@@ -109,13 +111,13 @@ Phase switching uses three main diagnostic entities:
 
 Everything else is intentionally exposed as attributes on these sensors or in diagnostics snapshots. This keeps the entity list smaller while still preserving the information needed for support.
 
-Phase switching reports separate checks:
+Phase switching reports separate requested and observed state:
 
-- Pause verification: after writing `0 A`, charging must actually drop to a low/paused state before register `405` is written.
-- Register verification: register `405` readback must hold the requested value for stable polls.
-- Physical verification: after charging resumes, measured active phases must match the requested phase count within the observation window.
+- `Requested Phase` follows register `405`.
+- `Observed Phase` follows measured L1/L2/L3 current usage.
+- `Phase Recovery State` shows whether a manual phase request was written and is settling.
 
-This distinction matters because some chargers can accept the register write before the current charging session physically changes phases.
+This distinction matters because some chargers can accept the register write before the current charging session physically changes phases. The integration reports that mismatch; it does not automatically correct it.
 
 Useful phase attributes:
 

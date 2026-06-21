@@ -25,9 +25,9 @@ Current state:
 
 - diagnostic phase observation exists
 - experimental manual phase switching exists
-- experimental Automatic Solar phase switching exists and is disabled by default
+- Automatic Solar phase switching exists behind stable-target, cooldown and session-count guards
 
-Automatic phase switching should remain:
+Future automatic phase switching should remain:
 
 - disabled by default
 - session-aware
@@ -46,6 +46,7 @@ Before calling the integration stable:
 - DLB should behave safely across common sensor setups.
 - Solar modes should be understandable and stable.
 - Restart behavior should be boring and predictable.
+- The documented [Behavior contract](behavior_contract.md) should match the implementation.
 - Documentation should match the actual product behavior.
 - Known limitations should be explicit.
 

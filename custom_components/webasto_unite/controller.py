@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from time import monotonic
 
-from .dlb import DlbEngine
+from .control.current import CurrentWriteDecider, WriteState
+from .core.limits import combine_current_limits
+from .features.dlb import DlbEngine
+from .features.solar import (
+    PvRuntimeState,
+    SolarEngine,
+    resolve_installed_phase_count,
+    resolve_solar_phase_context,
+)
 from .models import (
     ChargeMode,
     ControlConfig,
@@ -16,16 +24,6 @@ from .models import (
     WallboxState,
     normalize_solar_control_strategy,
 )
-from .solar import PvRuntimeState, SolarEngine
-
-
-@dataclass(slots=True)
-class WriteState:
-    last_written_current_a: float | None = None
-    last_write_monotonic: float = 0.0
-    pending_stable_cycles: int = 0
-    pending_target_a: float | None = None
-    pending_started_monotonic: float | None = None
 
 
 @dataclass(slots=True)
@@ -33,6 +31,7 @@ class WallboxController:
     config: ControlConfig
     dlb: DlbEngine = field(init=False)
     solar: SolarEngine = field(init=False)
+    current_write_decider: CurrentWriteDecider = field(init=False)
     write_state: WriteState = field(default_factory=WriteState)
     solar_state: PvRuntimeState = field(init=False)
     observed_session_phase_count: int | None = None
@@ -43,6 +42,11 @@ class WallboxController:
     def __post_init__(self) -> None:
         self.dlb = DlbEngine(self.config)
         self.solar = SolarEngine(self.config, monotonic_fn=lambda: monotonic())
+        self.current_write_decider = CurrentWriteDecider(
+            self.config,
+            state=self.write_state,
+            monotonic_fn=lambda: monotonic(),
+        )
         self.solar_state = self.solar.state
 
     def evaluate(
@@ -157,19 +161,13 @@ class WallboxController:
         )
 
     def mark_current_written(self, current_a: float) -> None:
-        self.write_state.last_written_current_a = current_a
-        self.write_state.last_write_monotonic = monotonic()
-        self.reset_pending_write_state()
+        self.current_write_decider.mark_current_written(current_a)
 
     def reset_pending_write_state(self) -> None:
-        self.write_state.pending_stable_cycles = 0
-        self.write_state.pending_target_a = None
-        self.write_state.pending_started_monotonic = None
+        self.current_write_decider.reset_pending_write_state()
 
     def reset_current_write_state(self) -> None:
-        self.write_state.last_written_current_a = None
-        self.write_state.last_write_monotonic = 0.0
-        self.reset_pending_write_state()
+        self.current_write_decider.reset_current_write_state()
 
     def reset_solar_state(self) -> None:
         self.solar.reset()
@@ -208,9 +206,7 @@ class WallboxController:
             self._pending_session_phase_polls = 0
 
     def _resolve_installed_phases(self, wallbox: WallboxState) -> int:
-        if wallbox.installed_phases in (1, 3):
-            return wallbox.installed_phases
-        return 3
+        return resolve_installed_phase_count(wallbox)
 
     def _resolve_solar_phase_context(
         self,
@@ -218,33 +214,13 @@ class WallboxController:
         wallbox: WallboxState,
         pv_strategy: SolarControlStrategy,
     ) -> tuple[int, str]:
-        if wallbox.charging_active and wallbox.phases_in_use in (1, 3):
-            return wallbox.phases_in_use, "wallbox_active_phases"
-        installed_phases = self._resolve_installed_phases(wallbox)
-        if (
-            mode == ChargeMode.SOLAR
-            and wallbox.vehicle_connected
-            and installed_phases == 3
-            and self.observed_session_phase_count in (1, 3)
-        ):
-            return self.observed_session_phase_count, "observed_session_phases"
-        if (
-            mode == ChargeMode.SOLAR
-            and not wallbox.charging_active
-            and installed_phases == 3
-            and wallbox.phases_in_use not in (1, 3)
-        ):
-            if normalize_solar_control_strategy(pv_strategy) == SolarControlStrategy.ECO_SOLAR:
-                if wallbox.phase_switch_mode_raw == 0:
-                    return 1, "phase_switch_mode_1p"
-                if wallbox.phase_switch_mode_raw == 1:
-                    return 3, "phase_switch_mode_3p"
-                return 3, "pre_start_3p_safety"
-            # Smart Solar and Solar Boost may use grid support. Keep the
-            # conservative 1P assumption so they can start before physical phase
-            # observation is available.
-            return 1, "pre_start_1p_assumption"
-        return installed_phases, "installed_phases"
+        return resolve_solar_phase_context(
+            mode=mode,
+            wallbox=wallbox,
+            strategy=pv_strategy,
+            installed_phases=self._resolve_installed_phases(wallbox),
+            observed_session_phase_count=self.observed_session_phase_count,
+        )
 
     def _mode_target(
         self,
@@ -360,31 +336,13 @@ class WallboxController:
         mode_target_a: float | None,
         dlb_limit_a: float | None,
     ) -> tuple[float | None, ControlReason | None]:
-        if mode_target_a is None:
-            return None, None
-
-        limits: list[tuple[float, ControlReason | None]] = [
-            (mode_target_a, None),
-            (self.config.max_current_a, None),
-        ]
-
-        if dlb_limit_a is not None:
-            limits.append((dlb_limit_a, ControlReason.DLB_LIMITED))
-        if wallbox.cable_max_current_a is not None:
-            limits.append((wallbox.cable_max_current_a, ControlReason.CABLE_LIMITED))
-        if wallbox.ev_max_current_a is not None:
-            limits.append((wallbox.ev_max_current_a, ControlReason.EV_LIMITED))
-
-        final_target, dominant_limit_reason = min(limits, key=lambda item: item[0])
-
-        minimum_current = self.config.min_current_a
-        if wallbox.hardware_min_current_a is not None:
-            minimum_current = max(minimum_current, wallbox.hardware_min_current_a)
-
-        if final_target < minimum_current:
-            return None, dominant_limit_reason
-
-        return round(final_target, 1), dominant_limit_reason
+        result = combine_current_limits(
+            config=self.config,
+            wallbox=wallbox,
+            mode_target_a=mode_target_a,
+            dlb_limit_a=dlb_limit_a,
+        )
+        return result.target_current_a, result.dominant_limit_reason
 
     def _should_write_current(
         self,
@@ -393,57 +351,8 @@ class WallboxController:
         reported_current_limit_a: float | None = None,
         immediate_if_lower: bool = False,
     ) -> bool:
-        now = monotonic()
-        last = self.write_state.last_written_current_a
-        reported_mismatch = False
-        if reported_current_limit_a is not None:
-            reported_delta = abs(target_current_a - reported_current_limit_a)
-            if reported_delta < self.config.min_current_change_a:
-                self.write_state.pending_stable_cycles = 0
-                self.write_state.pending_target_a = None
-                return False
-            reported_mismatch = True
-
-        if last is None:
-            self._track_pending_write_target(target_current_a, now)
-        else:
-            if immediate_if_lower and target_current_a < last:
-                self._start_pending_write_window_if_needed(now)
-                self.write_state.pending_target_a = target_current_a
-                self.write_state.pending_stable_cycles = self.config.stable_cycles_before_write
-                return True
-
-            delta = abs(target_current_a - last)
-            if delta < self.config.min_current_change_a and not reported_mismatch:
-                self.write_state.pending_stable_cycles = 0
-                self.write_state.pending_target_a = None
-                return False
-
-            self._track_pending_write_target(target_current_a, now)
-
-        if (now - self.write_state.last_write_monotonic) < self.config.min_seconds_between_writes:
-            return False
-
-        if self.write_state.pending_stable_cycles >= self.config.stable_cycles_before_write:
-            return True
-
-        if (
-            self.write_state.pending_started_monotonic is not None
-            and (now - self.write_state.pending_started_monotonic) >= self.config.pending_stable_max_age_s
-        ):
-            self.write_state.pending_stable_cycles = self.config.stable_cycles_before_write
-            return True
-
-        return False
-
-    def _start_pending_write_window_if_needed(self, now: float) -> None:
-        if self.write_state.pending_started_monotonic is None:
-            self.write_state.pending_started_monotonic = now
-
-    def _track_pending_write_target(self, target_current_a: float, now: float) -> None:
-        self._start_pending_write_window_if_needed(now)
-        if self.write_state.pending_target_a == target_current_a:
-            self.write_state.pending_stable_cycles += 1
-            return
-        self.write_state.pending_target_a = target_current_a
-        self.write_state.pending_stable_cycles = 1
+        return self.current_write_decider.should_write_current(
+            target_current_a,
+            reported_current_limit_a=reported_current_limit_a,
+            immediate_if_lower=immediate_if_lower,
+        )

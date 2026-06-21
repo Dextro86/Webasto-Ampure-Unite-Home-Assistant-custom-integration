@@ -25,7 +25,7 @@ from custom_components.webasto_unite.registers import (
 )
 from custom_components.webasto_unite.const import PHASE_SWITCHING_MODE_MANUAL_ONLY
 from custom_components.webasto_unite.models import ChargeMode, ChargingState, ControlDecision, ControlReason, PhaseCurrents, SolarControlStrategy, WallboxState
-from custom_components.webasto_unite.phase_observer import (
+from custom_components.webasto_unite.features.phase_observer import (
     PHASE_SWITCH_VALUE_1P,
     PHASE_SWITCH_VALUE_3P,
     build_phase_consistency,
@@ -34,7 +34,7 @@ from custom_components.webasto_unite.phase_observer import (
     detect_observed_session_phase_usage,
     interpret_phase_switch_mode,
 )
-from custom_components.webasto_unite.phase_policy import evaluate_phase_policy
+from custom_components.webasto_unite.features.phase_policy import evaluate_phase_policy
 from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 
@@ -209,6 +209,33 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["control_writes_enabled"].entity_category == "diagnostic"
     assert sensors["last_control_write_reason"].entity_category == "diagnostic"
     assert sensors["last_control_write_blocked_reason"].entity_category == "diagnostic"
+
+
+def test_technical_measurements_are_diagnostic_to_keep_default_ui_small():
+    sensors = {description.key: description for description in SENSORS}
+
+    for key in (
+        "active_power_l1",
+        "active_power_l2",
+        "active_power_l3",
+        "current_l1",
+        "current_l2",
+        "current_l3",
+        "voltage_l1",
+        "voltage_l2",
+        "voltage_l3",
+        "safe_current",
+        "session_max_current",
+        "dlb_limit",
+        "final_target",
+    ):
+        assert sensors[key].entity_category == "diagnostic"
+
+    assert sensors["active_power"].entity_category is None
+    assert sensors["actual_current"].entity_category is None
+    assert sensors["configured_limit"].entity_category is None
+    assert sensors["session_energy"].entity_category is None
+    assert sensors["energy_meter"].entity_category is None
 
 
 def test_phase_policy_would_request_1p_when_surplus_supports_1p_but_not_3p():

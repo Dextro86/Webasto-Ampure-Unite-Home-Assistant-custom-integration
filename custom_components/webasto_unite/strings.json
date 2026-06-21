@@ -34,7 +34,7 @@
             }
           },
           "general_charging": {
-            "name": "Charging",
+            "name": "Charging Basics",
             "data": {
               "installed_phases": "Charger Configuration",
               "control_mode": "Integration Charging Control",
@@ -44,23 +44,23 @@
               "safe_current": "Fallback Current (A)"
             },
             "data_description": {
-              "installed_phases": "Set how the charger is configured for this integration. Use 1P for a single-phase charger setup. Use 3P for a three-phase charger setup; the integration can still detect when a connected vehicle charges on only one phase.",
-              "control_mode": "Enabled lets this integration control charging. External Controller lets EVCC or another Home Assistant controller set charging current through External Requested Current. Monitoring Only only reads data and sends keepalive.",
-              "startup_charge_mode": "Charging mode used after Home Assistant restart or integration reload.",
+              "installed_phases": "Physical charger setup used by this integration. Use 1P for a single-phase charger installation. Use 3P for a three-phase installation; the integration can still observe a vehicle charging on one phase.",
+              "control_mode": "Choose who controls charging. Enabled lets this integration control current, Solar and DLB. External Controller is for EVCC or another controller using External Requested Current. Monitoring Only reads data and sends keepalive only.",
+              "startup_charge_mode": "Default charging mode used after Home Assistant restart, integration reload and at the start of a new plug-in session.",
               "min_current": "Lowest current in amperes the integration may request. Charging below 6 A is normally not supported.",
-              "max_current": "Normal charging target and highest current in amperes the integration may request. Set this to match the charger and installation limit.",
-              "safe_current": "Low safety current in amperes used when DLB cannot trust its sensor inputs. 6 A is recommended."
+              "max_current": "Normal mode target and global maximum current in amperes. Set this to match the charger, cable and installation limit.",
+              "safe_current": "Safety fallback current in amperes used when DLB cannot trust its sensor inputs. This is not the normal charging target. 6 A is recommended."
             }
           },
           "session_overrides": {
-            "name": "Temporary Session Settings",
+            "name": "Temporary Modes",
             "data": {
               "fixed_current": "Fixed Current Until Unplug (A)",
               "solar_until_unplug_strategy": "Solar Until Unplug Mode"
             },
             "data_description": {
-              "fixed_current": "Charging current in amperes used when Fixed Current Until Unplug is active.",
-              "solar_until_unplug_strategy": "Solar mode used when Solar Until Unplug is active."
+              "fixed_current": "Charging current in amperes used only while Fixed Current Until Unplug is active.",
+              "solar_until_unplug_strategy": "Solar mode used only while Solar Until Unplug is active."
             }
           },
           "dynamic_load_balancing": {
@@ -91,57 +91,65 @@
             "data": {
               "solar_control_strategy": "Default Solar Mode",
               "solar_input_model": "Solar Input Source",
-              "solar_grid_power_direction": "Grid Power Direction",
-              "solar_sensor_failure_behavior": "Solar Sensor Failure Behavior",
-              "solar_require_units": "Require Solar Sensor Units",
               "solar_surplus_sensor": "Solar Surplus Sensor",
               "solar_grid_power_sensor": "Grid Power Sensor",
               "solar_import_power_sensor": "Import Power Sensor",
               "solar_export_power_sensor": "Export Power Sensor",
+              "solar_min_current": "Solar Minimum Current (A)",
+              "solar_sensor_failure_behavior": "Solar Sensor Failure Behavior"
+            },
+            "data_description": {
+              "solar_control_strategy": "Default Solar mode used after restart and when Solar is selected without a specific runtime Solar mode.",
+              "solar_input_model": "Choose how solar input is provided. DSMR Import/Export Sensors are recommended for P1 meters with separate consumption and production sensors.",
+              "solar_surplus_sensor": "Sensor that reports the currently available solar surplus.",
+              "solar_grid_power_sensor": "Signed grid power sensor used to derive solar surplus from import and export.",
+              "solar_import_power_sensor": "DSMR/P1 sensor that reports current grid import/consumption power.",
+              "solar_export_power_sensor": "DSMR/P1 sensor that reports current grid export/production power.",
+              "solar_min_current": "Minimum/base current in amperes used by Smart Solar and Solar Boost, and the minimum charging current for Eco Solar when it starts.",
+              "solar_sensor_failure_behavior": "What Smart Solar and Solar Boost should do when Solar input is stale, unavailable or invalid. Continuing at Solar Minimum Current may use grid power. Eco Solar always pauses."
+            }
+          },
+          "solar_advanced": {
+            "name": "Solar Advanced",
+            "data": {
+              "solar_grid_power_direction": "Grid Power Direction",
+              "solar_require_units": "Require Solar Sensor Units",
               "solar_start_threshold": "Start Threshold (W)",
               "solar_stop_threshold": "Stop Threshold (W)",
               "solar_start_delay": "Solar Start Delay (s)",
               "solar_stop_delay": "Solar Stop Delay (s)",
               "solar_min_runtime": "Solar Minimum Runtime (s)",
-              "solar_min_pause": "Solar Minimum Pause (s)",
-              "solar_min_current": "Solar Minimum Current (A)"
+              "solar_min_pause": "Solar Minimum Pause (s)"
             },
             "data_description": {
-              "solar_control_strategy": "Default Solar mode used after restart and when Solar is selected without a specific runtime Solar mode.",
-              "solar_input_model": "Choose how solar input is provided. DSMR Import/Export Sensors are recommended for P1 meters with separate consumption and production sensors.",
-              "solar_grid_power_direction": "Choose which sign means export to the grid. Export is treated as available solar surplus.",
-              "solar_sensor_failure_behavior": "What Smart Solar and Solar Boost should do when Solar input is stale, unavailable or invalid. Continuing at Solar Minimum Current may use grid power. Eco Solar always pauses.",
+              "solar_grid_power_direction": "Only relevant for Signed Grid Power Sensor. Choose which sign means export to the grid. Export is treated as available solar surplus.",
               "solar_require_units": "If enabled, solar sensors must expose a supported unit (W, kW, mW, MW). Unitless values are ignored.",
-              "solar_surplus_sensor": "Sensor that reports the currently available solar surplus.",
-              "solar_grid_power_sensor": "Signed grid power sensor used to derive solar surplus from import and export.",
-              "solar_import_power_sensor": "DSMR/P1 sensor that reports current grid import/consumption power.",
-              "solar_export_power_sensor": "DSMR/P1 sensor that reports current grid export/production power.",
-              "solar_start_threshold": "Minimum solar surplus required before charging may start.",
-              "solar_stop_threshold": "Solar surplus level below which charging may stop again.",
-              "solar_start_delay": "Time in seconds solar surplus must stay high enough before charging starts.",
-              "solar_stop_delay": "Time in seconds solar surplus must stay too low before charging stops.",
-              "solar_min_runtime": "Minimum time in seconds charging should keep running after a solar start.",
-              "solar_min_pause": "Minimum pause in seconds before charging may start again on solar.",
-              "solar_min_current": "Baseline charging current in amperes used by Smart Solar and Solar Boost. It can also be used as fallback if Solar Sensor Failure Behavior allows it."
+              "solar_start_threshold": "Mainly used by Eco Solar. Minimum solar surplus required before Eco Solar may start charging.",
+              "solar_stop_threshold": "Mainly used by Eco Solar. Solar surplus level below which Eco Solar may stop charging again.",
+              "solar_start_delay": "Mainly used by Eco Solar. Time in seconds solar surplus must stay high enough before charging starts.",
+              "solar_stop_delay": "Mainly used by Eco Solar. Time in seconds solar surplus must stay too low before charging stops.",
+              "solar_min_runtime": "Minimum time in seconds Eco Solar should keep charging after a solar start.",
+              "solar_min_pause": "Minimum pause in seconds before Eco Solar may start charging again."
+            }
+          },
+          "phase_switching": {
+            "name": "Phase Switching (Experimental)",
+            "data": {
+              "phase_switching_mode": "Phase Switching Mode"
+            },
+            "data_description": {
+              "phase_switching_mode": "Experimental 1P/3P switching through the charger phase register. Off is safest. Manual Only exposes buttons/services/select. Automatic Solar may switch phases after stable-target, cooldown and session-count guards pass."
             }
           },
           "advanced": {
-            "name": "Advanced",
+            "name": "Technical Advanced",
             "data": {
-              "phase_switching_mode": "Phase Switching Mode",
-              "restore_3p_on_new_session": "Restore 3P On New Session",
-              "3p_restore_edge_trigger": "Use 3P Edge Trigger",
-              "3p_restore_max_attempts": "3P Restore Attempts Per Session",
               "keepalive_interval": "Keepalive Interval (s)",
               "control_sensor_timeout": "Control Sensor Timeout (s)",
               "timeout": "Request Timeout (s)",
               "retries": "Retry Attempts"
             },
             "data_description": {
-              "phase_switching_mode": "Experimental 1P/3P switching. Manual Only exposes buttons/services/select for Home Assistant or EVCC. Automatic Solar lets this integration switch phases only while it owns Solar control.",
-              "restore_3p_on_new_session": "When a new vehicle is plugged in on a 3P-configured charger, try to normalize the phase offer back to 3P before normal charging control continues.",
-              "3p_restore_edge_trigger": "For 3P session-start restore, briefly write 1P first and then 3P. This can help when register 405 already says 3P but the next session physically starts on 1P.",
-              "3p_restore_max_attempts": "Maximum number of 3P session-start restore attempts per connected session. 1 is recommended.",
               "keepalive_interval": "Interval in seconds between keepalive writes.",
               "control_sensor_timeout": "Maximum sensor age in seconds before DLB or Solar input is treated as unsafe.",
               "timeout": "How many seconds the integration waits for a charger response.",

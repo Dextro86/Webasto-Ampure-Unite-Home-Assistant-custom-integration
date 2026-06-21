@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlReason
 from custom_components.webasto_unite.registers import LIFE_BIT, SET_CHARGE_CURRENT_A
-from custom_components.webasto_unite.write_queue import WriteQueueManager
-from custom_components.webasto_unite.write_runtime import WriteRuntime, WriteRuntimeState
+from custom_components.webasto_unite.control.write_queue import WriteQueueManager
+from custom_components.webasto_unite.control.write_runtime import WriteRuntime, WriteRuntimeState
 
 
 def test_forced_keepalive_enqueues_write_of_one():
@@ -139,5 +139,39 @@ def test_external_controller_records_distinct_blocked_control_write_reason():
 
         assert await write_queue.size() == 0
         assert runtime.last_control_write_blocked_reason == "external_controller_mode"
+
+    asyncio.run(_run())
+
+
+def test_automatic_current_write_is_blocked_without_connected_vehicle():
+    async def _run():
+        write_queue = WriteQueueManager()
+        enqueue_keepalive = AsyncMock()
+        runtime = WriteRuntime(
+            ControlConfig(),
+            write_queue=write_queue,
+            client=None,
+            controller=None,
+            state=WriteRuntimeState(keepalive_started_monotonic=0.0),
+        )
+        decision = SimpleNamespace(
+            charging_enabled=True,
+            reason=ControlReason.NORMAL_MODE,
+            should_write=True,
+            target_current_a=16.0,
+        )
+
+        await runtime.enqueue_decision(
+            decision,
+            effective_mode=ChargeMode.NORMAL,
+            current_snapshot=SimpleNamespace(wallbox=SimpleNamespace(vehicle_connected=False)),
+            allows_control_writes=True,
+            enqueue_keepalive=enqueue_keepalive,
+        )
+
+        assert await write_queue.size() == 0
+        enqueue_keepalive.assert_awaited_once()
+        assert runtime.last_control_write_blocked_reason == "vehicle_not_connected"
+        assert runtime.last_control_write_value_a is None
 
     asyncio.run(_run())

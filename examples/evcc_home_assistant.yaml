@@ -11,6 +11,7 @@
 #   EVCC setMaxCurrent should point to External Requested Current, not Maximum Current.
 #   Maximum Current is only the configured safety upper bound.
 #   Configure phaseswitch only if you want EVCC to control 1P/3P switching.
+#   For phaseswitch, set Phase Switching Mode = Manual Only in the integration.
 
 chargers:
   - name: webasto_unite_ha

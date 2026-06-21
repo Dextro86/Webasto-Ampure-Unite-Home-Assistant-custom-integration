@@ -4,6 +4,8 @@ This integration contains local control logic for Solar surplus charging and Dyn
 
 The goal is stable behavior, not aggressive short-term chasing of every sensor change.
 
+Solar current control and phase policy behavior follow the [Behavior contract](behavior_contract.md). Automatic Solar phase switching is experimental and only writes register `405` after stable target, cooldown and session-count guards pass.
+
 ## Solar Charging
 
 Solar charging supports three strategies:
@@ -103,7 +105,7 @@ The integration controls charging current through register `5004`.
 
 It uses `0 A` as pause command. It does not use a separate charger session command register for start/stop control.
 
-The `Pause Charging` and `Resume Charging` buttons are convenience controls for this same behavior. They do not end the charger session; they only disable or re-enable charging through the integration's current-control flow.
+`Charging Enabled` is the user-facing control for this same behavior. It does not end the charger session; it only disables or re-enables charging through the integration's current-control flow.
 
 To avoid current bouncing, normal current writes require a meaningful change, a short write throttle and stable target cycles. If the target does not become perfectly stable, the integration eventually writes the latest target after an internal maximum wait instead of waiting indefinitely.
 

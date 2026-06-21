@@ -6,7 +6,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, PHASE_SWITCHING_MODE_OFF
 from .entity import WebastoUniteCoordinatorEntity
-from .models import ChargeMode, SolarControlStrategy
+from .features.phase_switch import phase_register_control_available
+from .models import ChargeMode, ControlMode, SolarControlStrategy
 
 
 def _solar_mode_label(strategy: SolarControlStrategy) -> str:
@@ -22,7 +23,18 @@ def _solar_mode_label(strategy: SolarControlStrategy) -> str:
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([WebastoModeSelect(coordinator), WebastoPhaseSwitchSelect(coordinator)])
+    entities = [WebastoModeSelect(coordinator)]
+    if _phase_controls_configured(coordinator):
+        entities.append(WebastoPhaseSwitchSelect(coordinator))
+    async_add_entities(entities)
+
+
+def _phase_controls_configured(coordinator) -> bool:
+    return (
+        getattr(coordinator, "_phase_switching_mode", PHASE_SWITCHING_MODE_OFF) != PHASE_SWITCHING_MODE_OFF
+        and getattr(getattr(coordinator, "control_config", None), "control_mode", None)
+        in {ControlMode.MANAGED_CONTROL, ControlMode.EXTERNAL_CONTROLLER}
+    )
 
 
 class WebastoModeSelect(WebastoUniteCoordinatorEntity, SelectEntity):
@@ -94,14 +106,10 @@ class WebastoPhaseSwitchSelect(WebastoUniteCoordinatorEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        data = getattr(self.coordinator, "data", None)
-        if (
-            getattr(self.coordinator, "_phase_switching_mode", None) == PHASE_SWITCHING_MODE_OFF
-            or data is None
-            or data.phase_switch_register_available is not True
-        ):
-            return False
-        return True
+        return _phase_controls_configured(self.coordinator) and phase_register_control_available(
+            phase_switching_mode=getattr(self.coordinator, "_phase_switching_mode", None),
+            data=getattr(self.coordinator, "data", None),
+        )
 
     @property
     def current_option(self) -> str | None:

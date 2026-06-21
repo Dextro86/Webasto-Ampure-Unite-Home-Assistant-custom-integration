@@ -5,7 +5,7 @@ cards:
     show_header_toggle: false
     entities:
       - entity: switch.webasto_unite_charging_allowed
-        name: Charging On/Off
+        name: Charging Enabled
       - entity: select.webasto_unite_charge_mode
         name: Charge Mode
       - entity: sensor.webasto_unite_operating_state
@@ -16,8 +16,6 @@ cards:
         name: Solar Until Unplug
       - entity: switch.webasto_unite_fixed_current_until_unplug
         name: Fixed Current Until Unplug
-      - entity: number.webasto_unite_requested_current
-        name: External Requested Current
       - entity: number.webasto_unite_fixed_current
         name: Fixed Current
 
@@ -72,37 +70,27 @@ cards:
     title: Manual Phase Switching
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_charger_configured_phases
-        name: Charger Phase Register 404
-      - entity: sensor.webasto_unite_phase_switch_mode
-        name: Phase Switch Mode
-      - entity: sensor.webasto_unite_phase_switch_available
-        name: Phase Switch Available
-      - entity: sensor.webasto_unite_phase_switch_block_reason
-        name: Phase Switch Block Reason
-      - entity: sensor.webasto_unite_phase_switch_state
-        name: Phase Switch State
-      - entity: sensor.webasto_unite_phase_session_override
-        name: Phase Session Override
-      - entity: sensor.webasto_unite_phase_restore_pending
-        name: Phase Restore Pending
-      - entity: sensor.webasto_unite_phase_policy_decision
-        name: Phase Policy Decision
-      - entity: sensor.webasto_unite_phase_policy_block_reason
-        name: Phase Policy Block Reason
-      - entity: button.webasto_unite_request_1p_phase_mode
-        name: Request 1P Mode
-      - entity: button.webasto_unite_request_3p_phase_mode
-        name: Request 3P Mode
+      - entity: sensor.webasto_unite_requested_phase
+        name: Requested Phase
+      - entity: sensor.webasto_unite_observed_phase
+        name: Observed Phase
+      - entity: sensor.webasto_unite_phase_recovery_state
+        name: Phase Recovery State
+      - entity: select.webasto_unite_phase_switch
+        name: Phase Switch
+      - entity: button.webasto_unite_request_1p_mode
+        name: Switch to 1P
+      - entity: button.webasto_unite_request_3p_mode
+        name: Switch to 3P
       - entity: button.webasto_unite_restore_default_phase_mode
-        name: Restore Default Phase Mode
+        name: Restore Configured Phase
 
   - type: entities
     title: Phase Details
     show_header_toggle: false
     entities:
-      - entity: sensor.webasto_unite_effective_active_phases
-        name: Effective Active Phases
+      - entity: sensor.webasto_unite_observed_phase
+        name: Observed Phase
       - entity: sensor.webasto_unite_active_power_l1
         name: Active Power L1
       - entity: sensor.webasto_unite_active_power_l2

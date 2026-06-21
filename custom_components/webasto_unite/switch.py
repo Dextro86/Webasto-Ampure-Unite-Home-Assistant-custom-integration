@@ -19,7 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 
 class WebastoChargingSwitch(WebastoUniteCoordinatorEntity, SwitchEntity):
-    _attr_name = "Charging On/Off"
+    _attr_name = "Charging Enabled"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
