@@ -97,6 +97,27 @@ Useful entities:
 
 `EVCC Status` exposes machine-oriented attributes for compatibility and support.
 
+## REST Diagnostics
+
+REST diagnostics are optional and read-only. They are only created when `Enable REST Diagnostics` is enabled in the integration settings.
+
+Useful entities:
+
+- `REST Status`
+- `REST API Version`
+- `HMI Version`
+- `REST Wallbox Model`
+- `REST Identifier`
+- `REST Installation Current Limiter`
+- `REST Installation Phase`
+- `REST OCPP Phase Switching Supported`
+- `REST OCPP Free Mode Active`
+- `REST Configuration Field Count`
+
+The integration currently uses `/api/system-information` and `/api/configuration-fields`. REST diagnostics are separate from Modbus control. If REST is unavailable, Modbus monitoring and charging control continue to work.
+
+The optional `Soft Reset Charger` action uses the charger's classic WebUI form flow, not the read-only diagnostics endpoints. It requires the same WebUI credentials and is only run when the user explicitly presses the button or calls the service.
+
 ## Phase Diagnostics
 
 Phase switching is experimental and off by default. `Manual Only` exposes explicit controls and the EVCC-compatible phase select. `Automatic Solar` can write register `405` when the Solar phase target is stable and cooldown/session-count guards allow it.

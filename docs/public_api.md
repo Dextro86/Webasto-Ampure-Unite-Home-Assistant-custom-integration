@@ -83,6 +83,7 @@ These services are part of the supported automation interface.
 - `webasto_unite.request_phase_3p`
 - `webasto_unite.restore_default_phase`
 - `webasto_unite.reset_phase_switch_state`
+- `webasto_unite.soft_reset_charger`
 
 ## Legacy Services
 

@@ -77,10 +77,26 @@ SENSORS = (
     WebastoSensorDescription(key="evcc_status", name="EVCC Status", value_key="evcc_status", entity_category=EntityCategory.DIAGNOSTIC),
 )
 
+REST_SENSORS = (
+    WebastoSensorDescription(key="rest_status", name="REST Status", value_key="status", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_api_version", name="REST API Version", value_key="api_version", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_hmi_version", name="HMI Version", value_key="hmi_version", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_model", name="REST Wallbox Model", value_key="model", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_identifier", name="REST Identifier", value_key="identifier", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_installation_current_limiter_value", name="REST Installation Current Limiter", value_key="installation_current_limiter_value_a", native_unit_of_measurement=UnitOfElectricCurrent.AMPERE, device_class=SensorDeviceClass.CURRENT, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_installation_current_limiter_phase", name="REST Installation Phase", value_key="installation_current_limiter_phase", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_ocpp_phase_switching_supported", name="REST OCPP Phase Switching Supported", value_key="ocpp_phase_switching_supported", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_ocpp_free_mode_active", name="REST OCPP Free Mode Active", value_key="ocpp_free_mode_active", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="rest_configuration_field_count", name="REST Configuration Field Count", value_key="field_count", entity_category=EntityCategory.DIAGNOSTIC),
+)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(WebastoSensor(coordinator, description) for description in SENSORS)
+    sensors = [WebastoSensor(coordinator, description) for description in SENSORS]
+    if coordinator.rest_diagnostics_enabled:
+        sensors.extend(WebastoSensor(coordinator, description) for description in REST_SENSORS)
+    async_add_entities(sensors)
 
 
 class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
@@ -102,6 +118,11 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             return self._derive_iec61851_state(data.wallbox)
         if self.entity_description.key == "evcc_status":
             return build_evcc_status(data, self.coordinator.control_config)["charger_state"]
+        if self.entity_description.key.startswith("rest_"):
+            return self._present_value(
+                getattr(data.rest_diagnostics, self.entity_description.value_key, None),
+                value_key=self.entity_description.value_key,
+            )
         if self.entity_description.key == "control_owner":
             return present_control_owner(derive_control_owner_from_snapshot(data))
         if self.entity_description.key == "equipment_state_text":
@@ -132,6 +153,19 @@ class WebastoSensor(WebastoUniteCoordinatorEntity, SensorEntity):
             return None
         if self.entity_description.key == "evcc_status":
             return build_evcc_status(self.coordinator.data, self.coordinator.control_config)
+        if self.entity_description.key == "rest_status":
+            data = self.coordinator.data.rest_diagnostics
+            return {
+                "enabled": data.enabled,
+                "last_error": data.last_error,
+                "last_system_update_age_s": data.last_system_update_age_s,
+                "last_configuration_update_age_s": data.last_configuration_update_age_s,
+            }
+        if self.entity_description.key == "rest_configuration_field_count":
+            data = self.coordinator.data.rest_diagnostics
+            return {
+                "discovered_field_keys": list(data.discovered_field_keys),
+            }
         if self.entity_description.key == "phase_requested":
             data = self.coordinator.data
             return {

@@ -50,6 +50,15 @@ trigger_reconnect:
       description: Config entry ID of the Webasto Unite integration instance.
       required: true
       example: "abc123"
+soft_reset_charger:
+  name: Soft Reset Charger
+  description: Explicitly request a WebUI soft reset/reboot of the charger. Requires REST Diagnostics credentials. This is never run automatically.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Config entry ID of the Webasto Unite integration instance.
+      required: true
+      example: "abc123"
 enable_solar_until_unplug:
   name: Enable Solar Until Unplug
   description: Temporarily use solar charging until the vehicle is unplugged.

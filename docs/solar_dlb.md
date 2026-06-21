@@ -93,7 +93,7 @@ DLB and Solar sensors must update regularly. If a required sensor is older than 
 
 Typical behavior:
 
-- DLB falls back to `Fallback Current`.
+- DLB falls back to `Integration Fallback Current`.
 - Eco Solar pauses.
 - Smart Solar and Solar Boost follow `Solar Sensor Failure Behavior`.
 

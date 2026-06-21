@@ -6,7 +6,7 @@ from time import monotonic
 from typing import Awaitable, Callable
 
 from ..models import ChargeMode, ControlConfig, ControlReason
-from ..modbus.registers import COMM_TIMEOUT_S, LIFE_BIT, SAFE_CURRENT_A, SET_CHARGE_CURRENT_A
+from ..modbus.registers import LIFE_BIT, SET_CHARGE_CURRENT_A
 from .write_queue import QueuedWrite, WritePriority, WriteQueueManager
 
 CURRENT_WRITE_ACCEPTANCE_TOLERANCE_A = 0.5
@@ -176,22 +176,6 @@ class WriteRuntime:
                     reason=decision.reason.value,
                 )
             )
-
-    async def sync_static_registers(self, *, allows_static_sync: bool) -> None:
-        if not allows_static_sync:
-            return
-        await self.write_queue.enqueue(
-            QueuedWrite("safe_current", SAFE_CURRENT_A, int(round(self.config.safe_current_a)), WritePriority.SAFETY)
-        )
-        await self.write_queue.enqueue(
-            QueuedWrite(
-                "communication_timeout",
-                COMM_TIMEOUT_S,
-                int(round(self.config.communication_timeout_s)),
-                WritePriority.SAFETY,
-            )
-        )
-        await self.flush_write_queue()
 
     async def write_current_now(self, current_a: float, *, reason: str) -> None:
         """Write a current immediately and keep diagnostics/write state in sync."""

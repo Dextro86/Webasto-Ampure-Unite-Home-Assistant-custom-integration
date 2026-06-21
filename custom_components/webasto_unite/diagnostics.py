@@ -6,7 +6,23 @@ from homeassistant.components.diagnostics import async_redact_data
 from .const import DOMAIN
 from .control_owner import derive_control_owner_from_snapshot
 
-TO_REDACT = {"host", "serial_number", "charge_point_id"}
+TO_REDACT = {
+    "host",
+    "serial_number",
+    "charge_point_id",
+    "rest_password",
+    "password",
+    "authorizationKey",
+    "token",
+    "access_token",
+    "mac",
+    "mac_address",
+    "ipAddress",
+    "centralSystemAddress",
+    "rfid",
+    "tag",
+    "ssid",
+}
 
 
 async def async_get_config_entry_diagnostics(hass, entry):

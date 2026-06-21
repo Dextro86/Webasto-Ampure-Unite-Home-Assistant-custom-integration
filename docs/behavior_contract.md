@@ -110,7 +110,7 @@ When `Phase Switching Mode = Automatic Solar`, `auto_ready = true` triggers the 
 
 DLB is a safety limiter. When enabled and valid, it can reduce the final current target below the active mode target.
 
-If required DLB inputs are missing, stale or invalid, the integration uses `Fallback Current` instead of trusting unsafe data.
+If required DLB inputs are missing, stale or invalid, the integration uses `Integration Fallback Current` instead of trusting unsafe data.
 
 ## EVCC behavior
 

@@ -21,6 +21,7 @@ from ..const import (
     SERVICE_SET_MAX_CURRENT,
     SERVICE_SET_MODE,
     SERVICE_SET_USER_LIMIT,
+    SERVICE_SOFT_RESET_CHARGER,
     SERVICE_TRIGGER_RECONNECT,
 )
 from ..coordinator import WebastoUniteCoordinator
@@ -111,6 +112,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = _get_coordinator(hass, call.data["entry_id"])
         await coordinator.async_trigger_reconnect()
 
+    async def handle_soft_reset_charger(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(hass, call.data["entry_id"])
+        try:
+            await coordinator.async_soft_reset_charger()
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(str(err)) from err
+
     async def handle_enable_solar_until_unplug(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass, call.data["entry_id"])
         coordinator.set_solar_until_unplug(True)
@@ -163,6 +171,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     # Legacy alias kept for existing automations; hidden from services.yaml.
     hass.services.async_register(DOMAIN, SERVICE_SET_USER_LIMIT, handle_set_limit, schema=_SERVICE_SCHEMA_LIMIT)
     hass.services.async_register(DOMAIN, SERVICE_TRIGGER_RECONNECT, handle_reconnect, schema=_SERVICE_SCHEMA_ENTRY)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SOFT_RESET_CHARGER,
+        handle_soft_reset_charger,
+        schema=_SERVICE_SCHEMA_ENTRY,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_ENABLE_SOLAR_UNTIL_UNPLUG,

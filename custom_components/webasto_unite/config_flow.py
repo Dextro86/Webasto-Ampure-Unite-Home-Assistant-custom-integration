@@ -165,6 +165,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         flattened: dict[str, Any] = {}
         if user_input:
             flattened = self._flatten_section_input(user_input)
+            if flattened.get(CONF_REST_PASSWORD) == "":
+                flattened.pop(CONF_REST_PASSWORD, None)
             current.pop(CONF_USER_LIMIT, None)
             current.update(_migrate_legacy_user_limit(flattened))
         if CONF_SOLAR_GRID_POWER_SENSOR not in current and CONF_DLB_GRID_POWER_SENSOR in current:
@@ -319,6 +321,23 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 ): selector.SelectSelector(selector.SelectSelectorConfig(options=PHASE_SWITCHING_MODE_OPTIONS)),
             }
         )
+        rest_defaults = {
+            CONF_REST_DIAGNOSTICS_ENABLED: current.get(CONF_REST_DIAGNOSTICS_ENABLED, False),
+            CONF_REST_USERNAME: current.get(CONF_REST_USERNAME, DEFAULT_REST_USERNAME),
+        }
+        rest_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_REST_DIAGNOSTICS_ENABLED,
+                    default=current.get(CONF_REST_DIAGNOSTICS_ENABLED, False),
+                ): bool,
+                vol.Optional(
+                    CONF_REST_USERNAME,
+                    default=current.get(CONF_REST_USERNAME, DEFAULT_REST_USERNAME),
+                ): str,
+                vol.Optional(CONF_REST_PASSWORD): str,
+            }
+        )
         advanced_defaults = {
             CONF_KEEPALIVE_INTERVAL: current.get(CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL_S),
             CONF_CONTROL_SENSOR_TIMEOUT: current.get(
@@ -352,6 +371,7 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("solar_charging", default=solar_defaults): section(vol.Schema(solar_fields), {"collapsed": True}),
                 vol.Optional("solar_advanced", default=solar_advanced_defaults): section(vol.Schema(solar_advanced_fields), {"collapsed": True}),
                 vol.Optional("phase_switching", default=phase_defaults): section(phase_schema, {"collapsed": True}),
+                vol.Optional("rest_diagnostics", default=rest_defaults): section(rest_schema, {"collapsed": True}),
                 vol.Optional("advanced", default=advanced_defaults): section(advanced_schema, {"collapsed": True}),
             }
         )
@@ -386,6 +406,8 @@ class WebastoUniteOptionsFlow(config_entries.OptionsFlow):
         validated.setdefault(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)
         validated.setdefault(CONF_SOLAR_MIN_CURRENT, 6.0)
         validated.setdefault(CONF_PHASE_SWITCHING_MODE, DEFAULT_PHASE_SWITCHING_MODE)
+        validated.setdefault(CONF_REST_DIAGNOSTICS_ENABLED, False)
+        validated.setdefault(CONF_REST_USERNAME, DEFAULT_REST_USERNAME)
         connection_input = {
             CONF_HOST: validated.pop(CONF_HOST),
             CONF_PORT: validated.pop(CONF_PORT),

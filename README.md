@@ -29,6 +29,8 @@ This is a community project developed with significant AI assistance. Active cha
 | Restart-safe charging state | Yes |
 | Reconnect handling | Yes |
 | Advanced diagnostics | Yes |
+| Optional WebUI REST diagnostics | Read-only, opt-in |
+| Optional WebUI soft reset | Explicit advanced action, never automatic |
 | Manual 1P/3P phase switching | Experimental, off by default |
 | Automatic Solar phase switching | Experimental, opt-in |
 
@@ -117,6 +119,12 @@ The integration contains logic for Solar surplus charging and Dynamic Load Balan
 - Conservative fallback behavior when sensor input is unavailable or unsafe
 
 See [Solar charging and Dynamic Load Balancing](docs/solar_dlb.md).
+
+## Optional REST Diagnostics
+
+The integration can optionally read diagnostics from the charger's local WebUI REST API. This diagnostics path is read-only and separate from Modbus control. It can expose values such as REST API version, HMI version, wallbox model and selected installation/OCPP diagnostics. If REST is unavailable or credentials are wrong, Modbus monitoring/control keeps working.
+
+When REST/WebUI credentials are configured, an explicit advanced `Soft Reset Charger` action is also available. This follows the charger's WebUI soft-reset flow and is never executed automatically.
 
 ## EVCC Compatibility
 

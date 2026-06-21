@@ -146,6 +146,25 @@ class CapabilityState(str, Enum):
 
 
 @dataclass(slots=True)
+class RestDiagnosticsData:
+    enabled: bool = False
+    status: str = "disabled"
+    last_error: Optional[str] = None
+    api_version: Optional[str] = None
+    hmi_version: Optional[str] = None
+    identifier: Optional[str] = None
+    model: Optional[str] = None
+    installation_current_limiter_value_a: Optional[float] = None
+    installation_current_limiter_phase: Optional[str] = None
+    ocpp_phase_switching_supported: Optional[bool] = None
+    ocpp_free_mode_active: Optional[bool] = None
+    field_count: Optional[int] = None
+    discovered_field_keys: tuple[str, ...] = ()
+    last_system_update_age_s: Optional[float] = None
+    last_configuration_update_age_s: Optional[float] = None
+
+
+@dataclass(slots=True)
 class PhaseCurrents:
     l1: Optional[float] = None
     l2: Optional[float] = None
@@ -240,7 +259,6 @@ class IntegrationConfig:
 @dataclass(slots=True)
 class ControlConfig:
     polling_interval_s: float = 2.0
-    communication_timeout_s: float = 30.0
     timeout_s: float = 3.0
     retries: int = 3
     control_mode: ControlMode = ControlMode.KEEPALIVE_ONLY
@@ -455,6 +473,7 @@ class RuntimeSnapshot:
     entry_title: str | None = None
     capability_summary: str | None = None
     capabilities: dict[str, str] = field(default_factory=dict)
+    rest_diagnostics: RestDiagnosticsData = field(default_factory=RestDiagnosticsData)
 
     @property
     def pv_until_unplug_active(self) -> bool:
@@ -545,4 +564,5 @@ class RuntimeSnapshot:
             "entry_title": self.entry_title,
             "capability_summary": self.capability_summary,
             "capabilities": dict(self.capabilities),
+            "rest_diagnostics": asdict(self.rest_diagnostics),
         }

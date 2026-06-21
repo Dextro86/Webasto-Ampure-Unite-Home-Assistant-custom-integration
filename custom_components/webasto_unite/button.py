@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PHASE_SWITCHING_MODE_OFF
+from .const import (
+    CONF_REST_DIAGNOSTICS_ENABLED,
+    CONF_REST_PASSWORD,
+    CONF_REST_USERNAME,
+    DEFAULT_REST_USERNAME,
+    DOMAIN,
+    PHASE_SWITCHING_MODE_OFF,
+)
 from .entity import WebastoUniteCoordinatorEntity
 from .features.phase_switch import phase_register_control_available
 from .models import ControlMode
@@ -18,6 +25,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
         WebastoRefreshButton(coordinator),
         WebastoReconnectButton(coordinator),
     ]
+    if _rest_actions_configured(coordinator):
+        entities.append(WebastoSoftResetChargerButton(coordinator))
     if _phase_controls_configured(coordinator):
         entities.extend(
             [
@@ -35,6 +44,16 @@ def _phase_controls_configured(coordinator) -> bool:
         getattr(coordinator, "_phase_switching_mode", PHASE_SWITCHING_MODE_OFF) != PHASE_SWITCHING_MODE_OFF
         and getattr(getattr(coordinator, "control_config", None), "control_mode", None)
         in {ControlMode.MANAGED_CONTROL, ControlMode.EXTERNAL_CONTROLLER}
+    )
+
+
+def _rest_actions_configured(coordinator) -> bool:
+    merged = {**getattr(coordinator.entry, "data", {}), **getattr(coordinator.entry, "options", {})}
+    return (
+        bool(merged.get(CONF_REST_DIAGNOSTICS_ENABLED, False))
+        and bool(str(merged.get(CONF_HOST, "") or "").strip())
+        and bool(str(merged.get(CONF_REST_USERNAME, DEFAULT_REST_USERNAME) or "").strip())
+        and bool(str(merged.get(CONF_REST_PASSWORD, "") or "").strip())
     )
 
 
@@ -60,6 +79,24 @@ class WebastoReconnectButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_trigger_reconnect()
+
+
+class WebastoSoftResetChargerButton(WebastoUniteCoordinatorEntity, ButtonEntity):
+    _attr_name = "Soft Reset Charger"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_soft_reset_charger"
+
+    @property
+    def available(self) -> bool:
+        return _rest_actions_configured(self.coordinator)
+
+    async def async_press(self) -> None:
+        if not self.available:
+            return
+        await self.coordinator.async_soft_reset_charger()
 
 
 class WebastoRequestPhase1PButton(WebastoUniteCoordinatorEntity, ButtonEntity):

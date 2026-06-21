@@ -24,6 +24,7 @@ from custom_components.webasto_unite.button import (
     WebastoRequestPhase3PButton,
     WebastoRestoreDefaultPhaseButton,
     WebastoResetPhaseSwitchStateButton,
+    WebastoSoftResetChargerButton,
     async_setup_entry as button_async_setup_entry,
 )
 from custom_components.webasto_unite.control.inputs import ControlInputReader
@@ -39,6 +40,7 @@ from custom_components.webasto_unite.const import (
     PHASE_SWITCHING_MODE_MANUAL_ONLY,
     PHASE_SWITCHING_MODE_OFF,
     SERVICE_RESTORE_DEFAULT_PHASE,
+    SERVICE_SOFT_RESET_CHARGER,
 )
 from custom_components.webasto_unite.models import ChargeMode, ControlConfig, ControlMode, ControlReason, DlbInputModel, HaSensorSnapshot, PhaseCurrents, SolarControlStrategy, SolarInputModel, RuntimeSnapshot, WallboxState
 from custom_components.webasto_unite.number import WebastoMaximumCurrentNumber, WebastoRequestedCurrentNumber, WebastoFixedCurrentNumber
@@ -377,6 +379,7 @@ def test_phase_switch_services_are_registered():
     assert ("webasto_unite", "request_phase_3p") in services.handlers
     assert ("webasto_unite", SERVICE_RESTORE_DEFAULT_PHASE) in services.handlers
     assert ("webasto_unite", "reset_phase_switch_state") in services.handlers
+    assert ("webasto_unite", SERVICE_SOFT_RESET_CHARGER) in services.handlers
 
 
 def test_manual_phase_switch_is_blocked_by_default():
@@ -2077,6 +2080,43 @@ def test_manual_phase_switch_buttons_call_phase_switch_services():
     asyncio.run(_run())
 
 
+def test_soft_reset_charger_button_requires_rest_credentials_and_calls_coordinator():
+    async def _run():
+        coordinator = SimpleNamespace(
+            entry=make_config_entry(
+                options={
+                    "rest_diagnostics_enabled": True,
+                    "rest_username": "admin",
+                    "rest_password": "secret",
+                }
+            ),
+            async_soft_reset_charger=AsyncMock(),
+        )
+
+        button = WebastoSoftResetChargerButton(coordinator)
+
+        assert button._attr_name == "Soft Reset Charger"
+        assert button._attr_entity_category == EntityCategory.DIAGNOSTIC
+        assert button.available is True
+
+        await button.async_press()
+
+        coordinator.async_soft_reset_charger.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_soft_reset_charger_button_unavailable_without_rest_credentials():
+    coordinator = SimpleNamespace(
+        entry=make_config_entry(options={"rest_diagnostics_enabled": True}),
+        async_soft_reset_charger=AsyncMock(),
+    )
+
+    button = WebastoSoftResetChargerButton(coordinator)
+
+    assert button.available is False
+
+
 def test_phase_switch_select_exposes_evcc_compatible_options():
     async def _run():
         coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
@@ -2399,6 +2439,7 @@ def test_options_flow_schema_is_grouped_into_sections():
             "solar_charging",
             "solar_advanced",
             "phase_switching",
+            "rest_diagnostics",
             "advanced",
         }
         assert result["data_schema"].args[0]["connection"].options["collapsed"] is True
@@ -2407,6 +2448,7 @@ def test_options_flow_schema_is_grouped_into_sections():
         assert result["data_schema"].args[0]["solar_charging"].options["collapsed"] is True
         assert result["data_schema"].args[0]["solar_advanced"].options["collapsed"] is True
         assert result["data_schema"].args[0]["phase_switching"].options["collapsed"] is True
+        assert result["data_schema"].args[0]["rest_diagnostics"].options["collapsed"] is True
         assert result["data_schema"].args[0]["advanced"].options["collapsed"] is True
 
     asyncio.run(_run())
@@ -3483,29 +3525,26 @@ def test_keepalive_only_mode_blocks_control_writes():
     asyncio.run(_run())
 
 
-def test_managed_control_mode_allows_static_sync():
+def test_managed_control_mode_allows_control_writes():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.control_config = ControlConfig(control_mode=ControlMode.MANAGED_CONTROL)
 
-    assert coordinator._allows_static_sync() is True
     assert coordinator._allows_control_writes() is True
 
 
-def test_keepalive_only_mode_disables_control_writes_and_static_sync():
+def test_keepalive_only_mode_disables_control_writes():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.control_config = ControlConfig(control_mode=ControlMode.KEEPALIVE_ONLY)
 
-    assert coordinator._allows_static_sync() is False
     assert coordinator._allows_control_writes() is False
 
 
-def test_external_controller_mode_blocks_automatic_writes_but_allows_static_sync():
+def test_external_controller_mode_blocks_automatic_writes():
     coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
     coordinator.control_config = ControlConfig(control_mode=ControlMode.EXTERNAL_CONTROLLER)
 
     assert coordinator._allows_control_writes() is False
     assert coordinator._allows_current_writes() is True
-    assert coordinator._allows_static_sync() is True
     assert coordinator._control_write_blocked_reason() == "external_controller_mode"
 
 

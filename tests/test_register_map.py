@@ -5,6 +5,7 @@ import custom_components.webasto_unite as webasto_unite_package
 from custom_components.webasto_unite.registers import (
     CHARGE_POINT_ID,
     CHARGE_POINT_STATE,
+    COMM_TIMEOUT_S,
     CURRENT_L1_A,
     ENERGY_METER_KWH,
     FIRMWARE_VERSION,
@@ -508,6 +509,12 @@ def test_voltage_and_session_time_registers_are_available():
 def test_charge_current_register_is_readable_and_writable():
     assert SET_CHARGE_CURRENT_A.readable is True
     assert SET_CHARGE_CURRENT_A.writable is True
+
+
+def test_comm_timeout_register_is_read_only_for_integration():
+    assert COMM_TIMEOUT_S.readable is True
+    assert COMM_TIMEOUT_S.writable is False
+    assert COMM_TIMEOUT_S not in WRITE_REGISTERS
 
 
 def test_charge_point_state_mapping_matches_unite_status_codes():

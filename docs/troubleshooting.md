@@ -50,7 +50,7 @@ Check:
 - `DLB Limit`
 - `Fallback Active`
 - `Sensor Invalid Reason`
-- configured `Fallback Current`
+- configured `Integration Fallback Current`
 - configured `Main Fuse`
 - configured `Safety Margin`
 

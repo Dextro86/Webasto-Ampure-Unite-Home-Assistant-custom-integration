@@ -9,6 +9,7 @@ from custom_components.webasto_unite.models import (
     ControlReason,
     HaSensorSnapshot,
     SolarControlStrategy,
+    RestDiagnosticsData,
     WallboxState,
 )
 
@@ -105,6 +106,11 @@ def test_build_runtime_snapshot_maps_control_solar_phase_and_write_diagnostics()
             phase_switch_last_block_reason=None,
             phase_switch_last_target="1P",
             phase_switch_state="phase_switch_settling",
+            rest_diagnostics=RestDiagnosticsData(
+                enabled=True,
+                status="connected",
+                hmi_version="v3.187.0",
+            ),
             last_client_error=None,
             entry_title="Webasto Unite",
         )
@@ -119,3 +125,4 @@ def test_build_runtime_snapshot_maps_control_solar_phase_and_write_diagnostics()
     assert snapshot.phase_consistency == "register_and_physical_match"
     assert snapshot.last_control_write_reason == "solar_mode"
     assert snapshot.capability_summary is not None
+    assert snapshot.rest_diagnostics.hmi_version == "v3.187.0"

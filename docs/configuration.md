@@ -24,11 +24,14 @@ Before using the integration:
 The integration uses one options screen with the settings grouped in logical sections:
 
 - `Connection`
-- `Charging`
-- `Temporary Session Settings`
+- `Charging Basics`
+- `Temporary Modes`
 - `Dynamic Load Balancing`
 - `Solar Charging`
-- `Advanced`
+- `Solar Advanced`
+- `Phase Switching`
+- `REST Diagnostics`
+- `Technical Advanced`
 
 This keeps the full configuration in one place. The validation rules remain the same: invalid sensor combinations or invalid Solar thresholds are still rejected before the options are saved.
 
@@ -52,7 +55,7 @@ Main settings:
 - `Default Mode`: charge mode selected when Home Assistant starts or reloads the integration. The default is `Normal`.
 - `Minimum Current (A)`: lowest current the integration may request. EV charging normally starts at `6 A`.
 - `Maximum Current (A)`: normal target current in `Normal` mode and the highest current the integration may request. Set this to match the charger and installation limit.
-- `Fallback Current (A)`: fallback current used when the integration cannot safely rely on its sensor inputs.
+- `Integration Fallback Current (A)`: fallback current used internally when the integration cannot safely rely on its sensor inputs. This does not change the charger's internal failsafe current.
 
 Recommended first setup:
 
@@ -97,13 +100,29 @@ Main settings:
 
 These settings do not change the configured `Default Mode`. They only define how the temporary session settings behave when those runtime overrides are enabled.
 
+## REST Diagnostics
+
+REST diagnostics are optional and read-only. They use the charger's local WebUI API in addition to Modbus.
+
+Main settings:
+
+- `Enable REST Diagnostics`: enables read-only WebUI API diagnostics.
+- `REST Username`: WebUI username, usually `admin`.
+- `REST Password`: WebUI password. Leave empty to keep the currently stored password.
+
+When enabled, the integration reads `/api/system-information` for values such as REST API version, HMI version and wallbox model. It also reads `/api/configuration-fields` less frequently because that endpoint can be slow on Unite chargers.
+
+REST diagnostics do not write charger settings and do not upload firmware. If REST login or polling fails, Modbus monitoring, keepalive, Solar, DLB and current control continue to work.
+
+When REST/WebUI credentials are configured, the integration also exposes an explicit advanced `Soft Reset Charger` action. This uses the charger's classic WebUI soft-reset form. It is never executed automatically and hard reset/factory reset are not exposed.
+
 ## Current Limits
 
 Important current settings:
 
 - `Minimum Current (A)`: lower control bound. Values below `6 A` normally mean no valid EV charging.
 - `Maximum Current (A)`: normal target current in `Normal` mode and upper control bound. Increase this if your charger and installation safely support more than the default `16 A`.
-- `Fallback Current (A)`: low safety current used when DLB cannot trust its sensor inputs. `6 A` is recommended.
+- `Integration Fallback Current (A)`: low internal safety current used when DLB cannot trust its sensor inputs. `6 A` is recommended. This does not write the charger's internal failsafe current register.
 - `Fixed Current`: target current in amperes used by `Fixed Current` mode.
 
 The final current target can still be limited by the charger-reported session limit, DLB, safety settings or fallback behavior.
@@ -112,9 +131,9 @@ The final current target can still be limited by the charger-reported session li
 
 The legacy/config `Maximum Current` number entity is disabled by default so it does not appear as a normal dashboard control. Change this value through the integration settings unless you intentionally need the service/entity for automation compatibility.
 
-If DLB input becomes unavailable, the integration falls back to `Fallback Current (A)`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured sensors.
+If DLB input becomes unavailable, the integration falls back to `Integration Fallback Current (A)`. This is intentional safety behavior. A low `Final Target` together with `Fallback Active = True` or a `Sensor Invalid Reason` usually means the integration is limiting charging because it cannot trust the configured sensors.
 
-External DLB sensors must also be recent. If a required phase-current sensor has not been updated within `Control Sensor Timeout (s)`, the integration treats it as unsafe and falls back to `Fallback Current (A)`. This prevents DLB from trusting stale P1 or template-sensor values after a sensor gateway has stopped updating.
+External DLB sensors must also be recent. If a required phase-current sensor has not been updated within `Control Sensor Timeout (s)`, the integration treats it as unsafe and falls back to `Integration Fallback Current (A)`. This prevents DLB from trusting stale P1 or template-sensor values after a sensor gateway has stopped updating.
 
 ## Dynamic Load Balancing
 

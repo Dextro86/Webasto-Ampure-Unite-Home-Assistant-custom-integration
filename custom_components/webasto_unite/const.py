@@ -23,6 +23,10 @@ DEFAULT_SOLAR_MIN_PAUSE_S = 0.0
 DEFAULT_SOLAR_GRID_POWER_DIRECTION = "negative_export"
 DEFAULT_SOLAR_SENSOR_FAILURE_BEHAVIOR = "pause"
 DEFAULT_PHASE_SWITCHING_MODE = "off"
+DEFAULT_REST_USERNAME = "admin"
+DEFAULT_REST_SYSTEM_REFRESH_S = 60.0
+DEFAULT_REST_CONFIGURATION_REFRESH_S = 600.0
+DEFAULT_REST_CONFIGURATION_INITIAL_DELAY_S = 60.0
 DEFAULT_PV_START_DELAY_S = DEFAULT_SOLAR_START_DELAY_S
 DEFAULT_PV_STOP_DELAY_S = DEFAULT_SOLAR_STOP_DELAY_S
 DEFAULT_PV_MIN_RUNTIME_S = DEFAULT_SOLAR_MIN_RUNTIME_S
@@ -77,6 +81,9 @@ CONF_SOLAR_MIN_RUNTIME = "solar_min_runtime"
 CONF_SOLAR_MIN_PAUSE = "solar_min_pause"
 CONF_SOLAR_MIN_CURRENT = "solar_min_current"
 CONF_PHASE_SWITCHING_MODE = "phase_switching_mode"
+CONF_REST_DIAGNOSTICS_ENABLED = "rest_diagnostics_enabled"
+CONF_REST_USERNAME = "rest_username"
+CONF_REST_PASSWORD = "rest_password"
 # Legacy phase restore option keys; kept only so the options flow can remove
 # them from older config entries.
 CONF_RESTORE_3P_ON_NEW_SESSION = "restore_3p_on_new_session"
@@ -86,7 +93,6 @@ PHASE_SWITCHING_MODE_OFF = "off"
 PHASE_SWITCHING_MODE_MANUAL_ONLY = "manual_only"
 PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR = "automatic_solar"
 CONF_FIXED_CURRENT = "fixed_current"
-CONF_COMM_TIMEOUT = "communication_timeout"
 CONF_CHARGE_MODE = "charge_mode"
 STORAGE_KEY_CHARGING_STATE = "charging_state"
 
@@ -105,6 +111,7 @@ SERVICE_REQUEST_PHASE_1P = "request_phase_1p"
 SERVICE_REQUEST_PHASE_3P = "request_phase_3p"
 SERVICE_RESTORE_DEFAULT_PHASE = "restore_default_phase"
 SERVICE_RESET_PHASE_SWITCH_STATE = "reset_phase_switch_state"
+SERVICE_SOFT_RESET_CHARGER = "soft_reset_charger"
 
 RUNTIME_CLIENT = "client"
 RUNTIME_CONTROLLER = "controller"

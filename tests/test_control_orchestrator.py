@@ -7,7 +7,7 @@ from custom_components.webasto_unite.control.orchestrator import (
 from custom_components.webasto_unite.models import ControlMode
 
 
-def test_managed_control_allows_all_write_paths_when_idle():
+def test_managed_control_allows_current_writes():
     access = resolve_control_write_access(
         control_mode=ControlMode.MANAGED_CONTROL,
         phase_switch_in_progress=False,
@@ -15,11 +15,10 @@ def test_managed_control_allows_all_write_paths_when_idle():
 
     assert access.automatic_control_writes is True
     assert access.current_writes is True
-    assert access.static_sync is True
     assert access.blocked_reason is None
 
 
-def test_external_controller_blocks_automatic_but_allows_direct_current_and_static_sync():
+def test_external_controller_blocks_automatic_but_allows_direct_current_only():
     access = resolve_control_write_access(
         control_mode=ControlMode.EXTERNAL_CONTROLLER,
         phase_switch_in_progress=False,
@@ -27,7 +26,6 @@ def test_external_controller_blocks_automatic_but_allows_direct_current_and_stat
 
     assert access.automatic_control_writes is False
     assert access.current_writes is True
-    assert access.static_sync is True
     assert access.blocked_reason == BLOCK_REASON_EXTERNAL_CONTROLLER
 
 
@@ -39,11 +37,10 @@ def test_monitoring_only_blocks_all_writes():
 
     assert access.automatic_control_writes is False
     assert access.current_writes is False
-    assert access.static_sync is False
     assert access.blocked_reason == BLOCK_REASON_MONITORING_ONLY
 
 
-def test_phase_switch_blocks_current_writes_temporarily_but_keeps_static_sync_policy():
+def test_phase_switch_blocks_current_writes():
     access = resolve_control_write_access(
         control_mode=ControlMode.EXTERNAL_CONTROLLER,
         phase_switch_in_progress=True,
@@ -51,5 +48,4 @@ def test_phase_switch_blocks_current_writes_temporarily_but_keeps_static_sync_po
 
     assert access.automatic_control_writes is False
     assert access.current_writes is False
-    assert access.static_sync is True
     assert access.blocked_reason == BLOCK_REASON_PHASE_SWITCH_IN_PROGRESS

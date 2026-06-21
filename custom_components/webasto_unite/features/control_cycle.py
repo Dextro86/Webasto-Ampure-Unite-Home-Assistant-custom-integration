@@ -241,6 +241,7 @@ class ControlCycleMixin:
                 phase_switch_last_block_reason=self._phase_switch_last_block_reason,
                 phase_switch_last_target=self._phase_switch_last_target,
                 phase_switch_state=self._phase_switch_state,
+                rest_diagnostics=self._rest_diagnostics_snapshot(),
                 last_client_error=self.client.stats.last_error,
                 entry_title=self.entry.title,
             )
@@ -270,6 +271,7 @@ class ControlCycleMixin:
                 phase_action_executed=phase_action_executed,
             )
             control_write_access = await self._enqueue_control_decision(cycle.decision, wallbox=wallbox)
+            await self._async_refresh_rest_diagnostics_if_needed()
             return await self._build_snapshot(cycle=cycle, control_write_access=control_write_access)
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(str(err)) from err

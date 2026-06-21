@@ -41,7 +41,7 @@
               "startup_charge_mode": "Default Mode",
               "min_current": "Minimum Current (A)",
               "max_current": "Maximum Current (A)",
-              "safe_current": "Fallback Current (A)"
+              "safe_current": "Integration Fallback Current (A)"
             },
             "data_description": {
               "installed_phases": "Physical charger setup used by this integration. Use 1P for a single-phase charger installation. Use 3P for a three-phase installation; the integration can still observe a vehicle charging on one phase.",
@@ -49,7 +49,7 @@
               "startup_charge_mode": "Default charging mode used after Home Assistant restart, integration reload and at the start of a new plug-in session.",
               "min_current": "Lowest current in amperes the integration may request. Charging below 6 A is normally not supported.",
               "max_current": "Normal mode target and global maximum current in amperes. Set this to match the charger, cable and installation limit.",
-              "safe_current": "Safety fallback current in amperes used when DLB cannot trust its sensor inputs. This is not the normal charging target. 6 A is recommended."
+              "safe_current": "Current used internally by the integration when DLB or sensor inputs are unavailable or invalid. This does not change the charger's internal failsafe current. 6 A is recommended."
             }
           },
           "session_overrides": {
@@ -139,6 +139,19 @@
             },
             "data_description": {
               "phase_switching_mode": "Experimental 1P/3P switching through the charger phase register. Off is safest. Manual Only exposes buttons/services/select. Automatic Solar may switch phases after stable-target, cooldown and session-count guards pass."
+            }
+          },
+          "rest_diagnostics": {
+            "name": "REST Diagnostics",
+            "data": {
+              "rest_diagnostics_enabled": "Enable REST Diagnostics",
+              "rest_username": "REST Username",
+              "rest_password": "REST Password"
+            },
+            "data_description": {
+              "rest_diagnostics_enabled": "Optional read-only diagnostics through the charger WebUI API. Modbus charging control keeps working if REST is unavailable.",
+              "rest_username": "WebUI username. The default is usually admin.",
+              "rest_password": "WebUI password. Leave empty to keep the currently stored password."
             }
           },
           "advanced": {

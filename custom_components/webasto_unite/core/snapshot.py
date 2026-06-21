@@ -52,6 +52,7 @@ class SnapshotBuildInput:
     phase_switch_last_block_reason: str | None
     phase_switch_last_target: str | None
     phase_switch_state: str | None
+    rest_diagnostics: Any
     last_client_error: str | None
     entry_title: str | None
 
@@ -139,6 +140,7 @@ def build_runtime_snapshot(input_data: SnapshotBuildInput) -> RuntimeSnapshot:
         phase_switch_last_block_reason=input_data.phase_switch_last_block_reason,
         phase_switch_last_target=input_data.phase_switch_last_target,
         phase_switch_state=input_data.phase_switch_state,
+        rest_diagnostics=input_data.rest_diagnostics,
         phase_consistency=build_phase_consistency(input_data.wallbox),
         dominant_limit_reason=decision.dominant_limit_reason.value if decision.dominant_limit_reason is not None else None,
         fallback_active=decision.fallback_active,

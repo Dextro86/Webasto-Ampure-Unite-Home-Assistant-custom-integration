@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from ..const import (
-    CONF_COMM_TIMEOUT,
     CONF_CONTROL_MODE,
     CONF_CONTROL_SENSOR_TIMEOUT,
     CONF_DLB_ENABLED,
@@ -127,5 +126,4 @@ def build_control_config(merged: dict) -> ControlConfig:
         solar_min_pause_s=float(merged.get(CONF_SOLAR_MIN_PAUSE, DEFAULT_PV_MIN_PAUSE_S)),
         solar_min_current_a=float(merged.get(CONF_SOLAR_MIN_CURRENT, 6.0)),
         fixed_current_a=float(merged.get(CONF_FIXED_CURRENT, DEFAULT_FIXED_CURRENT_A)),
-        communication_timeout_s=float(merged.get(CONF_COMM_TIMEOUT, 30.0)),
     )

@@ -82,7 +82,7 @@ SESSION_DURATION_S = RegisterDef("session_duration_s", 1508, count=2, register_t
 SESSION_END_TIME = RegisterDef("session_end_time", 1512, count=2, register_type=RegisterType.INPUT, value_type=ValueType.UINT32)
 
 SAFE_CURRENT_A = RegisterDef("safe_current_a", 2000, value_type=ValueType.UINT16, writable=True)
-COMM_TIMEOUT_S = RegisterDef("comm_timeout_s", 2002, value_type=ValueType.UINT16, writable=True)
+COMM_TIMEOUT_S = RegisterDef("comm_timeout_s", 2002, value_type=ValueType.UINT16, writable=False)
 
 SET_CHARGE_POWER_W = RegisterDef("set_charge_power_w", 5000, count=2, value_type=ValueType.UINT32, writable=True)
 SET_CHARGE_CURRENT_A = RegisterDef("set_charge_current_a", 5004, value_type=ValueType.UINT16, writable=True, readable=True)
@@ -133,7 +133,6 @@ READ_REGISTERS = (
 
 WRITE_REGISTERS = (
     SAFE_CURRENT_A,
-    COMM_TIMEOUT_S,
     PHASE_SWITCH_MODE,
     SET_CHARGE_POWER_W,
     SET_CHARGE_CURRENT_A,
