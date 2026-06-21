@@ -266,6 +266,25 @@ def test_service_handler_returns_clear_error_for_unknown_entry_id():
         asyncio.run(handler(SimpleNamespace(data={"entry_id": "missing", "mode": "normal"})))
 
 
+def test_setup_sensor_listeners_accepts_dlb_sensor_options():
+    coordinator = WebastoUniteCoordinator.__new__(WebastoUniteCoordinator)
+    coordinator.hass = SimpleNamespace()
+    coordinator.entry = make_config_entry(
+        options={
+            "dlb_l1_sensor": "sensor.l1",
+            "dlb_l2_sensor": "sensor.l2",
+            "dlb_l3_sensor": "sensor.l3",
+        }
+    )
+    coordinator._sensor_unsubscribers = []
+    coordinator._schedule_sensor_refresh = Mock()
+    coordinator.data = None
+
+    coordinator._setup_sensor_listeners()
+
+    assert len(coordinator._sensor_unsubscribers) == 1
+
+
 def test_set_current_service_requires_external_controller_mode():
     class _Services:
         def __init__(self):

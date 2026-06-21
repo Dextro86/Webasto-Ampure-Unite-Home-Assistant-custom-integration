@@ -13,6 +13,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_INSTALLED_PHASES,
+    CONF_DLB_GRID_POWER_SENSOR,
+    CONF_DLB_L1_SENSOR,
+    CONF_DLB_L2_SENSOR,
+    CONF_DLB_L3_SENSOR,
     CONF_PHASE_SWITCHING_MODE,
     CONF_SOLAR_EXPORT_POWER_SENSOR,
     CONF_SOLAR_GRID_POWER_SENSOR,
