@@ -60,12 +60,12 @@ These entities are intended for normal dashboards and automations.
 These are intended for troubleshooting, support and advanced dashboards.
 
 - charger state diagnostics: `Charge Point State`, `Charging State`, `IEC 61851 State`, `Equipment State`, `Cable State`, `EVSE Fault Code`
-- phase diagnostics: `Requested Phase`, `Observed Phase`, `Phase Recovery State`
+- phase diagnostics: `Requested Phase`, `Observed Phase`, `Phase Switch State`
 - Solar diagnostics: `Solar Surplus Input`, `Solar Raw Input`, `Solar Filtered Input`, `Solar Target`, `Solar Phase Count`, `Solar Phase Source`, `Solar Voltage Sum`, `Solar Input State`
 - control diagnostics: `Control Owner`, `Control Reason`, `Control Writes Enabled`, `Last Control Write`, `Last Control Write Reason`, `Last Control Write Register`, `Last Control Write Age`, `Last Control Write Blocked Reason`, `Dominant Limit`, `Sensor Invalid Reason`, `Fallback Active`
 - communication diagnostics: `Connected`, `Keepalive Overdue`, `Client Error`, `Reconnect`, `Refresh`
 - EVCC support: `EVCC Status`
-- diagnostic maintenance: `Reset Phase Switch State`
+- diagnostic maintenance: `Clear Phase Switch Status`
 
 ## Official Services
 
@@ -82,7 +82,7 @@ These services are part of the supported automation interface.
 - `webasto_unite.request_phase_1p`
 - `webasto_unite.request_phase_3p`
 - `webasto_unite.restore_default_phase`
-- `webasto_unite.reset_phase_switch_state`
+- `webasto_unite.reset_phase_switch_state` (shown as `Clear Phase Switch Status`)
 - `webasto_unite.soft_reset_charger`
 
 ## Legacy Services

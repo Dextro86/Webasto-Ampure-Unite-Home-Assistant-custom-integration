@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-import re
 from typing import Any
 
 from ..models import RestDiagnosticsData
@@ -12,15 +11,11 @@ class RestDiagnosticsError(Exception):
     """Raised when the optional REST diagnostics API cannot be read."""
 
 
-class WebUiActionError(Exception):
-    """Raised when an explicit WebUI action cannot be executed."""
-
-
 class RestDiagnosticsClient:
-    """Small read-only client for the Unite WebUI REST API.
+    """Small client for the Unite WebUI REST API.
 
-    This intentionally does not expose writes, restart, free-charging or
-    firmware update endpoints. REST diagnostics must never own charging logic.
+    Diagnostics are read-only. The only explicit action exposed here is the
+    user-triggered system restart endpoint; REST must never own charging logic.
     """
 
     def __init__(
@@ -111,6 +106,36 @@ class RestDiagnosticsClient:
                     return await self._parse_response(retry_response, path)
             return await self._parse_response(response, path)
 
+    async def restart_system(self) -> None:
+        """Request a charger reboot through the modern REST action endpoint."""
+        await self._post_action("/custom-actions/restart-system")
+
+    async def _post_action(self, path: str) -> None:
+        await self._ensure_token()
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self._token}",
+        }
+        async with self.session.post(
+            f"{self.base_url}{path}",
+            headers=headers,
+            timeout=self.timeout_s,
+        ) as response:
+            if response.status == 401:
+                self._token = None
+                await self._ensure_token()
+                headers["Authorization"] = f"Bearer {self._token}"
+                async with self.session.post(
+                    f"{self.base_url}{path}",
+                    headers=headers,
+                    timeout=self.timeout_s,
+                ) as retry_response:
+                    if retry_response.status >= 400:
+                        raise RestDiagnosticsError(f"{path} returned HTTP {retry_response.status}")
+                    return
+            if response.status >= 400:
+                raise RestDiagnosticsError(f"{path} returned HTTP {response.status}")
+
     async def _ensure_token(self) -> None:
         if (
             self._token
@@ -178,122 +203,3 @@ class RestDiagnosticsClient:
         if text in {"1", "3p", "three phase", "three_phase"}:
             return "3P"
         return str(value)
-
-
-class WebUiActionClient:
-    """Explicit WebUI actions using the classic PHP WebUI flow.
-
-    The Unite WebUI soft-reset button is not part of the bearer-token REST API.
-    It posts a CSRF-protected form to /index_main.php with button_soft_reset.
-    This helper intentionally implements only soft reset.
-    """
-
-    def __init__(
-        self,
-        *,
-        host: str,
-        username: str,
-        password: str,
-        session,
-        timeout_s: float = 15.0,
-    ) -> None:
-        self.host = host
-        self.username = username
-        self.password = password
-        self.session = session
-        self.timeout_s = timeout_s
-        self.base_url = f"http://{host}"
-        self._cookie_header: str | None = None
-
-    async def soft_reset(self) -> None:
-        token = await self._login_and_get_csrf_token()
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        if self._cookie_header:
-            headers["Cookie"] = self._cookie_header
-        data = {
-            "token": token,
-            "button_soft_reset": "",
-        }
-        async with self.session.post(
-            f"{self.base_url}/index_main.php",
-            data=data,
-            headers=headers,
-            timeout=self.timeout_s,
-            allow_redirects=False,
-        ) as response:
-            if response.status not in {200, 302, 303}:
-                raise WebUiActionError(f"soft reset returned HTTP {response.status}")
-
-    async def _login_and_get_csrf_token(self) -> str:
-        login_data = {
-            "username": self.username,
-            "password": self.password,
-        }
-        async with self.session.post(
-            f"{self.base_url}/index_main.php",
-            data=login_data,
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            timeout=self.timeout_s,
-            allow_redirects=True,
-        ) as response:
-            if response.status >= 400:
-                raise WebUiActionError(f"WebUI login returned HTTP {response.status}")
-            self._capture_cookie_header(response)
-            text = await response.text()
-        token = self._extract_csrf_token(text)
-        if token is None:
-            headers = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
-            if self._cookie_header:
-                headers["Cookie"] = self._cookie_header
-            async with self.session.get(
-                f"{self.base_url}/index_main.php",
-                headers=headers,
-                timeout=self.timeout_s,
-            ) as response:
-                if response.status >= 400:
-                    raise WebUiActionError(f"WebUI page returned HTTP {response.status}")
-                self._capture_cookie_header(response)
-                token = self._extract_csrf_token(await response.text())
-        if token is None:
-            raise WebUiActionError("WebUI CSRF token not found")
-        return token
-
-    def _capture_cookie_header(self, response) -> None:
-        cookies = getattr(response, "cookies", None)
-        if cookies:
-            pairs = []
-            for name, morsel in cookies.items():
-                value = getattr(morsel, "value", None)
-                if value is not None:
-                    pairs.append(f"{name}={value}")
-            if pairs:
-                self._cookie_header = "; ".join(pairs)
-                return
-        headers = getattr(response, "headers", None) or {}
-        set_cookie = None
-        try:
-            set_cookie = headers.get("Set-Cookie")
-        except AttributeError:
-            set_cookie = None
-        if set_cookie:
-            self._cookie_header = set_cookie.split(";", 1)[0]
-
-    @staticmethod
-    def _extract_csrf_token(html: str) -> str | None:
-        patterns = (
-            r'<meta\s+name=["\']csrf-token["\']\s+content=["\']([^"\']+)["\']',
-            r'<input[^>]+name=["\']token["\'][^>]+value=["\']([^"\']+)["\']',
-        )
-        for pattern in patterns:
-            match = re.search(pattern, html, flags=re.IGNORECASE)
-            if match:
-                token = match.group(1).strip()
-                if token:
-                    return token
-        return None

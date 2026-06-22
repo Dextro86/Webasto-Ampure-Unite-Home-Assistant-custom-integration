@@ -1,7 +1,7 @@
 import asyncio
 
 from custom_components.webasto_unite.models import RestDiagnosticsData
-from custom_components.webasto_unite.rest.client import RestDiagnosticsClient, WebUiActionClient
+from custom_components.webasto_unite.rest.client import RestDiagnosticsClient
 
 
 class _FakeResponse:
@@ -31,6 +31,8 @@ class _FakeSession:
 
     def post(self, url, **kwargs):
         self.post_calls.append((url, kwargs))
+        if url.endswith("/custom-actions/restart-system"):
+            return _FakeResponse(200, {})
         return _FakeResponse(201, {"access_token": "token"})
 
     def get(self, url, **kwargs):
@@ -70,29 +72,6 @@ class _FakeSession:
         return _FakeResponse(404, {})
 
 
-class _FakeWebUiSession:
-    def __init__(self):
-        self.post_calls = []
-        self.get_calls = []
-
-    def post(self, url, **kwargs):
-        self.post_calls.append((url, kwargs))
-        if url.endswith("/index_main.php") and kwargs.get("data", {}).get("button_soft_reset") == "":
-            return _FakeResponse(302, "")
-        return _FakeResponse(
-            200,
-            '<html><input type="hidden" name="token" value="csrf-token"></html>',
-            headers={"Set-Cookie": "PHPSESSID=session-id; path=/"},
-        )
-
-    def get(self, url, **kwargs):
-        self.get_calls.append((url, kwargs))
-        return _FakeResponse(
-            200,
-            '<html><meta name="csrf-token" content="csrf-token"></html>',
-        )
-
-
 def test_rest_diagnostics_client_parses_unite_api_fields():
     async def _run():
         session = _FakeSession()
@@ -120,27 +99,25 @@ def test_rest_diagnostics_client_parses_unite_api_fields():
     assert "installationSettings.currentLimiterPhase" in data.discovered_field_keys
 
 
-def test_webui_action_client_soft_reset_posts_classic_form():
+def test_rest_diagnostics_client_restart_uses_modern_rest_action_endpoint():
     async def _run():
-        session = _FakeWebUiSession()
-        client = WebUiActionClient(
+        session = _FakeSession()
+        client = RestDiagnosticsClient(
             host="192.0.2.10",
             username="admin",
             password="secret",
             session=session,
         )
 
-        await client.soft_reset()
+        await client.restart_system()
         return session
 
     session = asyncio.run(_run())
 
     assert len(session.post_calls) == 2
     login_url, login_kwargs = session.post_calls[0]
-    reset_url, reset_kwargs = session.post_calls[1]
-    assert login_url == "http://192.0.2.10/index_main.php"
-    assert login_kwargs["data"] == {"username": "admin", "password": "secret"}
-    assert reset_url == "http://192.0.2.10/index_main.php"
-    assert reset_kwargs["data"] == {"token": "csrf-token", "button_soft_reset": ""}
-    assert reset_kwargs["headers"]["Cookie"] == "PHPSESSID=session-id"
-    assert reset_kwargs["allow_redirects"] is False
+    restart_url, restart_kwargs = session.post_calls[1]
+    assert login_url == "https://192.0.2.10/api/login"
+    assert login_kwargs["json"] == {"username": "admin", "password": "secret"}
+    assert restart_url == "https://192.0.2.10/api/custom-actions/restart-system"
+    assert restart_kwargs["headers"]["Authorization"] == "Bearer token"

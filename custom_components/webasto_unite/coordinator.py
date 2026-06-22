@@ -2,43 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import replace
 from datetime import timedelta
 from time import monotonic
 
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.core import callback
-from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_INSTALLED_PHASES,
-    CONF_DLB_GRID_POWER_SENSOR,
-    CONF_DLB_L1_SENSOR,
-    CONF_DLB_L2_SENSOR,
-    CONF_DLB_L3_SENSOR,
     CONF_PHASE_SWITCHING_MODE,
-    CONF_REST_DIAGNOSTICS_ENABLED,
-    CONF_REST_PASSWORD,
-    CONF_REST_USERNAME,
-    CONF_SOLAR_EXPORT_POWER_SENSOR,
-    CONF_SOLAR_GRID_POWER_SENSOR,
-    CONF_SOLAR_IMPORT_POWER_SENSOR,
-    CONF_SOLAR_SURPLUS_SENSOR,
-    CONF_TIMEOUT,
     CONF_UNIT_ID,
     DEFAULT_PHASE_SWITCHING_MODE,
     DEFAULT_PORT,
-    DEFAULT_REST_CONFIGURATION_INITIAL_DELAY_S,
-    DEFAULT_REST_CONFIGURATION_REFRESH_S,
-    DEFAULT_REST_SYSTEM_REFRESH_S,
-    DEFAULT_REST_USERNAME,
-    DEFAULT_TIMEOUT_S,
     DEFAULT_UNIT_ID,
     DOMAIN,
     PHASE_SWITCHING_MODE_OFF,
-    STORAGE_KEY_CHARGING_STATE,
 )
 from .control.orchestrator import ControlWriteAccess, resolve_control_write_access
 from .control.runtime_guards import RuntimeGuards
@@ -62,20 +40,23 @@ from .models import (
     ChargeMode,
     ControlConfig,
     ControlMode,
-    RestDiagnosticsData,
     RuntimeSnapshot,
 )
 from .features.phase_engine import PhaseSwitchManager
 from .sensor_adapter import HaSensorAdapter
 from .modbus.reader import WallboxReader
-from .rest.client import RestDiagnosticsClient, WebUiActionClient
+from .runtime.rest import RestDiagnosticsRuntime
+from .runtime.sensors import SensorListenerRuntime
+from .runtime.storage import ChargingStateStorageRuntime
+from .runtime.tasks import TaskRuntime
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSOR_REFRESH_DEBOUNCE_S = 0.4
-
 
 PHASE_RUNTIME_ATTRIBUTE_MAP = {
+    # Compatibility shim: older tests and feature mixins still access these
+    # private coordinator attributes directly. New code should use
+    # ``phase_runtime`` / ``mode_runtime`` / ``session_runtime`` explicitly.
     "_phase_switching_mode": "switching_mode",
     "_phase_switch_last_result": "switch_last_result",
     "_phase_switch_last_block_reason": "switch_last_block_reason",
@@ -102,6 +83,7 @@ SESSION_RUNTIME_ATTRIBUTE_MAP = {
     "_last_vehicle_connected": "last_vehicle_connected",
     "_vehicle_connection_initialized": "vehicle_connection_initialized",
 }
+
 
 class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoordinator[RuntimeSnapshot]):
     def __getattr__(self, name):
@@ -137,25 +119,21 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
         self.mode_runtime = ModeRuntimeState()
         self.session_runtime = SessionRuntimeState()
         self.phase_runtime = PhaseRuntimeState()
+        self.task_runtime = TaskRuntime(self)
         self.phase_switch_manager = PhaseSwitchManager()
         self.phase_switch_runtime = PhaseSwitchRuntimeFacade(self.phase_runtime, self.phase_switch_manager)
         self._external_current_a: float | None = None
         self._pending_external_current_a: float | None = None
-        self._sensor_unsubscribers = []
+        self.sensor_runtime = SensorListenerRuntime(self)
+        self.sensor_runtime.initialize()
         self._keepalive_task: asyncio.Task | None = None
-        self._sensor_refresh_task: asyncio.Task | None = None
         self._phase_switch_task: asyncio.Task | None = None
         self._phase_restore_task: asyncio.Task | None = None
         self._phase_switch_sleep = asyncio.sleep
-        self.rest_diagnostics = RestDiagnosticsData()
-        self.rest_client: RestDiagnosticsClient | None = None
-        self._rest_system_last_fetch_monotonic: float | None = None
-        self._rest_configuration_last_fetch_monotonic: float | None = None
-        self._rest_configuration_not_before_monotonic = (
-            monotonic() + DEFAULT_REST_CONFIGURATION_INITIAL_DELAY_S
-        )
-        entry_id = getattr(entry, "entry_id", "default")
-        self._charging_state_store = Store(hass, 1, f"{DOMAIN}.{entry_id}.{STORAGE_KEY_CHARGING_STATE}")
+        self.rest_runtime = RestDiagnosticsRuntime(self)
+        self.rest_runtime.initialize()
+        self.storage_runtime = ChargingStateStorageRuntime(self)
+        self.storage_runtime.initialize()
 
         merged = {**entry.data, **entry.options}
         self.control_config = build_control_config(merged)
@@ -282,6 +260,14 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
             self._pending_external_current_a = None
         if not hasattr(self, "_phase_switch_sleep"):
             self._phase_switch_sleep = asyncio.sleep
+        if not hasattr(self, "task_runtime"):
+            self.task_runtime = TaskRuntime(self)
+        if not hasattr(self, "sensor_runtime"):
+            self.sensor_runtime = SensorListenerRuntime(self)
+            if not hasattr(self, "_sensor_unsubscribers"):
+                self._sensor_unsubscribers = []
+            if not hasattr(self, "_sensor_refresh_task"):
+                self._sensor_refresh_task = None
         if not hasattr(self, "write_queue"):
             self.write_queue = WriteQueueManager()
         if not hasattr(self, "control_config"):
@@ -300,24 +286,21 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
                 controller=getattr(self, "controller", None),
                 monotonic_fn=lambda: monotonic(),
             )
-        if not hasattr(self, "_sensor_refresh_task"):
-            self._sensor_refresh_task = None
         if not hasattr(self, "_phase_switch_task"):
             self._phase_switch_task = getattr(self, "_automatic_phase_switch_task", None)
         if not hasattr(self, "_phase_restore_task"):
             self._phase_restore_task = None
-        if not hasattr(self, "rest_diagnostics"):
-            self.rest_diagnostics = RestDiagnosticsData()
-        if not hasattr(self, "rest_client"):
-            self.rest_client = None
-        if not hasattr(self, "_rest_system_last_fetch_monotonic"):
-            self._rest_system_last_fetch_monotonic = None
-        if not hasattr(self, "_rest_configuration_last_fetch_monotonic"):
-            self._rest_configuration_last_fetch_monotonic = None
-        if not hasattr(self, "_rest_configuration_not_before_monotonic"):
-            self._rest_configuration_not_before_monotonic = (
-                monotonic() + DEFAULT_REST_CONFIGURATION_INITIAL_DELAY_S
-            )
+        if not hasattr(self, "rest_runtime"):
+            self.rest_runtime = RestDiagnosticsRuntime(self)
+            self.rest_runtime.initialize()
+        if not hasattr(self, "storage_runtime"):
+            self.storage_runtime = ChargingStateStorageRuntime(self)
+            if (
+                not hasattr(self, "_charging_state_store")
+                and hasattr(self, "hass")
+                and hasattr(self, "entry")
+            ):
+                self.storage_runtime.initialize()
 
     def _control_write_access(self) -> ControlWriteAccess:
         return resolve_control_write_access(
@@ -345,177 +328,35 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
         self._keepalive_task = asyncio.create_task(self._keepalive_loop())
 
     async def async_shutdown(self) -> None:
-        if self._keepalive_task is not None:
-            self._keepalive_task.cancel()
-            try:
-                await self._keepalive_task
-            except asyncio.CancelledError:
-                pass
-            self._keepalive_task = None
-        if self._sensor_refresh_task is not None:
-            self._sensor_refresh_task.cancel()
-            try:
-                await self._sensor_refresh_task
-            except asyncio.CancelledError:
-                pass
-            self._sensor_refresh_task = None
-        if self._phase_switch_task is not None:
-            self._phase_switch_task.cancel()
-            try:
-                await self._phase_switch_task
-            except asyncio.CancelledError:
-                pass
-            self._phase_switch_task = None
-        if self._phase_restore_task is not None:
-            self._phase_restore_task.cancel()
-            try:
-                await self._phase_restore_task
-            except asyncio.CancelledError:
-                pass
-            self._phase_restore_task = None
-        for unsub in self._sensor_unsubscribers:
-            unsub()
-        self._sensor_unsubscribers.clear()
-        self.rest_client = None
+        await self.task_runtime.cancel_task_attr("_keepalive_task")
+        await self.sensor_runtime.shutdown()
+        await self.task_runtime.cancel_task_attr("_phase_switch_task")
+        await self.task_runtime.cancel_task_attr("_phase_restore_task")
+        self.rest_runtime.shutdown()
         await self.client.close()
 
     @property
     def rest_diagnostics_enabled(self) -> bool:
-        merged = {**getattr(self.entry, "data", {}), **getattr(self.entry, "options", {})}
-        return bool(merged.get(CONF_REST_DIAGNOSTICS_ENABLED, False))
+        self._ensure_runtime_defaults()
+        return self.rest_runtime.enabled
 
     async def _async_setup_rest_diagnostics(self) -> None:
-        if not self.rest_diagnostics_enabled:
-            self.rest_diagnostics = RestDiagnosticsData(enabled=False, status="disabled")
-            self.rest_client = None
-            return
-
-        merged = {**getattr(self.entry, "data", {}), **getattr(self.entry, "options", {})}
-        username = str(merged.get(CONF_REST_USERNAME, DEFAULT_REST_USERNAME)).strip()
-        password = str(merged.get(CONF_REST_PASSWORD, "") or "")
-        if not username or not password:
-            self.rest_diagnostics = RestDiagnosticsData(
-                enabled=True,
-                status="missing_credentials",
-                last_error="REST diagnostics enabled but username or password is missing",
-            )
-            self.rest_client = None
-            return
-
-        try:
-            from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
-            session = async_get_clientsession(self.hass, verify_ssl=False)
-        except Exception as err:  # noqa: BLE001
-            self.rest_diagnostics = RestDiagnosticsData(
-                enabled=True,
-                status="unavailable",
-                last_error=f"Unable to create REST session: {err}",
-            )
-            self.rest_client = None
-            return
-
-        host = merged.get(CONF_HOST)
-        self.rest_diagnostics = RestDiagnosticsData(enabled=True, status="pending")
-        self.rest_client = RestDiagnosticsClient(
-            host=host,
-            username=username,
-            password=password,
-            session=session,
-            timeout_s=max(5.0, float(merged.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S))),
-        )
+        self._ensure_runtime_defaults()
+        await self.rest_runtime.setup()
 
     async def async_soft_reset_charger(self) -> None:
-        """Request an explicit WebUI soft reset/reboot of the charger."""
-        if not self.rest_diagnostics_enabled:
-            raise RuntimeError("Soft reset requires REST Diagnostics to be enabled")
-
-        merged = {**getattr(self.entry, "data", {}), **getattr(self.entry, "options", {})}
-        username = str(merged.get(CONF_REST_USERNAME, DEFAULT_REST_USERNAME)).strip()
-        password = str(merged.get(CONF_REST_PASSWORD, "") or "")
-        host = str(merged.get(CONF_HOST, "") or "")
-        if not host or not username or not password:
-            raise RuntimeError("Soft reset requires REST/WebUI host, username and password")
-
-        from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
-        session = async_get_clientsession(self.hass, verify_ssl=False)
-        client = WebUiActionClient(
-            host=host,
-            username=username,
-            password=password,
-            session=session,
-            timeout_s=max(5.0, float(merged.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_S))),
-        )
-        _LOGGER.warning("User requested WebUI soft reset for Webasto/Ampure Unite charger")
-        await client.soft_reset()
+        """Request an explicit REST restart/reboot of the charger."""
+        self._ensure_runtime_defaults()
+        _LOGGER.warning("User requested REST restart for Webasto/Ampure Unite charger")
+        await self.rest_runtime.restart_charger()
 
     async def _async_refresh_rest_diagnostics_if_needed(self) -> None:
-        if not self.rest_diagnostics_enabled:
-            self.rest_diagnostics = RestDiagnosticsData(enabled=False, status="disabled")
-            return
-        if self.rest_client is None:
-            return
+        self._ensure_runtime_defaults()
+        await self.rest_runtime.refresh_if_needed()
 
-        now = monotonic()
-        try:
-            if (
-                self._rest_system_last_fetch_monotonic is None
-                or now - self._rest_system_last_fetch_monotonic >= DEFAULT_REST_SYSTEM_REFRESH_S
-            ):
-                self.rest_diagnostics = await self.rest_client.fetch_system_information(
-                    self.rest_diagnostics
-                )
-                self._rest_system_last_fetch_monotonic = now
-
-            if (
-                now >= self._rest_configuration_not_before_monotonic
-                and (
-                    self._rest_configuration_last_fetch_monotonic is None
-                    or now - self._rest_configuration_last_fetch_monotonic
-                    >= DEFAULT_REST_CONFIGURATION_REFRESH_S
-                )
-            ):
-                self.rest_diagnostics = await self.rest_client.fetch_configuration_fields(
-                    self.rest_diagnostics
-                )
-                self._rest_configuration_last_fetch_monotonic = now
-        except Exception as err:  # noqa: BLE001
-            self.rest_diagnostics = replace(
-                self.rest_diagnostics,
-                enabled=True,
-                status="error",
-                last_error=str(err),
-            )
-
-    def _rest_diagnostics_snapshot(self) -> RestDiagnosticsData:
-        data = self.rest_diagnostics
-        now = monotonic()
-        return RestDiagnosticsData(
-            enabled=data.enabled,
-            status=data.status,
-            last_error=data.last_error,
-            api_version=data.api_version,
-            hmi_version=data.hmi_version,
-            identifier=data.identifier,
-            model=data.model,
-            installation_current_limiter_value_a=data.installation_current_limiter_value_a,
-            installation_current_limiter_phase=data.installation_current_limiter_phase,
-            ocpp_phase_switching_supported=data.ocpp_phase_switching_supported,
-            ocpp_free_mode_active=data.ocpp_free_mode_active,
-            field_count=data.field_count,
-            discovered_field_keys=data.discovered_field_keys,
-            last_system_update_age_s=(
-                None
-                if self._rest_system_last_fetch_monotonic is None
-                else now - self._rest_system_last_fetch_monotonic
-            ),
-            last_configuration_update_age_s=(
-                None
-                if self._rest_configuration_last_fetch_monotonic is None
-                else now - self._rest_configuration_last_fetch_monotonic
-            ),
-        )
+    def _rest_diagnostics_snapshot(self):
+        self._ensure_runtime_defaults()
+        return self.rest_runtime.snapshot()
 
     @property
     def mode(self) -> ChargeMode:
@@ -577,16 +418,14 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
             self.resume_charging()
         else:
             self.pause_charging()
-        await self._charging_state_store.async_save({"charging_enabled": enabled})
+        await self.storage_runtime.save_charging_enabled(enabled)
         if self.control_config.control_mode == ControlMode.EXTERNAL_CONTROLLER:
             current_a = self._external_current_a or self.control_config.min_current_a
             await self.async_set_external_current_limit(current_a if enabled else 0.0)
 
     async def _async_restore_charging_enabled_state(self) -> None:
-        stored = await self._charging_state_store.async_load()
-        charging_enabled = True
-        if isinstance(stored, dict):
-            charging_enabled = bool(stored.get("charging_enabled", True))
+        self._ensure_runtime_defaults()
+        charging_enabled = await self.storage_runtime.restore_charging_enabled()
         self.mode_runtime.charging_paused = not charging_enabled
 
     def set_solar_until_unplug(self, enabled: bool) -> None:
@@ -700,13 +539,12 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
         return float(rounded)
 
     async def _debounced_sensor_refresh(self) -> None:
-        await asyncio.sleep(SENSOR_REFRESH_DEBOUNCE_S)
-        await self.async_request_refresh()
+        self._ensure_runtime_defaults()
+        await self.sensor_runtime.debounced_refresh()
 
     def _schedule_sensor_refresh(self) -> None:
-        if self._sensor_refresh_task is not None and not self._sensor_refresh_task.done():
-            self._sensor_refresh_task.cancel()
-        self._sensor_refresh_task = self.hass.async_create_task(self._debounced_sensor_refresh())
+        self._ensure_runtime_defaults()
+        self.sensor_runtime.schedule_refresh()
 
     async def async_trigger_reconnect(self) -> None:
         await self.client.reconnect()
@@ -751,25 +589,5 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
             await asyncio.sleep(sleep_s)
 
     def _setup_sensor_listeners(self) -> None:
-        entities = [
-            self.entry.options.get(CONF_DLB_L1_SENSOR),
-            self.entry.options.get(CONF_DLB_L2_SENSOR),
-            self.entry.options.get(CONF_DLB_L3_SENSOR),
-            self.entry.options.get(CONF_SOLAR_GRID_POWER_SENSOR),
-            self.entry.options.get(CONF_DLB_GRID_POWER_SENSOR),
-            self.entry.options.get(CONF_SOLAR_SURPLUS_SENSOR),
-            self.entry.options.get(CONF_SOLAR_IMPORT_POWER_SENSOR),
-            self.entry.options.get(CONF_SOLAR_EXPORT_POWER_SENSOR),
-        ]
-        entities = [entity_id for entity_id in entities if entity_id]
-        if not entities:
-            return
-
-        @callback
-        def _handle_state_change(_event):
-            self.async_set_updated_data(self.data)
-            self._schedule_sensor_refresh()
-
-        self._sensor_unsubscribers.append(
-            async_track_state_change_event(self.hass, entities, _handle_state_change)
-        )
+        self._ensure_runtime_defaults()
+        self.sensor_runtime.setup_listeners()

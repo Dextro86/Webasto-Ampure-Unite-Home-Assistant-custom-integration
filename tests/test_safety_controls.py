@@ -2095,7 +2095,7 @@ def test_soft_reset_charger_button_requires_rest_credentials_and_calls_coordinat
 
         button = WebastoSoftResetChargerButton(coordinator)
 
-        assert button._attr_name == "Soft Reset Charger"
+        assert button._attr_name == "Restart Charger"
         assert button._attr_entity_category == EntityCategory.DIAGNOSTIC
         assert button.available is True
 
@@ -2199,7 +2199,7 @@ def test_phase_controls_are_created_when_phase_switching_is_enabled():
             "Switch to 1P",
             "Switch to 3P",
             "Restore Configured Phase",
-            "Reset Phase Switch State",
+            "Clear Phase Switch Status",
         ]
         assert [entity._attr_name for entity in selects] == ["Charge Mode", "Phase Switch"]
 

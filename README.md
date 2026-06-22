@@ -8,29 +8,40 @@ Advanced local control, Solar charging and Dynamic Load Balancing for Webasto Un
 
 This integration controls and monitors Webasto/Ampure Unite chargers directly over local Modbus/TCP. It is not a cloud integration and it is not a generic Modbus wrapper. The focus is stable charger control inside Home Assistant, with Solar surplus charging, Dynamic Load Balancing, restart-safe behavior, diagnostics and EVCC-oriented entities.
 
-This is a community project developed with significant AI assistance. Active charging control should be verified on your own charger and vehicle before relying on automation.
+This is a community project developed with significant AI assistance and covered by automated tests plus a documented behavior contract. Active charging control should still be verified on your own charger and vehicle before relying on automation.
+
+## Should You Use This?
+
+Use this integration if:
+
+- you have a Webasto Unite or Ampure Unite charger
+- Modbus/TCP is enabled on the charger
+- you want local Home Assistant monitoring or control without cloud dependency
+- you are comfortable enabling active charging features step by step
+
+Start with `Monitoring Only`. Enable active control, Solar, DLB and phase switching only after the monitored values look correct. Phase switching is experimental and should be tested carefully with your own charger and vehicle.
 
 ## Features
 
-| Feature | Supported |
+| Feature | Status |
 |---|---|
-| Local Modbus/TCP monitoring | Yes |
-| Cloud-free operation | Yes |
-| Keepalive handling | Yes |
-| Current control through register `5004` | Yes |
-| Solar surplus charging | Yes |
-| Dynamic Load Balancing | Yes |
-| Session-aware charging logic | Yes |
-| Derived IEC 61851 state | Yes |
-| EVCC compatibility entities | Yes |
-| Solar smoothing/filtering | Yes |
-| Solar ramp limiting | Yes |
-| Stale sensor protection | Yes |
-| Restart-safe charging state | Yes |
-| Reconnect handling | Yes |
-| Advanced diagnostics | Yes |
-| Optional WebUI REST diagnostics | Read-only, opt-in |
-| Optional WebUI soft reset | Explicit advanced action, never automatic |
+| Local Modbus/TCP monitoring | Stable |
+| Cloud-free operation | Stable |
+| Keepalive handling | Stable |
+| Current control through register `5004` | Stable, opt-in |
+| Solar surplus charging | Advanced, opt-in |
+| Dynamic Load Balancing | Advanced, opt-in |
+| Session-aware charging logic | Advanced |
+| Derived IEC 61851 state | Diagnostic |
+| EVCC compatibility entities | Advanced, External Controller mode |
+| Solar smoothing/filtering | Advanced |
+| Solar ramp limiting | Advanced |
+| Stale sensor protection | Safety feature |
+| Restart-safe charging state | Safety feature |
+| Reconnect handling | Safety feature |
+| Advanced diagnostics | Diagnostic |
+| Optional WebUI REST diagnostics | Diagnostic, opt-in |
+| Optional REST charger restart | Explicit advanced action, never automatic |
 | Manual 1P/3P phase switching | Experimental, off by default |
 | Automatic Solar phase switching | Experimental, opt-in |
 
@@ -120,11 +131,11 @@ The integration contains logic for Solar surplus charging and Dynamic Load Balan
 
 See [Solar charging and Dynamic Load Balancing](docs/solar_dlb.md).
 
-## Optional REST Diagnostics
+## Optional REST Diagnostics & Actions
 
 The integration can optionally read diagnostics from the charger's local WebUI REST API. This diagnostics path is read-only and separate from Modbus control. It can expose values such as REST API version, HMI version, wallbox model and selected installation/OCPP diagnostics. If REST is unavailable or credentials are wrong, Modbus monitoring/control keeps working.
 
-When REST/WebUI credentials are configured, an explicit advanced `Soft Reset Charger` action is also available. This follows the charger's WebUI soft-reset flow and is never executed automatically.
+When REST/WebUI credentials are configured, an explicit advanced `Restart Charger` action is also available. This uses the charger's authenticated REST restart endpoint and is never executed automatically.
 
 ## EVCC Compatibility
 
@@ -165,7 +176,7 @@ Phase diagnostics are intentionally consolidated:
 
 - `Requested Phase`: requested phase mode from register `405`.
 - `Observed Phase`: physical phase usage derived from measured L1/L2/L3 current.
-- `Phase Recovery State`: current phase-switch/recovery state plus reason attributes.
+- `Phase Switch State`: current phase-switch state plus reason attributes.
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a vehicle capability claim. Lower-level details such as register `404`, raw register `405`, policy target, session override, offer state, consistency and block reasons are exposed as attributes on these three phase sensors or through diagnostics, not as separate normal entities.
 

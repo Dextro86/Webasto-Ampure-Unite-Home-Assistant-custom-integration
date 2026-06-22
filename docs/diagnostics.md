@@ -97,9 +97,9 @@ Useful entities:
 
 `EVCC Status` exposes machine-oriented attributes for compatibility and support.
 
-## REST Diagnostics
+## REST Diagnostics & Actions
 
-REST diagnostics are optional and read-only. They are only created when `Enable REST Diagnostics` is enabled in the integration settings.
+REST diagnostics are optional. They are only created when `Enable REST Diagnostics & Actions` is enabled in the integration settings. Diagnostic reads are read-only; explicit actions such as `Restart Charger` only run when the user presses the button or calls the service.
 
 Useful entities:
 
@@ -116,7 +116,7 @@ Useful entities:
 
 The integration currently uses `/api/system-information` and `/api/configuration-fields`. REST diagnostics are separate from Modbus control. If REST is unavailable, Modbus monitoring and charging control continue to work.
 
-The optional `Soft Reset Charger` action uses the charger's classic WebUI form flow, not the read-only diagnostics endpoints. It requires the same WebUI credentials and is only run when the user explicitly presses the button or calls the service.
+The optional `Restart Charger` action uses the charger's authenticated REST restart endpoint. It requires the same WebUI credentials and is only run when the user explicitly presses the button or calls the service.
 
 ## Phase Diagnostics
 
@@ -128,7 +128,7 @@ Phase switching uses three main diagnostic entities:
 
 - `Requested Phase`: the requested phase mode from register `405`.
 - `Observed Phase`: physical phase usage derived from measured L1/L2/L3 current.
-- `Phase Recovery State`: the active switch/recovery state, or `idle` when no recovery is active.
+- `Phase Switch State`: the active switch state, or `idle` when no phase action is active.
 
 Everything else is intentionally exposed as attributes on these sensors or in diagnostics snapshots. This keeps the entity list smaller while still preserving the information needed for support.
 
@@ -136,7 +136,7 @@ Phase switching reports separate requested and observed state:
 
 - `Requested Phase` follows register `405`.
 - `Observed Phase` follows measured L1/L2/L3 current usage.
-- `Phase Recovery State` shows whether a manual phase request was written and is settling.
+- `Phase Switch State` shows whether a manual phase request was written and is settling.
 
 This distinction matters because some chargers can accept the register write before the current charging session physically changes phases. The integration reports that mismatch; it does not automatically correct it.
 
@@ -144,7 +144,7 @@ Useful phase attributes:
 
 - On `Requested Phase`: default phase, raw register `405`, phase switching mode, session override/target, restore pending and policy target/decision.
 - On `Observed Phase`: measured active phases, observed session phase usage, offer state, phase consistency, register `404` and register `405`.
-- On `Phase Recovery State`: current reason, recovery warning, switch state, last result/target/block reason, switch availability, policy block reason, cooldown, stable-target timing and session switch count.
+- On `Phase Switch State`: current reason, phase warning, switch state, last result/target/block reason, switch availability, policy block reason, cooldown, stable-target timing and session switch count.
 
 ## Debug Logging
 

@@ -82,7 +82,7 @@ class WebastoReconnectButton(WebastoUniteCoordinatorEntity, ButtonEntity):
 
 
 class WebastoSoftResetChargerButton(WebastoUniteCoordinatorEntity, ButtonEntity):
-    _attr_name = "Soft Reset Charger"
+    _attr_name = "Restart Charger"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator) -> None:
@@ -161,7 +161,7 @@ class WebastoRestoreDefaultPhaseButton(WebastoUniteCoordinatorEntity, ButtonEnti
 
 
 class WebastoResetPhaseSwitchStateButton(WebastoUniteCoordinatorEntity, ButtonEntity):
-    _attr_name = "Reset Phase Switch State"
+    _attr_name = "Clear Phase Switch Status"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator) -> None:

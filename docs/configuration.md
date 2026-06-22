@@ -30,7 +30,7 @@ The integration uses one options screen with the settings grouped in logical sec
 - `Solar Charging`
 - `Solar Advanced`
 - `Phase Switching`
-- `REST Diagnostics`
+- `REST Diagnostics & Actions`
 - `Technical Advanced`
 
 This keeps the full configuration in one place. The validation rules remain the same: invalid sensor combinations or invalid Solar thresholds are still rejected before the options are saved.
@@ -100,13 +100,13 @@ Main settings:
 
 These settings do not change the configured `Default Mode`. They only define how the temporary session settings behave when those runtime overrides are enabled.
 
-## REST Diagnostics
+## REST Diagnostics & Actions
 
-REST diagnostics are optional and read-only. They use the charger's local WebUI API in addition to Modbus.
+REST diagnostics are optional and use the charger's local WebUI API in addition to Modbus. Diagnostic reads are read-only. Explicit actions, such as `Restart Charger`, are only run when the user presses the button or calls the service.
 
 Main settings:
 
-- `Enable REST Diagnostics`: enables read-only WebUI API diagnostics.
+- `Enable REST Diagnostics & Actions`: enables WebUI API diagnostics and explicit REST actions.
 - `REST Username`: WebUI username, usually `admin`.
 - `REST Password`: WebUI password. Leave empty to keep the currently stored password.
 
@@ -114,7 +114,7 @@ When enabled, the integration reads `/api/system-information` for values such as
 
 REST diagnostics do not write charger settings and do not upload firmware. If REST login or polling fails, Modbus monitoring, keepalive, Solar, DLB and current control continue to work.
 
-When REST/WebUI credentials are configured, the integration also exposes an explicit advanced `Soft Reset Charger` action. This uses the charger's classic WebUI soft-reset form. It is never executed automatically and hard reset/factory reset are not exposed.
+When REST/WebUI credentials are configured, the integration also exposes an explicit advanced `Restart Charger` action. This uses the charger's authenticated REST restart endpoint. It is never executed automatically and hard reset/factory reset are not exposed.
 
 ## Current Limits
 
@@ -385,7 +385,7 @@ Phase switching is experimental and off by default. When `Phase Switching Mode` 
 What this means:
 
 - Phase switching is off by default.
-- Manual switching is exposed through explicit buttons/services when phase switching is enabled: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state`.
+- Manual switching is exposed through explicit buttons/services when phase switching is enabled: `request_phase_1p`, `request_phase_3p` and `reset_phase_switch_state` (`Clear Phase Switch Status`).
 - The `Phase Switch` select exposes EVCC-compatible options `1` and `3` and uses the same explicit register-write path as the phase buttons.
 - The button/service writes register `405` directly (`0 = 1P`, `1 = 3P`), marks the phase switch as settling and lets the normal control loop continue current control.
 - Manual phase switching does not pause charging, resume charging, retry, verify register `405` in a loop or treat measured active phases as hard success/failure.
@@ -398,10 +398,10 @@ What this means:
   - Register `404`: charger-reported phase capability/configuration context. This is diagnostic only. Field testing showed it can report `1P` while the charger is physically charging on 3 phases, so it is not used as a hard phase-switch capability block.
   - Register `405`: experimental phase-switch mode register. `Requested Phase` uses this register as its state.
   - Known historical write values for register `405` are `0 = 1P` and `1 = 3P`.
-- `Requested Phase`, `Observed Phase` and `Phase Recovery State` are the three primary phase diagnostics. Lower-level fields such as observed session phase usage, offer state, phase consistency, register `404`, raw register `405`, switch availability, block reason and policy timing are exposed as attributes.
-- `Phase Recovery State` shows the current phase-control state, for example `Phase Switch Settling`, `Phase Register Written`, `Already In Target Phase` or `Blocked`.
-- `Last Phase Switch Result = Phase Register Written` means the integration wrote register `405`. It does not prove that the physical charging session immediately moved to the requested phase count; use `Observed Phase` for that.
-- Policy attributes on `Phase Recovery State` show what Solar automatic phase switching is evaluating, including target, required surplus, stable timing, cooldown and session switch count.
+- `Requested Phase`, `Observed Phase` and `Phase Switch State` are the three primary phase diagnostics. Lower-level fields such as observed session phase usage, offer state, phase consistency, register `404`, raw register `405`, switch availability, block reason and policy timing are exposed as attributes.
+- `Phase Switch State` shows the current phase-control state, for example `Phase Switch Settling`, `Phase Register Written`, `Already In Target Phase` or `Blocked`.
+- `Phase Switch State` attribute `last_result = Phase Register Written` means the integration wrote register `405`. It does not prove that the physical charging session immediately moved to the requested phase count; use `Observed Phase` for that.
+- Policy attributes on `Phase Switch State` show what Solar automatic phase switching is evaluating, including target, required surplus, stable timing, cooldown and session switch count.
 - New plug-in sessions no longer trigger automatic 3P start normalization. If a session starts physically on 1P while `Requested Phase` says `3P`, the integration reports the mismatch and keeps normal current control predictable.
 - Automatic Solar executes only when `auto_ready` is true. It then uses the same direct register-405 write path as manual phase switching.
 - In `Eco Solar`, 3P -> 1P is requested only when surplus can support at least the 1P minimum. In `Smart Solar` and `Solar Boost`, 3P -> 1P can also be requested below the 1P minimum because these modes intentionally allow baseline charging.
@@ -417,7 +417,7 @@ Manual switch service requests are blocked when:
 
 `Restore Configured Phase` is intended to put register `405` back to the configured `Charger Configuration` after manual testing or a future temporary phase session. It only writes to the charger when a vehicle is connected; without a connected vehicle it clears the integration's runtime phase override state and waits for the next session.
 
-During an explicit manual restore, `restore_pending` can remain visible as an attribute on `Requested Phase` and `Phase Recovery State` can report `Phase Restore Pending`.
+During an explicit manual restore, `restore_pending` can remain visible as an attribute on `Requested Phase` and `Phase Switch State` can report `Phase Restore Pending`.
 
 After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration` for diagnostics. It does not automatically restore register `405`; use `Restore Configured Phase` explicitly if you want to write the configured phase mode.
 

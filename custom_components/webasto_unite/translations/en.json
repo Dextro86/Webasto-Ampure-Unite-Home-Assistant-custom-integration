@@ -142,14 +142,14 @@
             }
           },
           "rest_diagnostics": {
-            "name": "REST Diagnostics",
+            "name": "REST Diagnostics & Actions",
             "data": {
-              "rest_diagnostics_enabled": "Enable REST Diagnostics",
+              "rest_diagnostics_enabled": "Enable REST Diagnostics & Actions",
               "rest_username": "REST Username",
               "rest_password": "REST Password"
             },
             "data_description": {
-              "rest_diagnostics_enabled": "Optional read-only diagnostics through the charger WebUI API. Modbus charging control keeps working if REST is unavailable.",
+              "rest_diagnostics_enabled": "Optional REST diagnostics and explicit actions such as Restart Charger through the charger WebUI API. Modbus charging control keeps working if REST is unavailable.",
               "rest_username": "WebUI username. The default is usually admin.",
               "rest_password": "WebUI password. Leave empty to keep the currently stored password."
             }

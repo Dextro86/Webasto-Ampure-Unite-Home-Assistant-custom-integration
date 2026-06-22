@@ -34,7 +34,7 @@ SENSORS = (
     WebastoSensorDescription(key="evse_fault_code", name="EVSE Fault Code", value_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_requested", name="Requested Phase", value_key="phase_requested", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="phase_observed", name="Observed Phase", value_key="phase_observed", entity_category=EntityCategory.DIAGNOSTIC),
-    WebastoSensorDescription(key="phase_recovery_state", name="Phase Recovery State", value_key="phase_recovery_state", entity_category=EntityCategory.DIAGNOSTIC),
+    WebastoSensorDescription(key="phase_recovery_state", name="Phase Switch State", value_key="phase_recovery_state", entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="active_power", name="Active Power", value_key="active_power_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT),
     WebastoSensorDescription(key="active_power_l1", name="Active Power L1", value_key="active_power_l1_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),
     WebastoSensorDescription(key="active_power_l2", name="Active Power L2", value_key="active_power_l2_w", native_unit_of_measurement=UnitOfPower.WATT, device_class=SensorDeviceClass.POWER, state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC),

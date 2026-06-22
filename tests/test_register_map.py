@@ -201,7 +201,7 @@ def test_phase_switch_diagnostic_sensors_are_exposed():
     assert sensors["phase_requested"].entity_category == "diagnostic"
     assert sensors["phase_observed"].name == "Observed Phase"
     assert sensors["phase_observed"].entity_category == "diagnostic"
-    assert sensors["phase_recovery_state"].name == "Phase Recovery State"
+    assert sensors["phase_recovery_state"].name == "Phase Switch State"
     assert sensors["phase_recovery_state"].entity_category == "diagnostic"
     assert "phase_switch_mode" not in sensors
     assert "phase_policy_target" not in sensors

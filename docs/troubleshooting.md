@@ -120,15 +120,15 @@ Check:
 - vehicle is connected
 - `Requested Phase`
 - `Observed Phase`
-- `Phase Recovery State`
+- `Phase Switch State`
 
 Measured active phases are diagnostic only. A 1P vehicle on a 3P charger is normal and is not treated as a vehicle capability claim.
 
-If `Phase Recovery State` has attribute `switch_block_reason = Charger Preconfigured 1P`, register `404` reports that the charger itself is configured as 1P. Treat this as diagnostic context; phase switching depends on the explicit register `405` path.
+If `Phase Switch State` has attribute `switch_block_reason = Charger Preconfigured 1P`, register `404` reports that the charger itself is configured as 1P. Treat this as diagnostic context; phase switching depends on the explicit register `405` path.
 
 Use `Restore Configured Phase` if register `405` was manually changed and you want to return to the configured `Charger Configuration`.
 
-If `Last Phase Switch Result` says `Phase Register Written`, the integration wrote register `405`. This is intentionally not the same as physical verification. Check `Requested Phase` and `Observed Phase` together to see whether the active charging session actually followed the request.
+If the `last_result` attribute on `Phase Switch State` says `Phase Register Written`, the integration wrote register `405`. This is intentionally not the same as physical verification. Check `Requested Phase` and `Observed Phase` together to see whether the active charging session actually followed the request.
 
 If `Observed Phase` is `1P` while `Requested Phase` is `3P`, the integration does not know whether the connected vehicle is 1P-only or whether the charger/session is stuck on 1P. It reports the mismatch and keeps charging; it does not start automatic recovery.
 

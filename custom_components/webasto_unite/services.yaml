@@ -51,8 +51,8 @@ trigger_reconnect:
       required: true
       example: "abc123"
 soft_reset_charger:
-  name: Soft Reset Charger
-  description: Explicitly request a WebUI soft reset/reboot of the charger. Requires REST Diagnostics credentials. This is never run automatically.
+  name: Restart Charger
+  description: Explicitly request a REST restart/reboot of the charger. Requires REST Diagnostics credentials. This is never run automatically.
   fields:
     entry_id:
       name: Entry ID
@@ -123,8 +123,8 @@ restore_default_phase:
       required: true
       example: "abc123"
 reset_phase_switch_state:
-  name: Reset Phase Switch State
-  description: Clear the diagnostic state of the experimental phase switching helper.
+  name: Clear Phase Switch Status
+  description: Clear the diagnostic status of the experimental phase switching helper. This does not write a phase setting to the charger.
   fields:
     entry_id:
       name: Entry ID

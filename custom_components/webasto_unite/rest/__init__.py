@@ -1,1 +1,1 @@
-"""Optional WebUI REST diagnostics and explicit WebUI actions."""
+"""Optional WebUI REST diagnostics and explicit REST actions."""
