@@ -1,13 +1,17 @@
+import asyncio
 import importlib
 import pkgutil
 
 import custom_components.webasto_unite as webasto_unite_package
 from custom_components.webasto_unite.registers import (
+    CABLE_STATE,
     CHARGE_POINT_ID,
     CHARGE_POINT_STATE,
+    CHARGE_STATE,
     COMM_TIMEOUT_S,
     CURRENT_L1_A,
     ENERGY_METER_KWH,
+    EVSE_STATE,
     FIRMWARE_VERSION,
     MAX_CURRENT_CABLE_A,
     NUMBER_OF_PHASES,
@@ -40,6 +44,55 @@ from custom_components.webasto_unite.sensor import SENSORS, WebastoSensor
 from custom_components.webasto_unite.wallbox_reader import WallboxReader
 
 
+class _ReaderClient:
+    def __init__(
+        self,
+        *,
+        direct_status: dict[int, int],
+        block_status: dict[int, int],
+        direct_status_fails: bool = False,
+    ) -> None:
+        self.direct_status = direct_status
+        self.block_status = block_status
+        self.direct_status_fails = direct_status_fails
+
+    async def read(self, register):
+        if register.address in {1000, 1001, 1002, 1004}:
+            if self.direct_status_fails:
+                raise OSError("status read failed")
+            return self.direct_status[register.address]
+
+        values = {
+            "serial_number": "serial",
+            "charge_point_id": "cp-id",
+            "brand": "Webasto",
+            "model": "Unite",
+            "firmware_version": "v3.187.0",
+            "charge_point_power_w": 22_000,
+            "number_of_phases": 1,
+            "phase_switch_mode": 1,
+            "session_max_current_a": 16,
+            "min_current_hw_a": 6,
+            "max_current_cable_a": 32,
+            "max_current_ev_a": 32,
+            "safe_current_a": 6,
+            "comm_timeout_s": 20,
+            "set_charge_current_a": 16,
+            "life_bit": 0,
+        }
+        return values[register.name]
+
+    async def read_input_registers_block(self, base_address: int, count: int) -> list[int]:
+        if base_address == 1000:
+            block = [0] * count
+            for address, value in self.block_status.items():
+                block[address - base_address] = value
+            return block
+        if base_address == 1502:
+            return [0] * count
+        raise AssertionError(f"Unexpected block read {base_address}")
+
+
 def test_all_integration_modules_import_and_wallbox_reader_instantiates():
     for module_info in pkgutil.iter_modules(webasto_unite_package.__path__):
         if module_info.ispkg:
@@ -50,6 +103,56 @@ def test_all_integration_modules_import_and_wallbox_reader_instantiates():
     reader = WallboxReader(client)
 
     assert reader.client is client
+
+
+def test_wallbox_reader_uses_direct_status_registers_over_telemetry_block():
+    client = _ReaderClient(
+        block_status={
+            CHARGE_POINT_STATE.address: 0,
+            CHARGE_STATE.address: 0,
+            EVSE_STATE.address: 1,
+            CABLE_STATE.address: 0,
+        },
+        direct_status={
+            CHARGE_POINT_STATE.address: 2,
+            CHARGE_STATE.address: 1,
+            EVSE_STATE.address: 1,
+            CABLE_STATE.address: 3,
+        },
+    )
+
+    wallbox = asyncio.run(WallboxReader(client).read_wallbox_state("3p"))
+
+    assert wallbox.cable_state_raw == 3
+    assert wallbox.charge_state_raw == 1
+    assert wallbox.charge_point_state_raw == 2
+    assert wallbox.vehicle_connected is True
+    assert wallbox.charging_active is True
+
+
+def test_wallbox_reader_falls_back_to_telemetry_block_when_direct_status_read_fails():
+    client = _ReaderClient(
+        block_status={
+            CHARGE_POINT_STATE.address: 2,
+            CHARGE_STATE.address: 1,
+            EVSE_STATE.address: 1,
+            CABLE_STATE.address: 3,
+        },
+        direct_status={
+            CHARGE_POINT_STATE.address: 0,
+            CHARGE_STATE.address: 0,
+            EVSE_STATE.address: 1,
+            CABLE_STATE.address: 0,
+        },
+        direct_status_fails=True,
+    )
+
+    wallbox = asyncio.run(WallboxReader(client).read_wallbox_state("3p"))
+
+    assert wallbox.cable_state_raw == 3
+    assert wallbox.charge_state_raw == 1
+    assert wallbox.vehicle_connected is True
+    assert wallbox.charging_active is True
 
 
 def test_energy_and_measurement_sensors_expose_statistics_metadata():

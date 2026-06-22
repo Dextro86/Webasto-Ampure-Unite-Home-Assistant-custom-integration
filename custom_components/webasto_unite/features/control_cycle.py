@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+import logging
 from types import SimpleNamespace
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -18,6 +20,8 @@ from ..models import (
 )
 from .phase_observer import PhaseObservability, build_phase_observability
 from .phase_policy import PhasePolicyDecision, evaluate_phase_policy
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -47,6 +51,7 @@ class ControlCycleMixin:
             self._phase_runtime().reset_session_transient_state()
             self._clear_phase_session_override()
             self._phase_recovery_warning = None
+            self._schedule_post_disconnect_reconnect()
 
         if session_transition.vehicle_connected:
             self.controller.reset_current_write_state()
@@ -155,6 +160,30 @@ class ControlCycleMixin:
         handling intentionally stays read-only here.
         """
         return
+
+    def _schedule_post_disconnect_reconnect(self) -> None:
+        """Refresh the Modbus socket after a completed charger session.
+
+        Some Webasto/Vestel chargers keep the TCP socket open while subsequent
+        reads can remain stale after unplug. We still avoid charger writes during
+        the shutdown window, but reconnect the Modbus client in the background
+        so the next plug-in session starts from a fresh socket.
+        """
+        existing = getattr(self, "_post_disconnect_reconnect_task", None)
+        if existing is not None and not existing.done():
+            return
+        self._post_disconnect_reconnect_task = self._create_background_task(
+            self._run_post_disconnect_reconnect()
+        )
+
+    async def _run_post_disconnect_reconnect(self) -> None:
+        try:
+            await self._phase_switch_sleep(5.0)
+            await self.client.reconnect()
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Post-disconnect Modbus reconnect failed: %s", err)
 
     def _apply_runtime_guards(
         self,

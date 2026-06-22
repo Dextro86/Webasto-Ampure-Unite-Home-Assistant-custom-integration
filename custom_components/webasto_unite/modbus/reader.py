@@ -67,10 +67,20 @@ class WallboxReader:
             telemetry_base = 1000
             telemetry = await self.client.read_input_registers_block(telemetry_base, 38)
 
-            wallbox.charge_point_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_POINT_STATE.address)
-            wallbox.charge_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_STATE.address)
-            wallbox.evse_state_raw = self._block_u16(telemetry, telemetry_base, EVSE_STATE.address)
-            wallbox.cable_state_raw = self._block_u16(telemetry, telemetry_base, CABLE_STATE.address)
+            block_charge_point_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_POINT_STATE.address)
+            block_charge_state_raw = self._block_u16(telemetry, telemetry_base, CHARGE_STATE.address)
+            block_evse_state_raw = self._block_u16(telemetry, telemetry_base, EVSE_STATE.address)
+            block_cable_state_raw = self._block_u16(telemetry, telemetry_base, CABLE_STATE.address)
+            status_registers = await self._read_direct_runtime_status(
+                block_charge_point_state_raw=block_charge_point_state_raw,
+                block_charge_state_raw=block_charge_state_raw,
+                block_evse_state_raw=block_evse_state_raw,
+                block_cable_state_raw=block_cable_state_raw,
+            )
+            wallbox.charge_point_state_raw = status_registers["charge_point_state_raw"]
+            wallbox.charge_state_raw = status_registers["charge_state_raw"]
+            wallbox.evse_state_raw = status_registers["evse_state_raw"]
+            wallbox.cable_state_raw = status_registers["cable_state_raw"]
             wallbox.vehicle_connected = int(wallbox.cable_state_raw or 0) >= 2
             wallbox.error_code = self._block_u16(telemetry, telemetry_base, ERROR_CODE.address)
             wallbox.active_power_w = self._normalize_active_power_w(
@@ -159,6 +169,44 @@ class WallboxReader:
     def _block_u32(block: list[int], base_address: int, address: int) -> int:
         offset = address - base_address
         return int((block[offset] << 16) | block[offset + 1])
+
+    async def _read_direct_runtime_status(
+        self,
+        *,
+        block_charge_point_state_raw: int,
+        block_charge_state_raw: int,
+        block_evse_state_raw: int,
+        block_cable_state_raw: int,
+    ) -> dict[str, int]:
+        """Read state registers directly so plug/unplug state is not tied to one large telemetry block."""
+
+        fallback = {
+            "charge_point_state_raw": block_charge_point_state_raw,
+            "charge_state_raw": block_charge_state_raw,
+            "evse_state_raw": block_evse_state_raw,
+            "cable_state_raw": block_cable_state_raw,
+        }
+        try:
+            direct = {
+                "charge_point_state_raw": int(await self.client.read(CHARGE_POINT_STATE)),
+                "charge_state_raw": int(await self.client.read(CHARGE_STATE)),
+                "evse_state_raw": int(await self.client.read(EVSE_STATE)),
+                "cable_state_raw": int(await self.client.read(CABLE_STATE)),
+            }
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Direct runtime status read failed; using telemetry block values: %s", err)
+            return fallback
+
+        for key, direct_value in direct.items():
+            block_value = fallback[key]
+            if direct_value != block_value:
+                _LOGGER.debug(
+                    "Runtime status %s differs between direct read and telemetry block: direct=%s block=%s",
+                    key,
+                    direct_value,
+                    block_value,
+                )
+        return direct
 
     @staticmethod
     def _normalize_active_power_w(

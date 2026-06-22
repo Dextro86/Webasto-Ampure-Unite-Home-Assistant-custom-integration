@@ -184,7 +184,7 @@ Manual switching now follows the same simple model as EVCC's native Vestel/Webas
 
 `Restore Configured Phase` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
 
-Manual switching away from `Charger Configuration` is treated as temporary for the connected session. On unplug, the integration only clears its runtime/session state and resets the runtime charge mode to the configured `Default Mode`; it does not write register `405` during charger session shutdown. A new plug-in session no longer triggers automatic 3P restore or recovery writes.
+Manual switching away from `Charger Configuration` is treated as temporary for the connected session. On unplug, the integration clears runtime/session state, resets the runtime charge mode to the configured `Default Mode` and schedules a short delayed Modbus reconnect. It does not write register `405` during charger session shutdown. A new settled non-Solar managed session may restore configured 3P if register `405` is still 1P.
 
 Automatic Solar phase switching uses the same direct register-write path as manual switching. It can request `1P` or `3P` only after the target has remained stable, cooldown is clear and the session switch limit has not been reached. If register `405` says `3P` while charging physically remains 1P, the integration reports the mismatch and keeps charging instead of starting automatic recovery. In `External Controller` mode, EVCC may still request phase switches through the phase select; this integration's own Solar phase switching does not run there.
 

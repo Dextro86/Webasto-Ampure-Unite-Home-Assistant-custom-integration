@@ -10,7 +10,7 @@ from ..const import (
     PHASE_SWITCHING_MODE_AUTOMATIC_SOLAR,
     PHASE_SWITCHING_MODE_OFF,
 )
-from ..models import ChargingState, ControlMode, WallboxState
+from ..models import ChargeMode, ChargingState, ControlMode, WallboxState
 from .phase_engine import REGISTER_ACCEPTED_RESULTS
 from .phase_policy import (
     AUTO_PHASE_MAX_SWITCHES_PER_SESSION,
@@ -372,8 +372,32 @@ class PhaseActionMixin:
         if self._phase_recovery_warning == "waiting_for_phase_startup_settle":
             self._phase_recovery_warning = None
 
+        if self._should_restore_default_phase_on_new_session(wallbox):
+            self._schedule_phase_restore_task(wallbox, force_edge_trigger=False)
+            return True
         await self._async_handle_phase_restore_state(wallbox)
         return await self._maybe_execute_automatic_phase_policy(phase_policy, wallbox=wallbox)
+
+    def _should_restore_default_phase_on_new_session(self, wallbox: WallboxState) -> bool:
+        if self._phase_switch_in_progress():
+            return False
+        if getattr(self, "_phase_switching_mode", PHASE_SWITCHING_MODE_OFF) == PHASE_SWITCHING_MODE_OFF:
+            return False
+        if self.control_config.control_mode != ControlMode.MANAGED_CONTROL:
+            return False
+        if self.effective_mode == ChargeMode.SOLAR:
+            return False
+        if self._phase_session_override_active:
+            return False
+        if self._phase_session_started_monotonic is None:
+            return False
+        if self._configured_installed_phases() != PHASE_MODE_3P:
+            return False
+        if not wallbox.vehicle_connected:
+            return False
+        if wallbox.phase_switch_mode_raw is None:
+            return False
+        return wallbox.phase_switch_mode_raw != self._default_phase_switch_raw_value()
 
     def _wallbox_matches_default_phase(self, wallbox: WallboxState) -> bool:
         return wallbox_matches_default_phase(wallbox, self._configured_installed_phases())

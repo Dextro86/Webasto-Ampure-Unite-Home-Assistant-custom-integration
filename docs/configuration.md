@@ -391,7 +391,7 @@ What this means:
 - Manual phase switching does not pause charging, resume charging, retry, verify register `405` in a loop or treat measured active phases as hard success/failure.
 - An explicit request may write register `405` even if `Requested Phase` already shows the same target, because `Requested Phase` and `Observed Phase` can temporarily disagree.
 - `Restore Configured Phase` writes the configured `Charger Configuration` (`1P` or `3P`) back to register `405` when a vehicle is connected. Without a connected vehicle it only clears the runtime phase override state.
-- A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration clears its runtime/session state but does not write register `405`.
+- A manual switch away from `Charger Configuration` is treated as a temporary session override. When the vehicle is unplugged, the integration clears its runtime/session state and schedules a delayed Modbus reconnect, but does not write register `405` during charger session shutdown.
 - Existing custom dashboard cards or automations that call old phase-switch services should be removed or disabled.
 - The integration still detects active phases from measured charger current. DLB and Solar use that observation to make safer current decisions for 1-phase and 3-phase charging sessions.
 - The integration reads charger phase diagnostics:
@@ -402,7 +402,7 @@ What this means:
 - `Phase Switch State` shows the current phase-control state, for example `Phase Switch Settling`, `Phase Register Written`, `Already In Target Phase` or `Blocked`.
 - `Phase Switch State` attribute `last_result = Phase Register Written` means the integration wrote register `405`. It does not prove that the physical charging session immediately moved to the requested phase count; use `Observed Phase` for that.
 - Policy attributes on `Phase Switch State` show what Solar automatic phase switching is evaluating, including target, required surplus, stable timing, cooldown and session switch count.
-- New plug-in sessions no longer trigger automatic 3P start normalization. If a session starts physically on 1P while `Requested Phase` says `3P`, the integration reports the mismatch and keeps normal current control predictable.
+- New settled non-Solar managed sessions can restore configured 3P if register `405` is still 1P. Solar mode and External Controller mode do not use this automatic default-phase restore.
 - Automatic Solar executes only when `auto_ready` is true. It then uses the same direct register-405 write path as manual phase switching.
 - In `Eco Solar`, 3P -> 1P is requested only when surplus can support at least the 1P minimum. In `Smart Solar` and `Solar Boost`, 3P -> 1P can also be requested below the 1P minimum because these modes intentionally allow baseline charging.
 
@@ -419,7 +419,7 @@ Manual switch service requests are blocked when:
 
 During an explicit manual restore, `restore_pending` can remain visible as an attribute on `Requested Phase` and `Phase Switch State` can report `Phase Restore Pending`.
 
-After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration` for diagnostics. It does not automatically restore register `405`; use `Restore Configured Phase` explicitly if you want to write the configured phase mode.
+After a Home Assistant restart or integration reload, the integration compares register `405` with `Charger Configuration` for diagnostics. It does not treat the first read after restart as a new plug-in session and does not automatically restore register `405`; use `Restore Configured Phase` explicitly if you want to write the configured phase mode.
 
 The charger may still have its own physical or firmware-level phase configuration. Treat manual phase switching as experimental and verify behavior on your own charger before using it in automations.
 

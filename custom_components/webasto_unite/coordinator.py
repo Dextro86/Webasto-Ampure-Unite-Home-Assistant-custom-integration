@@ -129,6 +129,7 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
         self._keepalive_task: asyncio.Task | None = None
         self._phase_switch_task: asyncio.Task | None = None
         self._phase_restore_task: asyncio.Task | None = None
+        self._post_disconnect_reconnect_task: asyncio.Task | None = None
         self._phase_switch_sleep = asyncio.sleep
         self.rest_runtime = RestDiagnosticsRuntime(self)
         self.rest_runtime.initialize()
@@ -290,6 +291,8 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
             self._phase_switch_task = getattr(self, "_automatic_phase_switch_task", None)
         if not hasattr(self, "_phase_restore_task"):
             self._phase_restore_task = None
+        if not hasattr(self, "_post_disconnect_reconnect_task"):
+            self._post_disconnect_reconnect_task = None
         if not hasattr(self, "rest_runtime"):
             self.rest_runtime = RestDiagnosticsRuntime(self)
             self.rest_runtime.initialize()
@@ -332,6 +335,7 @@ class WebastoUniteCoordinator(ControlCycleMixin, PhaseActionMixin, DataUpdateCoo
         await self.sensor_runtime.shutdown()
         await self.task_runtime.cancel_task_attr("_phase_switch_task")
         await self.task_runtime.cancel_task_attr("_phase_restore_task")
+        await self.task_runtime.cancel_task_attr("_post_disconnect_reconnect_task")
         self.rest_runtime.shutdown()
         await self.client.close()
 

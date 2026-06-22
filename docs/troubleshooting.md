@@ -132,6 +132,6 @@ If the `last_result` attribute on `Phase Switch State` says `Phase Register Writ
 
 If `Observed Phase` is `1P` while `Requested Phase` is `3P`, the integration does not know whether the connected vehicle is 1P-only or whether the charger/session is stuck on 1P. It reports the mismatch and keeps charging; it does not start automatic recovery.
 
-After unplug the integration only clears its own runtime/session state. It intentionally does not write register `405` while the charger is closing the session. If the next session starts with `Requested Phase = 3P` but `Observed Phase = 1P`, use manual phase controls if you want to test switching; the integration will not automatically normalize it.
+After unplug the integration clears its own runtime/session state, resets the runtime charge mode to `Default Mode` and schedules a short delayed Modbus reconnect. It intentionally does not write register `405` while the charger is closing the session. In a new settled non-Solar managed session, it may restore configured 3P if register `405` is still 1P.
 
 After a restart, phase diagnostics can show that register `405` differs from `Charger Configuration`. The integration avoids treating the first read after startup as a fresh plug-in event and does not automatically write register `405`.

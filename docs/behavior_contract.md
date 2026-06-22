@@ -51,6 +51,7 @@ On unplug:
 - clear phase session override diagnostics
 - reset runtime charge mode to `Default Mode`
 - do not write register `405`
+- schedule a short delayed Modbus reconnect so the next plug-in session starts from a fresh TCP socket
 
 When no vehicle is connected:
 
@@ -62,9 +63,15 @@ On new plug-in:
 - reset current write state
 - reset observed session phase usage
 - start a short phase/session settle window
-- do not automatically write register `405`
+- after the settle window, restore configured 3P through register `405` only when all of these are true:
+- `Integration Charging Control = Enabled`
+- `Phase Switching Mode` is not `Off`
+- `Charger Configuration = 3P`
+- active mode is not Solar
+- there is no explicit temporary phase session override
+- register `405` still reports `1P`
 
-This avoids writing phase registers while the charger is still closing or opening a session internally.
+This avoids writing phase registers while the charger is still closing or opening a session internally, but prevents a previous 1P Solar/manual session from silently carrying over into the next Normal session.
 
 ## Phase switching
 
@@ -75,7 +82,7 @@ Phase switching is experimental and explicit.
 | Manual phase buttons/services/select | May write register `405` through the explicit phase-switch path. |
 | Restore Configured Phase | Explicitly writes the phase mode derived from `Charger Configuration`. |
 | Automatic Solar phase switching | May write register `405` only after the Solar phase target is stable and cooldown/session-count guards allow it. |
-| Plug/unplug restore | Disabled. Plug/unplug never writes register `405`. |
+| Plug/unplug restore | Unplug never writes register `405`. A new settled non-Solar managed session may restore configured 3P if register `405` is still 1P. |
 | Mismatch recovery | Disabled. Mismatch is reported, not automatically corrected. |
 
 Manual, EVCC and Automatic Solar phase switching use the same EVCC-like Vestel/Webasto write model:
